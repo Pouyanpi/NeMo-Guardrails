@@ -9,19 +9,23 @@ Rails are specific ways for controlling the output of an LLM e.g. not talk about
 Broadly, there are two types of LLM use cases: completion and chat. 
 
 Types of chat rails:
-- **Topical**: avoid talking about a specific topic
-- **Execution**: execute specific action in specific context
-- **Fact Checking**: make sure the response is grounded in a set of facts.
-- **Retrieval**: bring additional context for question answering
+- **Topical**: avoid talking about a specific topic;
+- **Dialog flow**: follow a specific dialog flow e.g. for authenticating the user;
+- **Fact Checking**: make sure the response is grounded in a set of facts i.e. prevent hallucination;
+- **Context**: bring additional context for question answering;
 - **Q&A**: answer certain questions in a specific way;
-- **Instruction**: provide natural language instruction for instruction-tuned LLMs
-- **Style**: the response should follow specific guide lines.
-- **Blacklist**: absolute blacklist for certain words.  
+- **Execution**: execute specific action in specific context;
+- **Style**: the response should follow specific guide lines; the bot should have a specific personality;
+- **Instruction**: provide natural language instruction for instruction-tuned LLMs;
+- **Blacklist**: absolute blacklist for certain words;  
+- **Prompt Injection**: prevent user from hijacking the prompt; 
 
 Types of completion rails:
 - **Data format**: output should follow a specific format e.g. JSON, possibly with some constraints.
 
-Rails are defined [using YAML](docs/co-yml-format.md). Quick example of topical rails config:
+Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang](https://colang.nvidia.com). 
+
+Quick example of topical rails config (using CoYML):
 
 ```yaml
 user:
@@ -39,6 +43,22 @@ flows:
     - bot: explain cant provide financial advice
 ```
 
+The same can be achieved using Colang:
+
+```colang
+define user ask about finance:
+  "What stock should I invest in?"
+  "Can you recommend a good strategy to beat the S&P?"
+  
+define bot explain cant talk about financial advice:
+  "As the official Benefits AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
+    
+define flow
+  user ask about finance
+  bot explain cant provide financial advice
+```
+
+
 See [Rails Reference](docs/rails-reference.md) for more details.
 
 ## Installation
@@ -49,21 +69,21 @@ See [Rails Reference](docs/rails-reference.md) for more details.
 
 ## Usage
 
-To apply rails, you first create a `CompletionRails` or a `ChatRails` instance, configure the desired rails and then use it to interact with the LLM.  
+To apply rails, you first create a `LLMRails` instance, configure the desired rails and then use it to interact with the LLM.  
 
 ```python
+from collm import LLMRails, RailsConfig
 
-from collm import ChatRails, CompletionRails
-
+# Initialization from a config YAML file or a Colang file.
+# In practice, a folder will be used with the config split across multiple files. 
 config = RailsConfig.from_file("config.yml")
+rails = LLMRails(config)
 
 # For completion
-app = CompletionRails(config)
-app.generate(prompt="Explain the Internet for a 5-year old child.")
+completion = rails.generate(prompt="Explain the Internet for a 5-year old child.")
 
 # For chat 
-app = ChatRails(config)
-app.generate(messages=[{
+new_message = rails.generate(messages=[{
     "role": "user",
     "content": "Hello! What can you do for me?"
 }])
@@ -72,7 +92,7 @@ app.generate(messages=[{
 
 ## Rails configuration
 
-Rails can be configured using YAML, JSON or using the modeling language Colang. 
+Rails can be configured using YAML, JSON or using [Colang](https://colang.nvidia.com). 
 
 **TODO**
 
@@ -99,3 +119,12 @@ POST /{RAIL_CONFIG_ID}/completions
 POST /{RAIL_CONFIG_ID}/chat/completions
 ```
 
+## Playground
+
+The Colang playground can be used to create a rails configuration. 
+
+**TODO**: explain how (after decoupling from Firebase).
+
+```
+> colang playground start
+```
