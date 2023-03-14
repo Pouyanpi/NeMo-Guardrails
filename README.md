@@ -4,11 +4,9 @@ CoLLM is a framework for creating rails for LLMs.
 
 ## Description 
 
-Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefine dialog path, use a specific language style, extract data etc. 
+Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefined dialog path, use a specific language style, extract data etc. 
 
-Broadly, there are two types of LLM use cases: completion and chat. 
-
-Types of chat rails:
+Types rails:
 - **Topical**: avoid talking about a specific topic;
 - **Dialog flow**: follow a specific dialog flow e.g. for authenticating the user;
 - **Fact Checking**: make sure the response is grounded in a set of facts i.e. prevent hallucination;
@@ -18,9 +16,7 @@ Types of chat rails:
 - **Style**: the response should follow specific guide lines; the bot should have a specific personality;
 - **Instruction**: provide natural language instruction for instruction-tuned LLMs;
 - **Blacklist**: absolute blacklist for certain words;  
-- **Prompt Injection**: prevent user from hijacking the prompt; 
-
-Types of completion rails:
+- **Prompt Injection**: prevent user from hijacking the prompt;
 - **Data format**: output should follow a specific format e.g. JSON, possibly with some constraints.
 
 Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang](https://colang.nvidia.com). 
