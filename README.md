@@ -6,7 +6,7 @@ CoLLM is a framework for creating rails for LLMs.
 
 Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefined dialog path, use a specific language style, extract data etc. 
 
-Types rails:
+Types of rails:
 - **Topical**: avoid talking about a specific topic;
 - **Dialog flow**: follow a specific dialog flow e.g. for authenticating the user;
 - **Fact Checking**: make sure the response is grounded in a set of facts i.e. prevent hallucination;
