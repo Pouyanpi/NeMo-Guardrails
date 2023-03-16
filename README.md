@@ -1,10 +1,10 @@
 # CoLLM
 
-CoLLM is a framework for creating rails for LLMs. 
+CoLLM is a framework for creating rails for LLMs.
 
-## Description 
+## Description
 
-Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefined dialog path, use a specific language style, extract data etc. 
+Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefined dialog path, use a specific language style, extract data etc.
 
 Types of rails:
 - **Topical**: avoid talking about a specific topic;
@@ -15,11 +15,11 @@ Types of rails:
 - **Execution**: execute specific action in specific context;
 - **Style**: the response should follow specific guide lines; the bot should have a specific personality;
 - **Instruction**: provide natural language instruction for instruction-tuned LLMs;
-- **Blacklist**: absolute blacklist for certain words;  
+- **Blacklist**: absolute blacklist for certain words;
 - **Prompt Injection**: prevent user from hijacking the prompt;
 - **Data format**: output should follow a specific format e.g. JSON, possibly with some constraints.
 
-Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang](https://colang.nvidia.com). 
+Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang](https://colang.nvidia.com).
 
 Quick example of topical rails config (using CoYML):
 
@@ -28,11 +28,11 @@ user:
   ask about finance:
     - "What stock should I invest in?"
     - "Can you recommend a good strategy to beat the S&P?"
-  
-bot:  
+
+bot:
   explain cant talk about financial advice:
     - "As the official Benefits AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
-    
+
 flows:
   - elements:
     - user: ask about finance
@@ -45,10 +45,10 @@ The same can be achieved using Colang:
 define user ask about finance:
   "What stock should I invest in?"
   "Can you recommend a good strategy to beat the S&P?"
-  
+
 define bot explain cant talk about financial advice:
   "As the official Benefits AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
-    
+
 define flow
   user ask about finance
   bot explain cant provide financial advice
@@ -65,20 +65,20 @@ See [Rails Reference](docs/rails-reference.md) for more details.
 
 ## Usage
 
-To apply rails, you first create a `LLMRails` instance, configure the desired rails and then use it to interact with the LLM.  
+To apply rails, you first create a `LLMRails` instance, configure the desired rails and then use it to interact with the LLM.
 
 ```python
 from collm import LLMRails, RailsConfig
 
 # Initialization from a config YAML file or a Colang file.
-# In practice, a folder will be used with the config split across multiple files. 
+# In practice, a folder will be used with the config split across multiple files.
 config = RailsConfig.from_file("config.yml")
 rails = LLMRails(config)
 
 # For completion
 completion = rails.generate(prompt="Explain the Internet for a 5-year old child.")
 
-# For chat 
+# For chat
 new_message = rails.generate(messages=[{
     "role": "user",
     "content": "Hello! What can you do for me?"
@@ -88,13 +88,13 @@ new_message = rails.generate(messages=[{
 
 ## Rails configuration
 
-Rails can be configured using YAML, JSON or using [Colang](https://colang.nvidia.com). 
+Rails can be configured using YAML, JSON or using [Colang](https://colang.nvidia.com).
 
 **TODO**
 
 ## Command Line Chat
 
-For testing purposes, the CoLLM framework provides a command line chat that can be used to interact with the LLM. 
+For testing purposes, the CoLLM framework provides a command line chat that can be used to interact with the LLM.
 
 ```
 > collm chat --config=...
@@ -117,7 +117,7 @@ POST /{RAIL_CONFIG_ID}/chat/completions
 
 ## Playground
 
-The Colang playground can be used to create a rails configuration. 
+The Colang playground can be used to create a rails configuration.
 
 **TODO**: explain how (after decoupling from Firebase).
 

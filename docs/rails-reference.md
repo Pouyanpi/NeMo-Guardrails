@@ -45,4 +45,4 @@ See [https://github.com/shreyar/guardrails](https://github.com/shreyar/guardrail
 
 ### Toxicity filter
 
-Remove any message with a toxicity below a specific threshold. 
+Remove any message with a toxicity below a specific threshold.
