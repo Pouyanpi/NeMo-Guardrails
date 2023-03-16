@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Install, build and package the `collm` package."""
+
 from setuptools import find_packages, setup
 
 setup(
