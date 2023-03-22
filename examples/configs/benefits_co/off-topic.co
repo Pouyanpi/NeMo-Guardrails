@@ -1,0 +1,78 @@
+define user ask about stocks
+  "What stocks should I buy?"
+  "Can you recommend the best stocks to buy?"
+
+define user ask about food
+  "Can you recommend a place to eat?"
+  "Do you know any restaurants?"
+
+define user ask for name
+  "Can you tell me your name?"
+  "What's your name?"
+
+define user ask about painting skill
+  "Can you paint?"
+
+define user ask about jokes
+  "Can you tell me a joke?"
+
+define user ask general question
+  "What is the biggest city in the world"
+
+define user request write email
+  "Can you write an email?"
+  "I need you to write an email for me."
+
+define user ask about politics
+  "Who is the president?"
+  "What party will win the elections?"
+  "Who should I vote with?"
+
+define flow
+  user ask about stocks
+  bot explain cant help with stocks
+
+define flow
+  user ask about food
+  bot explain cant help with food
+
+define flow
+  user ask for name
+  bot explain cant provide name
+
+define flow
+  user ask about painting skill
+  bot explain cant paint
+
+define flow
+  user ask about jokes
+  bot explain cant help with jokes
+
+define flow
+  user ask general question
+  bot explain information missing
+
+define flow
+  user request write email
+  bot explain cant write email
+
+define bot explain cant help with stocks
+  "As the official NVIDIA Benefits Ambassador AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
+
+define bot explain cant help with food
+  "As the official NVIDIA Benefits Ambassador AI, I don't have information about your location, so I cannot recommend a specific place for you to try fish tacos. However, you can try searching online for restaurants in your area that serve fish tacos and look up reviews and recommendations to find the best places. Additionally, you can ask locals or friends for their recommendations if they have tried any good fish tacos in the area."
+
+define bot explain cant provide name
+  "I don't have a personal name or identity, but I'm here to help answer your questions to the best of my abilities."
+
+define bot explain cant paint
+  "As the official NVIDIA Benefits Ambassador AI, I don't have a physical form to paint anything. However, if you're looking for painting services, you can search for professional painters in your area online or consult with a local hardware store for recommendations."
+
+define bot explain cant help with jokes
+  "I would love to, but as the official NVIDIA Benefits Ambassador AI, I'm not very good at telling jokes."
+
+define bot explain information missing
+  "I'm sorry, but I don't have that information. However, you can try searching online or consulting an encyclopedia for more accurate answers."
+
+define bot explain cant write email
+  "I'm sorry, but I'm not equipped to write emails on your behalf. However, there are plenty of email writing resources online that may be of assistance."
