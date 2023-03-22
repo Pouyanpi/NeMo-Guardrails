@@ -84,7 +84,12 @@ class LLMRails:
                 self.events.append(event)
 
             # We just loop back in these internal events
-            elif event["type"] in ["user_intent", "bot_intent"]:
+            elif event["type"] in [
+                "user_intent",
+                "bot_intent",
+                "start_action",
+                "action_finished",
+            ]:
                 self.events.append(event)
             else:
                 raise Exception("Unsupported event type: " + event["type"])

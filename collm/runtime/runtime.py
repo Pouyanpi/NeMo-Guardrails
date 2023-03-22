@@ -5,6 +5,7 @@ from typing import List
 from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
+from collm.actions.math import wolfram_alpha_request
 from collm.config import RailsConfig
 from collm.kb.basic import BasicEmbeddingsIndex
 from collm.kb.index import IndexItem
@@ -31,6 +32,11 @@ class Runtime:
 
         self.flows_index = None
         self._init_flows_index()
+
+        # The dictionary of registered actions, initialized with default ones.
+        self.registered_actions = {
+            "wolfram alpha request": wolfram_alpha_request,
+        }
 
     def _init_user_message_index(self):
         """Initializes the index of user messages."""
@@ -114,6 +120,10 @@ class Runtime:
             return await self._process_user_intent(events)
         elif last_event["type"] == "bot_intent":
             return await self._process_bot_intent(events)
+        elif last_event["type"] == "start_action":
+            return await self._process_start_action(events)
+        elif last_event["type"] == "action_finished":
+            return await self._process_action_finished(events)
 
         return {"type": "listen"}
 
@@ -122,7 +132,13 @@ class Runtime:
 
         event = events[-1]
 
+        # TODO: check for an explicit way of enabling the canonical form detection
+
         if self.config.user_messages:
+            # TODO: based on the config we can use a specific canonical forms model
+            #  or use the LLM to detect the canonical form. The below implementation
+            #  is for the latter.
+
             # Compute the conversation history
             history = get_colang_history(events)
 
@@ -159,6 +175,7 @@ class Runtime:
 
             return {"type": "user_intent", "intent": user_intent}
         else:
+            # This is the pass-through behavior.
             # First, we compute the general instructions.
             instruction_items = []
             if self.config.instructions:
@@ -235,11 +252,15 @@ class Runtime:
             else:
                 next_step = {"bot": "general response"}
 
-        bot_intent = next_step.get("bot")
+        # If we have to execute an action, we return the event to start it
+        if next_step.get("execute"):
+            return {"type": "start_action", "action_name": next_step["execute"]}
+        else:
+            bot_intent = next_step.get("bot")
 
-        log.info("Next step: " + bot_intent)
+            log.info("Next step: " + bot_intent)
 
-        return {"type": "bot_intent", "intent": bot_intent}
+            return {"type": "bot_intent", "intent": bot_intent}
 
     async def _process_bot_intent(self, events: List[dict]):
         event = events[-1]
@@ -288,3 +309,48 @@ class Runtime:
             log.info("Generated bot message: " + bot_utterance)
 
         return {"type": "bot_said", "content": bot_utterance}
+
+    async def _process_start_action(self, events: List[dict]):
+        """Starts the specified action, waits for it to finish and posts back the result."""
+
+        event = events[-1]
+
+        action_name = event["action_name"]
+        if action_name not in self.registered_actions:
+            return {
+                "type": "action_finished",
+                "status": "error",
+                "return_value": "Action not found.",
+            }
+
+        # TODO: pass parameters and context
+        context = {}
+
+        # Quick hack to add the last user message
+        i = len(events) - 1
+        while i >= 0 and events[i]["type"] != "user_said":
+            i -= 1
+        if i >= 0:
+            context["last_user_message"] = events[i]["content"]
+
+        result = await self.registered_actions[action_name](context=context)
+
+        # TODO: add hook in here for post-processing the response from the action
+        #  Should the fact checking rail go here, for example?
+
+        return {
+            "type": "action_finished",
+            "status": "success",
+            "return_value": result,
+        }
+
+    async def _process_action_finished(self, events: List[dict]):
+        """Processes the result of an action and returns the next event."""
+        event = events[-1]
+
+        # TODO: use this to advance flows as well and continue multi-turn logic
+
+        if event["status"] == "error":
+            return {"type": "bot_said", "content": "Sorry, something went wrong."}
+
+        return {"type": "bot_said", "content": event["return_value"]}
