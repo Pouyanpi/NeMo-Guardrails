@@ -8,7 +8,7 @@ app = typer.Typer()
 @app.command()
 def chat(
     config: str = typer.Option(
-        default=...,
+        default="config",
         exists=True,
         help="A configuration file to use.",
     ),
