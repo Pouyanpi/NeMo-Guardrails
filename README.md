@@ -24,12 +24,12 @@ Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang]
 Quick example of topical rails config (using CoYML):
 
 ```yaml
-user:
+user_messages:
   ask about finance:
     - "What stock should I invest in?"
     - "Can you recommend a good strategy to beat the S&P?"
 
-bot:
+bot_messages:
   explain cant talk about financial advice:
     - "As the official Benefits AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
 
@@ -59,9 +59,21 @@ See [Rails Reference](docs/rails-reference.md) for more details.
 
 ## Installation
 
+To install from PyPI (not yet available).
+
 ```bash
 > pip install collm
 ```
+
+To install from source:
+
+```bash
+> git clone https://gitlab-master.nvidia.com/dialogue-research/collm.git
+> cd collm
+> pip install -e .
+```
+
+This will install the CoLLM framework and all its dependencies.
 
 ## Usage
 
@@ -72,7 +84,7 @@ from collm import LLMRails, RailsConfig
 
 # Initialization from a config YAML file or a Colang file.
 # In practice, a folder will be used with the config split across multiple files.
-config = RailsConfig.from_file("config.yml")
+config = RailsConfig.from_path("config.yml")
 rails = LLMRails(config)
 
 # For completion
@@ -101,6 +113,8 @@ For testing purposes, the CoLLM framework provides a command line chat that can 
 ```
 
 ## Server
+
+** NOTE: not yet implemented **
 
 An rails server exposes multiple "railed LLM endpoints". Each endpoint can have a different rail configuration.
 
