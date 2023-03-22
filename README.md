@@ -2,6 +2,8 @@
 
 CoLLM is a framework for creating rails for LLMs.
 
+** NOTE for alpha users: check out the [Getting Started Guide](docs/getting-started-alpha.md) for a quick start. **
+
 ## Description
 
 Rails are specific ways for controlling the output of an LLM e.g. not talk about politics, respond in a specific way to certain user requests, follow a predefined dialog path, use a specific language style, extract data etc.
