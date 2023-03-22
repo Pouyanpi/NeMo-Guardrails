@@ -2,9 +2,9 @@
 
 This is a getting started guide for users of the very early alpha. This guide will cover:
 
-1. Installation of the CoLLM framework
-2. Creation of a basic rails application
-3. Using the interactive chat
+1. Installation of the CoLLM framework;
+2. Creation of a basic rails application;
+3. Using the interactive chat;
 4. Calling actions from flows.
 
 ## Installation
@@ -40,20 +40,19 @@ or
 > git clone ssh://git@gitlab-master.nvidia.com:12051/dialogue-research/collm.git
 ```
 
-Install the CoLLM framework from a local repository.
+Install the CoLLM framework from the local repository.
 
 ```bash
 > pip install -e collm
 > pip install -r collm/requirements.txt
 ```
 
-If you want to use OpenAI, also install the `openai` package.
+If you want to use OpenAI, also install the `openai` package. And make sure that you have the `OPENAI_API_KEY` environment variable set.
 
 ```bash
 > pip install openai
+> export OPENAI_API_KEY=...
 ```
-
-And make sure that you have the `OPENAI_API_KEY` environment variable set.
 
 You should now be able to invoke the `collm` CLI.
 
@@ -63,7 +62,7 @@ You should now be able to invoke the `collm` CLI.
 
 ## Creating a basic rails application
 
-To create a basic LLM rails application, you first need to define a the configuration. The recommended way is to create a `config` folder and put all the configuration in there.
+To create a basic LLM rails application, you first need to define the configuration. The recommended way is to create a `config` folder and put all the configuration in there.
 
 Let's create `config/basic.yml` with the following content:
 
@@ -85,10 +84,29 @@ models:
 
 ## Using the interactive chat
 
-You should now be the interactive chat and basically talk to the "raw" LLM.
+You should now be able to use the interactive chat and talk to the "raw" LLM. The command above will implicitly load the config from the config folder.
 
 ```bash
 > collm chat
 ```
 
-The command above will implicitly load the config from the config folder.
+## Adding instruction rails
+
+To add an instruction rail (i.e. instructions in natural language that the model should follow), add the following to the `config/basic.yml` file:
+
+```yaml
+instructions:
+  - type: general
+    content: |
+      Below is a conversation between the official NVIDIA Benefits Ambassador bot and a user.
+      The bot is talkative and provides lots of specific details from its context.
+      If the bot does not know the answer to a question, it truthfully says it does not know.
+```
+
+
+## ...
+
+
+## Other examples
+
+For more examples, check out the `collm/examples` folder.
