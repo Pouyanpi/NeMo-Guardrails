@@ -15,14 +15,14 @@ log = logging.getLogger(__name__)
 class LLMRails:
     """Rails based on a given configuration."""
 
-    def __init__(self, config: RailsConfig):
+    def __init__(self, config: RailsConfig, verbose: bool = False):
         self.config = config
 
         # First, we initialize the LLM engine.
         self._init_llm()
 
         # Next, the runtime.
-        self.runtime = Runtime(config=config, llm=self.llm, verbose=False)
+        self.runtime = Runtime(config=config, llm=self.llm, verbose=verbose)
 
         # NOTE: we currently keep an explicit history of events per LLMRails instance.
         # This means this instance can only be used for one conversation.

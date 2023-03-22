@@ -8,7 +8,7 @@ from collm.llmrails import LLMRails
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
-def run_chat(config_path: Optional[str] = None):
+def run_chat(config_path: Optional[str] = None, verbose: bool = False):
     """Runs a chat session in the terminal."""
 
     rails_config = RailsConfig.from_path(config_path)
@@ -19,7 +19,7 @@ def run_chat(config_path: Optional[str] = None):
     # TODO: add support to register additional actions
     # rails_app.register_action(...)
 
-    rails_app = LLMRails(rails_config)
+    rails_app = LLMRails(rails_config, verbose=verbose)
 
     history = []
     # And go into the default listening loop.
