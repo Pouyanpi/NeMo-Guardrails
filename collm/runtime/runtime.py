@@ -23,8 +23,13 @@ class Runtime:
         self.verbose = verbose
 
         # If we have user messages, we build an index with them
+        self.user_message_index = None
         self._init_user_message_index()
+
+        self.bot_message_index = None
         self._init_bot_message_index()
+
+        self.flows_index = None
         self._init_flows_index()
 
     def _init_user_message_index(self):
@@ -123,13 +128,14 @@ class Runtime:
 
             # We search for the most relevant similar user utterance
             examples = ""
-            results = self.user_message_index.search(
-                text=event["content"], max_results=5
-            )
+            if self.user_message_index:
+                results = self.user_message_index.search(
+                    text=event["content"], max_results=5
+                )
 
-            # We add these in reverse order so the most relevant is towards the end.
-            for result in reversed(results):
-                examples += f"user \"{result.text}\"\n  {result.meta['intent']}\n\n"
+                # We add these in reverse order so the most relevant is towards the end.
+                for result in reversed(results):
+                    examples += f"user \"{result.text}\"\n  {result.meta['intent']}\n\n"
 
             # We have user messages, so we need to identify the canonical form.
             canonical_form_prompt = PromptTemplate(
@@ -203,11 +209,12 @@ class Runtime:
 
             # We search for the most relevant similar user utterance
             examples = ""
-            results = self.flows_index.search(text=user_intent, max_results=5)
+            if self.flows_index:
+                results = self.flows_index.search(text=user_intent, max_results=5)
 
-            # We add these in reverse order so the most relevant is towards the end.
-            for result in reversed(results):
-                examples += f"{result.text}\n"
+                # We add these in reverse order so the most relevant is towards the end.
+                for result in reversed(results):
+                    examples += f"{result.text}\n"
 
             predict_next_step_prompt = PromptTemplate(
                 input_variables=["history", "examples"],
@@ -249,11 +256,14 @@ class Runtime:
 
             # We search for the most relevant similar bot utterance
             examples = ""
-            results = self.bot_message_index.search(text=event["intent"], max_results=5)
+            if self.bot_message_index:
+                results = self.bot_message_index.search(
+                    text=event["intent"], max_results=5
+                )
 
-            # We add these in reverse order so the most relevant is towards the end.
-            for result in reversed(results):
-                examples += f"bot {result.text}\n  \"{result.meta['text']}\"\n\n"
+                # We add these in reverse order so the most relevant is towards the end.
+                for result in reversed(results):
+                    examples += f"bot {result.text}\n  \"{result.meta['text']}\"\n\n"
 
             # Otherwise, we generate a message with the LLM
             bot_message_prompt = PromptTemplate(
