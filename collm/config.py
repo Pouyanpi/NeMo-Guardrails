@@ -6,6 +6,8 @@ import yaml
 from pydantic import BaseModel
 from pydantic.fields import Field
 
+from collm.colang.parser import parse_colang_file
+
 
 class Model(BaseModel):
     """Configuration of a model used by the rails engine.
@@ -85,8 +87,12 @@ class RailsConfig(BaseModel):
                 # Extract the full path for the file
                 full_path = os.path.join(config_path, file)
 
-                with open(full_path) as f:
-                    _raw_config = yaml.safe_load(f.read())
+                if file.endswith(".yml") or file.endswith(".yaml"):
+                    with open(full_path) as f:
+                        _raw_config = yaml.safe_load(f.read())
+                elif file.endswith(".co"):
+                    with open(full_path) as f:
+                        _raw_config = parse_colang_file(file, content=f.read())
 
                 # We join _raw_config with raw_config.
                 # For the keys `user_messages` and `bot_messages` we merge the dictionaries.
