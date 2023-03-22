@@ -1,0 +1,16 @@
+# Simple example of how to use actions.
+
+flows:
+  - elements:
+    - user: ask math question
+    - execute: wolfram alpha request
+
+  - elements:
+    - user: ask conversion question
+    - execute: wolfram alpha request
+
+# Using OpenAI
+models:
+  - type: main
+    engine: openai
+    model: text-davinci-003

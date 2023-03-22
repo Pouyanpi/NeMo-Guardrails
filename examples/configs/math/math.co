@@ -1,0 +1,11 @@
+define user ask conversion question
+  "Convert 34 USD in EUR"
+  "How much is 1000 RON in USD?"
+
+define user ask math question
+  "What is the square root of 53?"
+  "What is Pythagoras' theorem?"
+
+define user ask distance
+  "What's the distance between London and New York?"
+  "How many km between Budapest and Paris?"
