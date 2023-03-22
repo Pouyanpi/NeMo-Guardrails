@@ -25,6 +25,11 @@ def demo():
 
     app = LLMRails(config)
 
+    # Brainstorming for registering additional handlers
+    # app.register_handler("before_action", {"action_name": "inform_get"}, handler)
+    # app.register_handler("after_action", {"action_name": "inform_get"}, handler)
+    # app.register_handler("before_bot_said", fact_checking)
+
     history = [{"role": "user", "content": "Hello! How are you?"}]
     result = app.generate(messages=history)
     print(result)

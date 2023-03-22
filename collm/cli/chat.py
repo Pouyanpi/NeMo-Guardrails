@@ -12,7 +12,14 @@ def run_chat(config_path: Optional[str] = None):
     """Runs a chat session in the terminal."""
 
     rails_config = RailsConfig.from_path(config_path)
-    app = LLMRails(rails_config)
+
+    # TODO: add support for loading a config directly from live playground
+    # rails_config = RailsConfig.from_playground(model="...")
+
+    # TODO: add support to register additional actions
+    # rails_app.register_action(...)
+
+    rails_app = LLMRails(rails_config)
 
     history = []
     # And go into the default listening loop.
@@ -20,7 +27,7 @@ def run_chat(config_path: Optional[str] = None):
         user_message = input("> ")
 
         history.append({"role": "user", "content": user_message})
-        bot_message = asyncio.run(app.generate_async(messages=history))
+        bot_message = asyncio.run(rails_app.generate_async(messages=history))
         history.append(bot_message)
 
         # We print bot messages in green.
