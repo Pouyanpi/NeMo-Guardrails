@@ -73,26 +73,16 @@ class LLMRails:
 
         self.events.append({"type": "user_said", "content": messages[-1]["content"]})
 
+        new_events = await self.runtime.generate_events(self.events)
+
+        # Save the new events in the history.
+        self.events.extend(new_events)
+
+        # Extract and join all the messages from bot_said events as the response.
         responses = []
-        while True:
-            event = await self.runtime.process_events(self.events)
-            if event["type"] == "listen":
-                break
-
-            elif event["type"] == "bot_said":
+        for event in new_events:
+            if event["type"] == "bot_said":
                 responses.append(event["content"])
-                self.events.append(event)
-
-            # We just loop back in these internal events
-            elif event["type"] in [
-                "user_intent",
-                "bot_intent",
-                "start_action",
-                "action_finished",
-            ]:
-                self.events.append(event)
-            else:
-                raise Exception("Unsupported event type: " + event["type"])
 
         return {"role": "assistant", "content": "\n".join(responses)}
 

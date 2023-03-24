@@ -1,4 +1,3 @@
-import asyncio
 import os
 from typing import Optional
 
@@ -27,7 +26,7 @@ def run_chat(config_path: Optional[str] = None, verbose: bool = False):
         user_message = input("> ")
 
         history.append({"role": "user", "content": user_message})
-        bot_message = asyncio.run(rails_app.generate_async(messages=history))
+        bot_message = rails_app.generate(messages=history)
         history.append(bot_message)
 
         # We print bot messages in green.

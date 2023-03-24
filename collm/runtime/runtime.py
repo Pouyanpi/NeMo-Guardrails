@@ -1,5 +1,6 @@
 import logging
 import random
+import uuid
 from typing import List
 
 from langchain import LLMChain, PromptTemplate
@@ -10,6 +11,7 @@ from collm.config import RailsConfig
 from collm.kb.basic import BasicEmbeddingsIndex
 from collm.kb.index import IndexItem
 from collm.prompts.prompts import Step, get_prompt
+from collm.runtime.flows import FlowConfig, compute_next_step
 from collm.runtime.utils import flow_to_colang, get_colang_history
 
 log = logging.getLogger(__name__)
@@ -37,6 +39,20 @@ class Runtime:
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
         }
+
+        self._init_flow_configs()
+
+    def _init_flow_configs(self):
+        """Initializes the flow configs based on the config."""
+        self.flow_configs = {}
+
+        for flow in self.config.flows:
+            elements = flow["elements"]
+
+            # If we don't have an id, we generate a random UID.
+            flow_id = flow.get("id") or str(uuid.uuid4())
+
+            self.flow_configs[flow_id] = FlowConfig(id=flow_id, elements=elements)
 
     def _init_user_message_index(self):
         """Initializes the index of user messages."""
@@ -103,29 +119,81 @@ class Runtime:
         # NOTE: this should be very fast, otherwise needs to be moved to separate thread.
         self.flows_index.build()
 
-    async def process_events(self, events: List[dict]) -> dict:
-        """Processes the provided list of events.
+    def register_action(self, name: str, action: callable):
+        """Registers an action with the given name.
 
-        When there is nothing to be done, the "listen" event is produced.
-
-        If an action needs to be executed, and is not supported, an error messages is produced.
-
-        :return: The event that corresponds to the next action.
+        :param name: The name of the action.
+        :param action: The action function.
         """
-        last_event = events[-1]
+        self.registered_actions[name] = action
 
-        if last_event["type"] == "user_said":
-            return await self._process_user_said(events)
-        elif last_event["type"] == "user_intent":
-            return await self._process_user_intent(events)
-        elif last_event["type"] == "bot_intent":
-            return await self._process_bot_intent(events)
-        elif last_event["type"] == "start_action":
-            return await self._process_start_action(events)
-        elif last_event["type"] == "action_finished":
-            return await self._process_action_finished(events)
+    async def generate_events(self, events: List[dict]) -> List[dict]:
+        """Generates the next events based on the provided history.
 
-        return {"type": "listen"}
+        This is a wrapper around the `process_events` method, that will keep
+        processing the events until the `listen` event is produced.
+
+        :return: The list of events.
+        """
+        events = events.copy()
+        new_events = []
+
+        while True:
+            last_event = events[-1]
+            log.info("Processing event: %s", last_event)
+            next_event = None
+
+            # if the last event is a `user_said` event, we need to process it
+            if last_event["type"] == "user_said":
+                next_event = await self._process_user_said(events)
+            elif last_event["type"] == "start_action":
+                next_event = await self._process_start_action(events)
+            elif last_event["type"] == "bot_intent":
+                next_event = await self._process_bot_intent(events)
+            elif last_event["type"] == "bot_said":
+                # TODO: here we'd add the processing of messages coming from LLM
+                pass
+
+            # If we don't have a next step, we use the flows to produce one
+            if next_event is None:
+                # We also need to slide all the flows based on the current event.
+                # we compute the next step
+                next_step = await self.compute_next_step(events)
+
+                if next_step:
+                    next_step_type = list(next_step.keys())[0]
+
+                    if next_step_type == "bot":
+                        next_event = {"type": "bot_intent", "intent": next_step["bot"]}
+                    elif next_step_type == "execute":
+                        next_event = {
+                            "type": "start_action",
+                            "action_name": next_step["execute"],
+                        }
+
+            # If we still have nothing, after a user intent, we use the LLM to produce the next step
+            if next_event is None and last_event["type"] == "user_intent":
+                next_event = await self._process_user_intent(events)
+
+            # If we still have nothing, then we need to start listening
+            if next_event is None:
+                next_event = {"type": "listen"}
+
+            # Otherwise, we append the event and continue the processing.
+            events.append(next_event)
+            new_events.append(next_event)
+
+            # If the next event is a listen, we stop the processing.
+            if next_event["type"] == "listen":
+                break
+
+        return new_events
+
+    async def compute_next_step(self, events: List[dict]) -> dict:
+        """Computes the next step based on the current flow."""
+        next_step = compute_next_step(events, self.flow_configs)
+
+        return next_step
 
     async def _process_user_said(self, events: List[dict]):
         """Processes the user_said event."""
@@ -212,53 +280,43 @@ class Runtime:
         event = events[-1]
         user_intent = event["intent"]
 
-        next_step = None
-        for flow in self.config.flows:
-            if flow["elements"][0].get("user") == user_intent:
-                next_step = flow["elements"][1]
+        # We use the LLM to predict the next step
+        # Compute the conversation history
+        history = get_colang_history(events, include_texts=False)
 
-                log.info("Found exising flow.")
+        # We search for the most relevant similar user utterance
+        examples = ""
+        if self.flows_index:
+            results = self.flows_index.search(text=user_intent, max_results=5)
 
-        if next_step is None:
-            # We use the LLM to predict the next step
-            # Compute the conversation history
-            history = get_colang_history(events, include_texts=False)
+            # We add these in reverse order so the most relevant is towards the end.
+            for result in reversed(results):
+                examples += f"{result.text}\n"
 
-            # We search for the most relevant similar user utterance
-            examples = ""
-            if self.flows_index:
-                results = self.flows_index.search(text=user_intent, max_results=5)
+        predict_next_step_prompt = PromptTemplate(
+            input_variables=["history", "examples"],
+            template=get_prompt(self.config, Step.PREDICT_NEXT_STEP)["content"],
+        )
 
-                # We add these in reverse order so the most relevant is towards the end.
-                for result in reversed(results):
-                    examples += f"{result.text}\n"
+        # Create and run the general chain.
+        chain = LLMChain(
+            prompt=predict_next_step_prompt, llm=self.llm, verbose=self.verbose
+        )
+        result = await chain.apredict(history=history, examples=examples)
+        if result[0] == "\n":
+            result = result[1:]
+        result = result.split("\n")[0].strip()
 
-            predict_next_step_prompt = PromptTemplate(
-                input_variables=["history", "examples"],
-                template=get_prompt(self.config, Step.PREDICT_NEXT_STEP)["content"],
-            )
-
-            # Create and run the general chain.
-            chain = LLMChain(
-                prompt=predict_next_step_prompt, llm=self.llm, verbose=self.verbose
-            )
-            result = await chain.apredict(history=history, examples=examples)
-            if result[0] == "\n":
-                result = result[1:]
-            result = result.split("\n")[0].strip()
-
-            if result.startswith("bot "):
-                next_step = {"bot": result[4:]}
-            else:
-                next_step = {"bot": "general response"}
+        if result.startswith("bot "):
+            next_step = {"bot": result[4:]}
+        else:
+            next_step = {"bot": "general response"}
 
         # If we have to execute an action, we return the event to start it
         if next_step.get("execute"):
             return {"type": "start_action", "action_name": next_step["execute"]}
         else:
             bot_intent = next_step.get("bot")
-
-            log.info("Next step: " + bot_intent)
 
             return {"type": "bot_intent", "intent": bot_intent}
 
@@ -319,6 +377,7 @@ class Runtime:
         if action_name not in self.registered_actions:
             return {
                 "type": "action_finished",
+                "action_name": action_name,
                 "status": "error",
                 "return_value": "Action not found.",
             }
@@ -340,17 +399,7 @@ class Runtime:
 
         return {
             "type": "action_finished",
+            "action_name": action_name,
             "status": "success",
             "return_value": result,
         }
-
-    async def _process_action_finished(self, events: List[dict]):
-        """Processes the result of an action and returns the next event."""
-        event = events[-1]
-
-        # TODO: use this to advance flows as well and continue multi-turn logic
-
-        if event["status"] == "error":
-            return {"type": "bot_said", "content": "Sorry, something went wrong."}
-
-        return {"type": "bot_said", "content": event["return_value"]}

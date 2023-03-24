@@ -4,10 +4,20 @@ flows:
   - elements:
     - user: ask math question
     - execute: wolfram alpha request
+    - bot: respond to math question
+    - bot: ask if user happy
 
   - elements:
     - user: ask conversion question
     - execute: wolfram alpha request
+    - bot: respond to math question
+    - bot: ask if user happy
+
+  - elements:
+      - user: ask conversion question
+      - execute: wolfram alpha request
+      - bot: respond to math question
+      - bot: ask if user happy
 
 # Using OpenAI
 models:
