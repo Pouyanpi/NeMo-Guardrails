@@ -48,7 +48,7 @@ class State:
 
 def _is_actionable(element: dict) -> bool:
     """Checks if the given element is actionable."""
-    return "bot" in element or "execute" in element
+    return ("bot" in element and element["bot"] != "...") or "execute" in element
 
 
 def _is_match(element: dict, event: dict) -> bool:
@@ -58,10 +58,14 @@ def _is_match(element: dict, event: dict) -> bool:
     element_type = list(element.keys())[0]
 
     if event["type"] == "user_intent":
-        return element_type == "user" and element["user"] == event["intent"]
+        return element_type == "user" and (
+            element["user"] == "..." or element["user"] == event["intent"]
+        )
 
     elif event["type"] == "bot_intent":
-        return element_type == "bot" and element["bot"] == event["intent"]
+        return element_type == "bot" and (
+            element["bot"] == "..." or element["bot"] == event["intent"]
+        )
 
     elif event["type"] == "action_finished":
         return element_type == "execute" and element["execute"] == event["action_name"]
