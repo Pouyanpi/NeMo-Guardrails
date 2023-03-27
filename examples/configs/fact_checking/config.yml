@@ -1,0 +1,24 @@
+# Simple example of how to use actions.
+
+user_messages:
+  express greeting:
+    - hi
+    - hello
+    - hey there!
+
+  ask about vacation days:
+    - how many free days do I get
+    - what is the number of free days
+
+flows:
+  - elements:
+    - user: ...
+    - bot: ...
+    - execute: check facts
+    - bot: inform if response was accurate
+
+# Using OpenAI
+models:
+  - type: main
+    engine: openai
+    model: text-davinci-003

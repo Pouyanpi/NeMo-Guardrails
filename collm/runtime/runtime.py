@@ -7,6 +7,7 @@ from typing import List
 from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
+from collm.actions.fact_checking import check_facts
 from collm.actions.math import wolfram_alpha_request
 from collm.config import RailsConfig
 from collm.kb.basic import BasicEmbeddingsIndex
@@ -39,6 +40,7 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
+            "check facts": check_facts,
         }
 
         self._init_flow_configs()
