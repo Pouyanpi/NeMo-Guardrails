@@ -1,3 +1,4 @@
+import inspect
 import logging
 import random
 import uuid
@@ -386,13 +387,30 @@ class Runtime:
         context = {}
 
         # Quick hack to add the last user message
-        i = len(events) - 1
-        while i >= 0 and events[i]["type"] != "user_said":
-            i -= 1
-        if i >= 0:
-            context["last_user_message"] = events[i]["content"]
+        context["last_user_message"] = None
+        context["last_bot_message"] = None
 
-        result = await self.registered_actions[action_name](context=context)
+        i = len(events) - 1
+        while i >= 0:
+            if (
+                events[i]["type"] == "user_said"
+                and context["last_user_message"] is None
+            ):
+                context["last_user_message"] = events[i]["content"]
+
+            if events[i]["type"] == "bot_said" and context["last_bot_message"] is None:
+                context["last_bot_message"] = events[i]["content"]
+
+            i -= 1
+
+        kwargs = {"context": context}
+        fn = self.registered_actions[action_name]
+
+        # Check if fn has a parameter called "runtime"
+        if "runtime" in inspect.signature(fn).parameters:
+            kwargs["runtime"] = self
+
+        result = await self.registered_actions[action_name](**kwargs)
 
         # TODO: add hook in here for post-processing the response from the action
         #  Should the fact checking rail go here, for example?
