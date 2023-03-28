@@ -158,3 +158,70 @@ def test_action_execution():
         },
     )
     assert state.next_step is None
+
+
+def test_flow_interruption():
+    state = State(context={}, flow_states=[], flow_configs=FLOW_CONFIGS)
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "user_intent",
+            "intent": "express greeting",
+        },
+    )
+    assert state.next_step == {"bot": "express greeting"}
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "bot_intent",
+            "intent": "express greeting",
+        },
+    )
+    assert state.next_step is None
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "user_intent",
+            "intent": "ask about benefits",
+        },
+    )
+    assert state.next_step == {"bot": "respond about benefits"}
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "bot_intent",
+            "intent": "respond about benefits",
+        },
+    )
+    assert state.next_step == {"bot": "ask if user happy"}
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "bot_intent",
+            "intent": "ask if user happy",
+        },
+    )
+    assert state.next_step is None
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "user_intent",
+            "intent": "ask capabilities",
+        },
+    )
+    assert state.next_step == {"bot": "inform capabilities"}
+
+    state = compute_next_state(
+        state,
+        {
+            "type": "bot_intent",
+            "intent": "inform capabilities",
+        },
+    )
+    assert state.next_step is None
