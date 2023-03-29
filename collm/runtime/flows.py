@@ -15,6 +15,9 @@ class FlowConfig:
     # The sequence of elements that compose the flow.
     elements: List[dict]
 
+    # The events that can trigger this flow to advance.
+    trigger_event_types = ["user_intent", "bot_intent", "action_finished"]
+
 
 class FlowStatus(Enum):
     """The status of a flow."""
@@ -99,9 +102,6 @@ def compute_next_state(state: State, event: dict) -> State:
     - Flows are resumed when the interruption flow completes.
     - No prioritization between flows, the first one that can decide something will be used.
     """
-    # Currently, no flows advance on user_said or bot_said, so we just ignore.
-    if event["type"] in ("user_said", "bot_said"):
-        return state
 
     # We don't advance flow on `start_action`, but on `action_finished`.
     if event["type"] == "start_action":
@@ -115,18 +115,37 @@ def compute_next_state(state: State, event: dict) -> State:
     # The UID of the flow that will determine the next step
     next_step_by_flow_uid = None
 
+    # The priority of the current next step.
+    next_step_priority = 0
+
     # First, we try to advance the existing flows
     for flow_state in state.flow_states:
+        flow_config = state.flow_configs[flow_state.flow_id]
+
         # We skip processing any completed flows
         if flow_state.status == FlowStatus.COMPLETED:
             continue
+
+        # If it's not a completed flow, we have a valid head element
+        flow_head_element = flow_config.elements[flow_state.head]
 
         # If the flow was interrupted, we just copy it to the new state
         if flow_state.status == FlowStatus.INTERRUPTED:
             new_state.flow_states.append(flow_state)
             continue
 
-        flow_config = state.flow_configs[flow_state.flow_id]
+        # If the flow is not triggered by the current even type, we copy it as is
+        if event["type"] not in flow_config.trigger_event_types:
+            new_state.flow_states.append(flow_state)
+
+            # If we don't have a next step up to this point, and the current flow is on
+            # an actionable item, we set it as the next step.
+            if new_state.next_step is None and _is_actionable(flow_head_element):
+                new_state.next_step = flow_head_element
+                next_step_by_flow_uid = flow_state.uid
+                next_step_priority = 0.9
+            continue
+
         if _is_match(flow_config.elements[flow_state.head], event):
             # The flow can advance
             flow_state.head += 1
@@ -136,10 +155,12 @@ def compute_next_state(state: State, event: dict) -> State:
             # If we did not reach the end of the flow, we add it to the new state
             if flow_state.head < len(flow_config.elements):
                 # And if we don't have a next step yet, we set it to the next element
-                head_element = flow_config.elements[flow_state.head]
-                if new_state.next_step is None and _is_actionable(head_element):
-                    new_state.next_step = head_element
+                if (
+                    new_state.next_step is None or next_step_priority < 1
+                ) and _is_actionable(flow_config.elements[flow_state.head]):
+                    new_state.next_step = flow_config.elements[flow_state.head]
                     next_step_by_flow_uid = flow_state.uid
+                    next_step_priority = 1
             else:
                 # If a flow finished, we mark it as completed
                 flow_state.status = FlowStatus.COMPLETED
@@ -165,10 +186,13 @@ def compute_next_state(state: State, event: dict) -> State:
             )
 
             # And if we don't have a next step yet, we set it to the next element
-            head_element = flow_config.elements[1]
-            if new_state.next_step is None and _is_actionable(head_element):
-                new_state.next_step = head_element
+            flow_head_element = flow_config.elements[1]
+            if (
+                new_state.next_step is None or next_step_priority < 1
+            ) and _is_actionable(flow_head_element):
+                new_state.next_step = flow_head_element
                 next_step_by_flow_uid = flow_uid
+                next_step_priority = 1
 
     # If there are any flows that have been interrupted in this interation, we consider
     # them to be interrupted by the flow that determined the next step.

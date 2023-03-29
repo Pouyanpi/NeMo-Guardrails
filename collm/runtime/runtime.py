@@ -57,6 +57,12 @@ class Runtime:
 
             self.flow_configs[flow_id] = FlowConfig(id=flow_id, elements=elements)
 
+            # We also compute what types of events can trigger this flow, in addition
+            # to the default ones.
+            for element in elements:
+                if element.get("user_said"):
+                    self.flow_configs[flow_id].trigger_event_types.append("user_said")
+
     def _init_user_message_index(self):
         """Initializes the index of user messages."""
 
