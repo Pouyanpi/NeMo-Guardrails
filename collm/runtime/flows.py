@@ -15,6 +15,13 @@ class FlowConfig:
     # The sequence of elements that compose the flow.
     elements: List[dict]
 
+    # The priority of the flow. Higher priority flows are executed first.
+    priority: float = 1.0
+
+    # Whether it is an extension flow or not.
+    # Extension flows can interrupt other flows on actionable steps.
+    is_extension: bool = False
+
     # The events that can trigger this flow to advance.
     trigger_event_types = ["user_intent", "bot_intent", "action_finished"]
 
@@ -89,6 +96,11 @@ def _is_match(element: dict, event: dict) -> bool:
     elif event["type"] == "action_finished":
         return element_type == "execute" and element["execute"] == event["action_name"]
 
+    elif event["type"] == "user_said":
+        return element_type == "user_said" and (
+            element["user_said"] == "..." or element["user_said"] == event["content"]
+        )
+
     return False
 
 
@@ -118,12 +130,18 @@ def compute_next_state(state: State, event: dict) -> State:
     # The priority of the current next step.
     next_step_priority = 0
 
+    # This is to handle an edge case in the simplified implementation
+    extension_flow_completed = False
+
     # First, we try to advance the existing flows
     for flow_state in state.flow_states:
         flow_config = state.flow_configs[flow_state.flow_id]
 
-        # We skip processing any completed flows
-        if flow_state.status == FlowStatus.COMPLETED:
+        # We skip processing any completed/aborted flows
+        if (
+            flow_state.status == FlowStatus.COMPLETED
+            or flow_state.status == FlowStatus.ABORTED
+        ):
             continue
 
         # If it's not a completed flow, we have a valid head element
@@ -143,7 +161,10 @@ def compute_next_state(state: State, event: dict) -> State:
             if new_state.next_step is None and _is_actionable(flow_head_element):
                 new_state.next_step = flow_head_element
                 next_step_by_flow_uid = flow_state.uid
-                next_step_priority = 0.9
+
+                # Decrease a bit the priority to allow a flow that decides on the current
+                # event to take precedence.
+                next_step_priority = 0.9 * flow_config.priority
             continue
 
         if _is_match(flow_config.elements[flow_state.head], event):
@@ -156,18 +177,23 @@ def compute_next_state(state: State, event: dict) -> State:
             if flow_state.head < len(flow_config.elements):
                 # And if we don't have a next step yet, we set it to the next element
                 if (
-                    new_state.next_step is None or next_step_priority < 1
+                    new_state.next_step is None
+                    or next_step_priority < flow_config.priority
                 ) and _is_actionable(flow_config.elements[flow_state.head]):
                     new_state.next_step = flow_config.elements[flow_state.head]
                     next_step_by_flow_uid = flow_state.uid
-                    next_step_priority = 1
+                    next_step_priority = flow_config.priority
             else:
                 # If a flow finished, we mark it as completed
                 flow_state.status = FlowStatus.COMPLETED
 
+                if flow_config.is_extension:
+                    extension_flow_completed = True
+
         # we don't interrupt on executable elements
         elif _is_actionable(flow_config.elements[flow_state.head]):
             flow_state.status = FlowStatus.ABORTED
+            new_state.flow_states.append(flow_state)
         else:
             flow_state.status = FlowStatus.INTERRUPTED
             new_state.flow_states.append(flow_state)
@@ -188,11 +214,27 @@ def compute_next_state(state: State, event: dict) -> State:
             # And if we don't have a next step yet, we set it to the next element
             flow_head_element = flow_config.elements[1]
             if (
-                new_state.next_step is None or next_step_priority < 1
+                new_state.next_step is None or next_step_priority < flow_config.priority
             ) and _is_actionable(flow_head_element):
                 new_state.next_step = flow_head_element
                 next_step_by_flow_uid = flow_uid
-                next_step_priority = 1
+                next_step_priority = flow_config.priority
+
+    # If there's any extension flow that has completed, we re-activate all aborted flows
+    if extension_flow_completed:
+        for flow_state in new_state.flow_states:
+            if flow_state.status == FlowStatus.ABORTED:
+                flow_state.status = FlowStatus.ACTIVE
+
+                # And potentially use them for the next decision
+                flow_config = state.flow_configs[flow_state.flow_id]
+                if (
+                    new_state.next_step is None
+                    or next_step_priority < flow_config.priority
+                ) and _is_actionable(flow_config.elements[flow_state.head]):
+                    new_state.next_step = flow_config.elements[flow_state.head]
+                    next_step_by_flow_uid = flow_state.uid
+                    next_step_priority = flow_config.priority
 
     # If there are any flows that have been interrupted in this interation, we consider
     # them to be interrupted by the flow that determined the next step.
@@ -203,6 +245,18 @@ def compute_next_state(state: State, event: dict) -> State:
         ):
             flow_state.interrupted_by = next_step_by_flow_uid
 
+    # If we have aborted flows, and the current flow is an extension, when we interrupt them.
+    decision_flow_config = None
+    for flow_state in new_state.flow_states:
+        if flow_state.uid == next_step_by_flow_uid:
+            decision_flow_config = state.flow_configs[flow_state.flow_id]
+
+    if decision_flow_config and decision_flow_config.is_extension:
+        for flow_state in new_state.flow_states:
+            if flow_state.status == FlowStatus.ABORTED:
+                flow_state.status = FlowStatus.INTERRUPTED
+                flow_state.interrupted_by = next_step_by_flow_uid
+
     # If there are flows that were waiting on completed flows, we reactivate them
     for flow_state in new_state.flow_states:
         if flow_state.status == FlowStatus.INTERRUPTED:
@@ -212,7 +266,24 @@ def compute_next_state(state: State, event: dict) -> State:
                     if _flow_state.status == FlowStatus.COMPLETED:
                         flow_state.status = FlowStatus.ACTIVE
                         flow_state.interrupted_by = []
+
+                        flow_config = state.flow_configs[flow_state.flow_id]
+                        # Also, they can be used for decision as well.
+
+                        if (
+                            new_state.next_step is None
+                            or next_step_priority < flow_config.priority
+                        ) and _is_actionable(flow_config.elements[flow_state.head]):
+                            new_state.next_step = flow_config.elements[flow_state.head]
+                            next_step_by_flow_uid = flow_state.uid
+                            next_step_priority = flow_config.priority
                     break
+
+    # If the current event was an "action_finished" with an event attached, the next
+    # step is always that creation of that event.
+    if event["type"] == "action_finished" and event.get("events"):
+        # NOTE: we only support one event per action_finished event
+        new_state.next_step = {"create_event": event["events"][0]}
 
     return new_state
 
