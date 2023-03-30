@@ -27,9 +27,10 @@ def get_colang_history(events: List[dict], include_texts: bool = True):
             history += f'bot {event["intent"]}\n'
         elif event["type"] == "bot_said" and include_texts:
             history += f'  "{event["content"]}"\n'
-        elif event["type"] == "start_action":
+        # We skip system actions from this log
+        elif event["type"] == "start_action" and not event.get("system"):
             history += f'execute {event["action_name"]}\n'
-        elif event["type"] == "action_finished":
+        elif event["type"] == "action_finished" and not event.get("system"):
             history += f'# The result was {event["return_value"]}\n'
 
     return history

@@ -1,12 +1,16 @@
 import inspect
+import json
 import logging
+import os
 import random
 import uuid
 from typing import List
 
+import yaml
 from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
+from collm.actions.actions import ActionResult
 from collm.actions.fact_checking import check_facts
 from collm.actions.math import wolfram_alpha_request
 from collm.config import RailsConfig
@@ -17,6 +21,12 @@ from collm.runtime.flows import FlowConfig, compute_next_step
 from collm.runtime.utils import flow_to_colang, get_colang_history
 
 log = logging.getLogger(__name__)
+
+SYSTEM_ACTIONS = [
+    "generate_user_intent",
+    "generate_next_step",
+    "generate_bot_message",
+]
 
 
 class Runtime:
@@ -49,13 +59,24 @@ class Runtime:
         """Initializes the flow configs based on the config."""
         self.flow_configs = {}
 
-        for flow in self.config.flows:
+        # We also load the default flows from the `default_flows.yml` file in the current folder.
+        current_folder = os.path.dirname(__file__)
+        default_flows_path = os.path.join(current_folder, "default_flows.yml")
+        with open(default_flows_path, "r") as f:
+            default_flows = yaml.safe_load(f)["flows"]
+
+        for flow in self.config.flows + default_flows:
             elements = flow["elements"]
 
             # If we don't have an id, we generate a random UID.
             flow_id = flow.get("id") or str(uuid.uuid4())
 
-            self.flow_configs[flow_id] = FlowConfig(id=flow_id, elements=elements)
+            self.flow_configs[flow_id] = FlowConfig(
+                id=flow_id,
+                elements=elements,
+                priority=flow.get("priority", 1.0),
+                is_extension=flow.get("is_extension", False),
+            )
 
             # We also compute what types of events can trigger this flow, in addition
             # to the default ones.
@@ -149,24 +170,45 @@ class Runtime:
 
         while True:
             last_event = events[-1]
+
             log.info("Processing event: %s", last_event)
+
+            # print the array of events in JSON format
+            # print(f"\033[91m{json.dumps(events, indent=True)}\033[0m")
+
             next_event = None
 
-            # if the last event is a `user_said` event, we need to process it
-            if last_event["type"] == "user_said":
-                next_event = await self._process_user_said(events)
-            elif last_event["type"] == "start_action":
-                next_event = await self._process_start_action(events)
-            elif last_event["type"] == "bot_intent":
-                next_event = await self._process_bot_intent(events)
-            elif last_event["type"] == "bot_said":
-                # TODO: here we'd add the processing of messages coming from LLM
-                pass
+            # If we need to execute an action, we start doing that.
+            if last_event["type"] == "start_action":
+                action_name = last_event["action_name"]
+                action_result = None
 
-            # If we don't have a next step, we use the flows to produce one
-            if next_event is None:
-                # We also need to slide all the flows based on the current event.
-                # we compute the next step
+                # If it's a system action, we invoke the special actions
+                # TODO: normalize this even further and register this with the runtime
+                #   in a cleaner way.
+                if action_name in SYSTEM_ACTIONS:
+                    if action_name == "generate_user_intent":
+                        action_result = await self._generate_user_intent(events)
+                    elif action_name == "generate_next_step":
+                        action_result = await self._generate_next_step(events)
+                    elif action_name == "generate_bot_message":
+                        action_result = await self._generate_bot_message(events)
+
+                    # We first add the action finished event, and then the
+                    next_event = {
+                        "type": "action_finished",
+                        "action_name": action_name,
+                        "status": "success",
+                        "return_value": action_result.return_value,
+                        "events": action_result.events,
+                        "system": True,
+                    }
+                else:
+                    # Otherwise, we process it the normal way.
+                    next_event = await self._process_start_action(events)
+            else:
+                # We need to slide all the flows based on the current event,
+                # to compute the next step.
                 next_step = await self.compute_next_step(events)
 
                 if next_step:
@@ -174,19 +216,19 @@ class Runtime:
 
                     if next_step_type == "bot":
                         next_event = {"type": "bot_intent", "intent": next_step["bot"]}
+
                     elif next_step_type == "execute":
                         next_event = {
                             "type": "start_action",
+                            "system": next_step["execute"] in SYSTEM_ACTIONS,
                             "action_name": next_step["execute"],
                         }
 
-            # If we still have nothing, after a user intent, we use the LLM to produce the next step
-            if next_event is None and last_event["type"] == "user_intent":
-                next_event = await self._process_user_intent(events)
+                    elif next_step_type == "create_event":
+                        next_event = next_step["create_event"]
 
-            # If we still have nothing, then we need to start listening
-            if next_event is None:
-                next_event = {"type": "listen"}
+                else:
+                    next_event = {"type": "listen"}
 
             # Otherwise, we append the event and continue the processing.
             events.append(next_event)
@@ -204,10 +246,12 @@ class Runtime:
 
         return next_step
 
-    async def _process_user_said(self, events: List[dict]):
+    async def _generate_user_intent(self, events: List[dict]):
         """Processes the user_said event."""
 
-        event = events[-1]
+        # The last event should be the "start_action" and the one before it the "user_said".
+        event = events[-2]
+        assert event["type"] == "user_said"
 
         # TODO: check for an explicit way of enabling the canonical form detection
 
@@ -250,7 +294,7 @@ class Runtime:
 
             log.info("Canonical form for user intent: " + user_intent)
 
-            return {"type": "user_intent", "intent": user_intent}
+            return ActionResult(events=[{"type": "user_intent", "intent": user_intent}])
         else:
             # This is the pass-through behavior.
             # First, we compute the general instructions.
@@ -283,54 +327,70 @@ class Runtime:
                 stop=["User: "],
             )
 
-            return {"type": "bot_said", "content": result.strip()}
+            return ActionResult(
+                events=[{"type": "bot_said", "content": result.strip()}]
+            )
 
-    async def _process_user_intent(self, events: List[dict]):
-        event = events[-1]
-        user_intent = event["intent"]
+    async def _generate_next_step(self, events: List[dict]):
+        # The last event should be the "start_action" and the one before it the "user_intent".
+        event = events[-2]
 
-        # We use the LLM to predict the next step
-        # Compute the conversation history
-        history = get_colang_history(events, include_texts=False)
+        # Currently, we only predict next step after a user intent using LLM
+        if event["type"] == "user_intent":
+            user_intent = event["intent"]
 
-        # We search for the most relevant similar user utterance
-        examples = ""
-        if self.flows_index:
-            results = self.flows_index.search(text=user_intent, max_results=5)
+            # We use the LLM to predict the next step
+            # Compute the conversation history
+            history = get_colang_history(events, include_texts=False)
 
-            # We add these in reverse order so the most relevant is towards the end.
-            for result in reversed(results):
-                examples += f"{result.text}\n"
+            # We search for the most relevant similar user utterance
+            examples = ""
+            if self.flows_index:
+                results = self.flows_index.search(text=user_intent, max_results=5)
 
-        predict_next_step_prompt = PromptTemplate(
-            input_variables=["history", "examples"],
-            template=get_prompt(self.config, Step.PREDICT_NEXT_STEP)["content"],
-        )
+                # We add these in reverse order so the most relevant is towards the end.
+                for result in reversed(results):
+                    examples += f"{result.text}\n"
 
-        # Create and run the general chain.
-        chain = LLMChain(
-            prompt=predict_next_step_prompt, llm=self.llm, verbose=self.verbose
-        )
-        result = await chain.apredict(history=history, examples=examples)
-        if result[0] == "\n":
-            result = result[1:]
-        result = result.split("\n")[0].strip()
+            predict_next_step_prompt = PromptTemplate(
+                input_variables=["history", "examples"],
+                template=get_prompt(self.config, Step.PREDICT_NEXT_STEP)["content"],
+            )
 
-        if result.startswith("bot "):
-            next_step = {"bot": result[4:]}
-        else:
-            next_step = {"bot": "general response"}
+            # Create and run the general chain.
+            chain = LLMChain(
+                prompt=predict_next_step_prompt, llm=self.llm, verbose=self.verbose
+            )
+            result = await chain.apredict(history=history, examples=examples)
+            if result[0] == "\n":
+                result = result[1:]
+            result = result.split("\n")[0].strip()
 
-        # If we have to execute an action, we return the event to start it
-        if next_step.get("execute"):
-            return {"type": "start_action", "action_name": next_step["execute"]}
-        else:
-            bot_intent = next_step.get("bot")
+            if result.startswith("bot "):
+                next_step = {"bot": result[4:]}
+            else:
+                next_step = {"bot": "general response"}
 
-            return {"type": "bot_intent", "intent": bot_intent}
+            # If we have to execute an action, we return the event to start it
+            if next_step.get("execute"):
+                return ActionResult(
+                    events=[
+                        {"type": "start_action", "action_name": next_step["execute"]}
+                    ]
+                )
+            else:
+                bot_intent = next_step.get("bot")
 
-    async def _process_bot_intent(self, events: List[dict]):
-        event = events[-1]
+                return ActionResult(
+                    events=[{"type": "bot_intent", "intent": bot_intent}]
+                )
+
+        return ActionResult(return_value=None)
+
+    async def _generate_bot_message(self, events: List[dict]):
+        # The last event should be the "start_action" and the one before it the "bot_intent".
+        event = events[-2]
+        assert event["type"] == "bot_intent"
 
         bot_intent = event["intent"]
 
@@ -375,7 +435,7 @@ class Runtime:
 
             log.info("Generated bot message: " + bot_utterance)
 
-        return {"type": "bot_said", "content": bot_utterance}
+        return ActionResult(events=[{"type": "bot_said", "content": bot_utterance}])
 
     async def _process_start_action(self, events: List[dict]):
         """Starts the specified action, waits for it to finish and posts back the result."""
@@ -420,12 +480,17 @@ class Runtime:
 
         result = await self.registered_actions[action_name](**kwargs)
 
-        # TODO: add hook in here for post-processing the response from the action
-        #  Should the fact checking rail go here, for example?
+        return_value = result
+        events = []
+
+        if isinstance(result, ActionResult):
+            return_value = result.return_value
+            events = result.events
 
         return {
             "type": "action_finished",
             "action_name": action_name,
             "status": "success",
-            "return_value": result,
+            "return_value": return_value,
+            "events": events,
         }

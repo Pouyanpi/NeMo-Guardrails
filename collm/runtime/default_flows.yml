@@ -1,0 +1,19 @@
+flows:
+  # These are the default flows
+  - id: generate user intent
+    elements:
+      - user_said: ...
+      - execute: generate_user_intent
+
+  - id: generate next step
+    priority: 0.9
+    elements:
+      - user: ...
+      - execute: generate_next_step
+
+  - id: generate bot message
+    priority: 2
+    is_extension: True
+    elements:
+      - bot: ...
+      - execute: generate_bot_message
