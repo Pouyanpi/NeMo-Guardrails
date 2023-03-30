@@ -6,7 +6,7 @@ import yaml
 from pydantic import BaseModel
 from pydantic.fields import Field
 
-from collm.colang.parser import parse_colang_file
+from colangflows.language.parser import parse_colang_file
 
 
 class Model(BaseModel):

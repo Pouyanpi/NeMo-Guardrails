@@ -17,6 +17,12 @@ flows:
     - execute: check facts
     - bot: inform if response was accurate
 
+  - elements:
+    - user_said: ...
+    - execute: search knowledge base
+      result_var: $relevant_chunks
+
+
 # Using OpenAI
 models:
   - type: main

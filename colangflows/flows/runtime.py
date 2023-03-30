@@ -1,5 +1,4 @@
 import inspect
-import json
 import logging
 import os
 import random
@@ -10,15 +9,15 @@ import yaml
 from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
-from collm.actions.actions import ActionResult
-from collm.actions.fact_checking import check_facts
-from collm.actions.math import wolfram_alpha_request
-from collm.config import RailsConfig
-from collm.kb.basic import BasicEmbeddingsIndex
-from collm.kb.index import IndexItem
-from collm.prompts.prompts import Step, get_prompt
-from collm.runtime.flows import FlowConfig, compute_next_step
-from collm.runtime.utils import flow_to_colang, get_colang_history
+from colangflows.actions.actions import ActionResult
+from colangflows.actions.fact_checking import check_facts
+from colangflows.actions.math import wolfram_alpha_request
+from colangflows.flows.flows import FlowConfig, compute_next_step
+from colangflows.flows.utils import flow_to_colang, get_colang_history
+from colangflows.kb.basic import BasicEmbeddingsIndex
+from colangflows.kb.index import IndexItem
+from colangflows.llm.prompts.prompts import Step, get_prompt
+from colangflows.rails.llm.config import RailsConfig
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +29,7 @@ SYSTEM_ACTIONS = [
 
 
 class Runtime:
-    """Runtime for executing the CoLLM flows."""
+    """Runtime for executing the Colang flows."""
 
     def __init__(self, config: RailsConfig, llm: BaseLLM, verbose: bool = False):
         self.config = config

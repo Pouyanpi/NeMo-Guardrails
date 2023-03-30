@@ -3,7 +3,7 @@ from typing import List
 from annoy import AnnoyIndex
 from sentence_transformers import SentenceTransformer
 
-from collm.kb.index import EmbeddingsIndex, IndexItem
+from colangflows.kb.index import EmbeddingsIndex, IndexItem
 
 
 class BasicEmbeddingsIndex(EmbeddingsIndex):

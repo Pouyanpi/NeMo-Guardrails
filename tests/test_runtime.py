@@ -2,8 +2,8 @@ from typing import Optional
 
 import pytest
 
-from collm import RailsConfig
-from collm.runtime.runtime import Runtime
+from colangflows import RailsConfig
+from colangflows.flows.runtime import Runtime
 from tests.utils import FakeLLM
 
 
@@ -65,9 +65,36 @@ async def test_1():
     new_events = await runtime.generate_events(events)
 
     assert new_events == [
-        {"type": "user_intent", "intent": "express greeting"},
-        {"type": "bot_intent", "intent": "express greeting"},
-        {"type": "bot_said", "content": "Hello! How are you?"},
+        {"action_name": "generate_user_intent", "system": True, "type": "start_action"},
+        {
+            "action_name": "generate_user_intent",
+            "events": [{"intent": "express greeting", "type": "user_intent"}],
+            "return_value": None,
+            "status": "success",
+            "system": True,
+            "type": "action_finished",
+        },
+        {"intent": "express greeting", "type": "user_intent"},
+        {"intent": "express greeting", "type": "bot_intent"},
+        {"action_name": "generate_bot_message", "system": True, "type": "start_action"},
+        {
+            "action_name": "generate_bot_message",
+            "events": [{"content": "Hello! How are you?", "type": "bot_said"}],
+            "return_value": None,
+            "status": "success",
+            "system": True,
+            "type": "action_finished",
+        },
+        {"content": "Hello! How are you?", "type": "bot_said"},
+        {"action_name": "generate_next_step", "system": True, "type": "start_action"},
+        {
+            "action_name": "generate_next_step",
+            "events": None,
+            "return_value": None,
+            "status": "success",
+            "system": True,
+            "type": "action_finished",
+        },
         {"type": "listen"},
     ]
 
@@ -77,17 +104,47 @@ async def test_1():
     new_events = await runtime.generate_events(events)
 
     assert new_events == [
-        {"type": "user_intent", "intent": "ask math question"},
-        {"type": "start_action", "action_name": "compute"},
+        {"action_name": "generate_user_intent", "system": True, "type": "start_action"},
         {
-            "type": "action_finished",
-            "action_name": "compute",
+            "action_name": "generate_user_intent",
+            "events": [{"intent": "ask math question", "type": "user_intent"}],
+            "return_value": None,
             "status": "success",
-            "return_value": 5,
+            "system": True,
+            "type": "action_finished",
         },
-        {"type": "bot_intent", "intent": "provide math response"},
-        {"type": "bot_said", "content": "The answer is 5"},
-        {"type": "bot_intent", "intent": "ask if user happy"},
-        {"type": "bot_said", "content": "Are you happy with the result?"},
+        {"intent": "ask math question", "type": "user_intent"},
+        {"action_name": "compute", "system": False, "type": "start_action"},
+        {
+            "action_name": "compute",
+            "events": [],
+            "return_value": 5,
+            "status": "success",
+            "type": "action_finished",
+        },
+        {"intent": "provide math response", "type": "bot_intent"},
+        {"action_name": "generate_bot_message", "system": True, "type": "start_action"},
+        {
+            "action_name": "generate_bot_message",
+            "events": [{"content": "The answer is 5", "type": "bot_said"}],
+            "return_value": None,
+            "status": "success",
+            "system": True,
+            "type": "action_finished",
+        },
+        {"content": "The answer is 5", "type": "bot_said"},
+        {"intent": "ask if user happy", "type": "bot_intent"},
+        {"action_name": "generate_bot_message", "system": True, "type": "start_action"},
+        {
+            "action_name": "generate_bot_message",
+            "events": [
+                {"content": "Are you happy with the result?", "type": "bot_said"}
+            ],
+            "return_value": None,
+            "status": "success",
+            "system": True,
+            "type": "action_finished",
+        },
+        {"content": "Are you happy with the result?", "type": "bot_said"},
         {"type": "listen"},
     ]

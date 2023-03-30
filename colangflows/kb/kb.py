@@ -2,9 +2,9 @@ import logging
 from time import time
 from typing import List
 
-from collm.kb.basic import BasicEmbeddingsIndex
-from collm.kb.index import IndexItem
-from collm.kb.utils import split_markdown_in_topic_chunks
+from colangflows.kb.basic import BasicEmbeddingsIndex
+from colangflows.kb.index import IndexItem
+from colangflows.kb.utils import split_markdown_in_topic_chunks
 
 log = logging.getLogger(__name__)
 

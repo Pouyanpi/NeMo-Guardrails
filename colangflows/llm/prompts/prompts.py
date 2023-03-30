@@ -4,7 +4,7 @@ from enum import Enum
 
 import yaml
 
-from collm.config import RailsConfig
+from colangflows.rails.llm.config import RailsConfig
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 

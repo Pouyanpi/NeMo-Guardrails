@@ -154,7 +154,7 @@ class NeMoLLM(LLM, BaseModel):
             ) as resp:
                 if resp.status != 200:
                     raise Exception(
-                        f"Got status code {resp.status} to OpenAI engine request."
+                        f"Got status code {resp.status} to NeMo LLM engine request."
                     )
 
                 result = json.loads(await resp.text())

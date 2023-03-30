@@ -5,9 +5,9 @@ from typing import List, Optional
 
 from langchain.llms import OpenAI
 
-from collm.config import RailsConfig
-from collm.llms.nemollm import NeMoLLM
-from collm.runtime.runtime import Runtime
+from colangflows.flows.runtime import Runtime
+from colangflows.llm.nemollm import NeMoLLM
+from colangflows.rails.llm.config import RailsConfig
 
 log = logging.getLogger(__name__)
 

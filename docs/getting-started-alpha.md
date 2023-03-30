@@ -2,7 +2,7 @@
 
 This is a getting started guide for users of the very early alpha. This guide will cover:
 
-1. Installation of the CoLLM framework;
+1. Installation of the Colang Flows framework;
 2. Creation of a basic rails application;
 3. Using the interactive chat;
 4. Calling actions from flows.
@@ -28,23 +28,23 @@ Activate the virtual environment.
 > source venv/bin/activate
 ```
 
-Clone the CoLLM repository.
+Clone the Colang Flows repository.
 
 ```bash
-> git clone https://gitlab-master.nvidia.com/dialogue-research/collm.git
+> git clone https://gitlab-master.nvidia.com/dialogue-research/colangflows.git
 ```
 
 or
 
 ```bash
-> git clone ssh://git@gitlab-master.nvidia.com:12051/dialogue-research/collm.git
+> git clone ssh://git@gitlab-master.nvidia.com:12051/dialogue-research/colangflows.git
 ```
 
-Install the CoLLM framework from the local repository.
+Install the Colang Flows framework from the local repository.
 
 ```bash
-> pip install -e collm
-> pip install -r collm/requirements.txt
+> pip install -e colangflows
+> pip install -r colangflows/requirements.txt
 ```
 
 If you want to use OpenAI, also install the `openai` package. And make sure that you have the `OPENAI_API_KEY` environment variable set.
@@ -54,10 +54,10 @@ If you want to use OpenAI, also install the `openai` package. And make sure that
 > export OPENAI_API_KEY=...
 ```
 
-You should now be able to invoke the `collm` CLI.
+You should now be able to invoke the `colang` CLI.
 
 ```bash
-> collm --help
+> colangflows --help
 ```
 
 ## Creating a basic rails application
@@ -87,7 +87,7 @@ models:
 You should now be able to use the interactive chat and talk to the "raw" LLM. The command above will implicitly load the config from the config folder.
 
 ```bash
-> collm chat
+> colangflows chat
 ```
 
 ## Adding instruction rails
@@ -109,4 +109,4 @@ instructions:
 
 ## Other examples
 
-For more examples, check out the `collm/examples` folder.
+For more examples, check out the `colang/examples` folder.

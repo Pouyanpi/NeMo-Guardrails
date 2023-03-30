@@ -1,5 +1,5 @@
 """Test the flows engine."""
-from collm.runtime.flows import FlowConfig, State, compute_next_state
+from colangflows.flows.flows import FlowConfig, State, compute_next_state
 
 # Flow configurations for these tests
 FLOW_CONFIGS = {

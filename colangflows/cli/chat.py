@@ -1,8 +1,7 @@
 import os
 from typing import Optional
 
-from collm.config import RailsConfig
-from collm.llmrails import LLMRails
+from colangflows.rails import LLMRails, RailsConfig
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 

@@ -1,8 +1,7 @@
 """Demo script."""
 import logging
 
-from collm.config import RailsConfig
-from collm.llmrails import LLMRails
+from colangflows.rails import LLMRails, RailsConfig
 
 logging.basicConfig(level=logging.INFO)
 

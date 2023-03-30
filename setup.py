@@ -12,24 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Install, build and package the `collm` package."""
+"""Install, build and package the `colangflows` package."""
 
 from setuptools import find_packages, setup
 
 setup(
-    name="collm",
+    name="colangflows",
     version="0.0.1",
     packages=find_packages(),
     author="NVIDIA",
-    author_email="collm@nvidia.com",
-    description="CoLLM: Rails for LLMs.",
-    long_description="CoLLM is a framework for creating runtime rails for LLMs.",
+    author_email="colangflows@nvidia.com",
+    description="Colang Flows: Rails for Conversational AI.",
+    long_description="Colang Flows is a framework for creating runtime rails for Conversational AI systems "
+    "built using LLMs or other types of NLU/NLP pipelines.",
     long_description_content_type="text/markdown",
     url="",
     classifiers=[
         "Development Status :: 1 - Planning",
         "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
+        "License :: NVIDIA Proprietary",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
@@ -38,6 +39,6 @@ setup(
         "Programming Language :: Python :: 3.10",
     ],
     entry_points={
-        "console_scripts": ["collm=collm.__main__:app"],
+        "console_scripts": ["colangflows=colangflows.__main__:app"],
     },
 )

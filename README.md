@@ -1,8 +1,10 @@
-# CoLLM
+# Colang Flows
 
-CoLLM is a framework for creating rails for LLMs.
+Colang Flows is a framework for creating rails for conversational AI systems e.g. ChatGPT-like.
 
-** NOTE for alpha users: check out the [Getting Started Guide](docs/getting-started-alpha.md) for a quick start. **
+**NOTE for alpha users: check out the [Getting Started Guide](docs/getting-started-alpha.md) for a quick start.**
+
+**NOTE for core developers: check out the [Contributing Guide](CONTRIBUTING.md) for details on setting up the development environment, project structure, coding style, etc.**
 
 ## Description
 
@@ -64,25 +66,25 @@ See [Rails Reference](docs/rails-reference.md) for more details.
 To install from PyPI (not yet available).
 
 ```bash
-> pip install collm
+> pip install colangflows
 ```
 
 To install from source:
 
 ```bash
-> git clone https://gitlab-master.nvidia.com/dialogue-research/collm.git
-> cd collm
+> git clone https://gitlab-master.nvidia.com/dialogue-research/colangflows.git
+> cd colangflows
 > pip install -e .
 ```
 
-This will install the CoLLM framework and all its dependencies.
+This will install the Colang Flows framework and all its dependencies.
 
 ## Usage
 
 To apply rails, you first create a `LLMRails` instance, configure the desired rails and then use it to interact with the LLM.
 
 ```python
-from collm import LLMRails, RailsConfig
+from colangflows import LLMRails, RailsConfig
 
 # Initialization from a config YAML file or a Colang file.
 # In practice, a folder will be used with the config split across multiple files.
@@ -108,10 +110,10 @@ Rails can be configured using YAML, JSON or using [Colang](https://colang.nvidia
 
 ## Command Line Chat
 
-For testing purposes, the CoLLM framework provides a command line chat that can be used to interact with the LLM.
+For testing purposes, the Colang Flows framework provides a command line chat that can be used to interact with the LLM.
 
 ```
-> collm chat --config=...
+> colangflows chat --config=...
 ```
 
 ## Server
@@ -121,7 +123,7 @@ For testing purposes, the CoLLM framework provides a command line chat that can 
 An rails server exposes multiple "railed LLM endpoints". Each endpoint can have a different rail configuration.
 
 ```
-> collm server --config=...
+> colangflows server --config=...
 
 Listening on port 8080.
 ```
@@ -138,5 +140,5 @@ The Colang playground can be used to create a rails configuration.
 **TODO**: explain how (after decoupling from Firebase).
 
 ```
-> colang playground start
+> colangflows playground start
 ```

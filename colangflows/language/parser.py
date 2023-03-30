@@ -1,10 +1,10 @@
 import logging
 
-from collm.colang.colang_parser import (
+from colangflows.language.colang_parser import (
     parse_coflows_to_yml_flows,
     parse_snippets_and_imports,
 )
-from collm.colang.comd_parser import parse_md_file
+from colangflows.language.comd_parser import parse_md_file
 
 log = logging.getLogger(__name__)
 

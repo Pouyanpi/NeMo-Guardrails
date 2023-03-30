@@ -2,7 +2,7 @@ import logging
 
 import typer
 
-from collm.cli.chat import run_chat
+from colangflows.cli.chat import run_chat
 
 app = typer.Typer()
 
@@ -29,6 +29,6 @@ def chat(
 
 @app.command()
 def server():
-    """Starts the CoLLM server."""
+    """Starts the Colang Flows server."""
 
     typer.echo("Not yet implemented.")
