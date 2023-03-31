@@ -143,6 +143,12 @@ prompts:
         bot offer additional help
           "If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."
 
+        # This is some additional context:
+
+        ```markdown
+        {relevant_chunks}
+        ```
+
         # This how the bot talks:
 
         {examples}

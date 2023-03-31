@@ -8,9 +8,14 @@ from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
 from colangflows.actions.actions import ActionResult, action
-from colangflows.actions.llm.utils import flow_to_colang, get_colang_history
+from colangflows.actions.llm.utils import (
+    flow_to_colang,
+    get_colang_history,
+    get_last_user_utterance,
+)
 from colangflows.kb.basic import BasicEmbeddingsIndex
 from colangflows.kb.index import IndexItem
+from colangflows.kb.kb import KnowledgeBase
 from colangflows.llm.prompts.prompts import Step, get_prompt
 from colangflows.rails.llm.config import RailsConfig
 
@@ -34,6 +39,10 @@ class LLMGenerationActions:
 
         self.flows_index = None
         self._init_flows_index()
+
+        # If we have documents, we'll also initialize a knowledge base.
+        self.kb = None
+        self._init_kb()
 
     def _init_user_message_index(self):
         """Initializes the index of user messages."""
@@ -99,6 +108,17 @@ class LLMGenerationActions:
 
         # NOTE: this should be very fast, otherwise needs to be moved to separate thread.
         self.flows_index.build()
+
+    def _init_kb(self):
+        """Initializes the knowledge base."""
+
+        if not self.config.docs:
+            return
+
+        documents = [doc.content for doc in self.config.docs]
+        self.kb = KnowledgeBase(documents=documents)
+        self.kb.init()
+        self.kb.build()
 
     @action(is_system_action=True)
     async def generate_user_intent(self, events: List[dict]):
@@ -276,16 +296,26 @@ class LLMGenerationActions:
                 for result in reversed(results):
                     examples += f"bot {result.text}\n  \"{result.meta['text']}\"\n\n"
 
+            # We compute the relevant chunks to be used as context
+            relevant_chunks = ""
+            if self.kb:
+                text = get_last_user_utterance(events)
+                chunks = self.kb.search_relevant_chunks(text)
+
+                relevant_chunks = "\n".join([chunk["body"] for chunk in chunks])
+
             # Otherwise, we generate a message with the LLM
             bot_message_prompt = PromptTemplate(
-                input_variables=["history", "examples"],
+                input_variables=["history", "examples", "relevant_chunks"],
                 template=get_prompt(self.config, Step.GENERATE_BOT_MESSAGE)["content"],
             )
 
             chain = LLMChain(
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
             )
-            result = await chain.apredict(history=history, examples=examples)
+            result = await chain.apredict(
+                history=history, examples=examples, relevant_chunks=relevant_chunks
+            )
             if result[0] == "\n":
                 result = result[1:]
             result = result.split("\n")[0].strip()

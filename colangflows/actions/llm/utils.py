@@ -62,3 +62,12 @@ def flow_to_colang(flow: dict):
             colang_flow += f'bot {step["bot"]}\n'
 
     return colang_flow
+
+
+def get_last_user_utterance(events: List[dict]):
+    """Returns the last user utterance from the events."""
+    for event in reversed(events):
+        if event["type"] == "user_said":
+            return event["content"]
+
+    return None

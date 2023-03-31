@@ -32,6 +32,13 @@ class Instruction(BaseModel):
     content: str
 
 
+class Document(BaseModel):
+    """Configuration for documents that should be used for question answering."""
+
+    format: str
+    content: str
+
+
 class RailsConfig(BaseModel):
     """Configuration object for the models and the rails.
 
@@ -62,6 +69,11 @@ class RailsConfig(BaseModel):
         description="List of instructions in natural language that the LLM should use.",
     )
 
+    docs: Optional[List[Document]] = Field(
+        default=None,
+        description="List of documents that should be used for question answering.",
+    )
+
     @staticmethod
     def from_path(config_path: str):
         """Loads a configuration from a given path.
@@ -76,47 +88,60 @@ class RailsConfig(BaseModel):
         elif os.path.isdir(config_path):
             # Iterate all .yml files and join them
             raw_config = {}
-            for file in os.listdir(config_path):
-                if (
-                    not file.endswith(".yaml")
-                    and not file.endswith(".yml")
-                    and not file.endswith(".co")
-                ):
-                    continue
 
-                # Extract the full path for the file
-                full_path = os.path.join(config_path, file)
+            for root, dirs, files in os.walk(config_path):
+                for file in files:
+                    # This is the raw configuration that will be loaded from the file.
+                    _raw_config = {}
 
-                if file.endswith(".yml") or file.endswith(".yaml"):
-                    with open(full_path) as f:
-                        _raw_config = yaml.safe_load(f.read())
-                elif file.endswith(".co"):
-                    with open(full_path) as f:
-                        _raw_config = parse_colang_file(file, content=f.read())
+                    # Extract the full path for the file and compute relative path
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, config_path)
 
-                # We join _raw_config with raw_config.
-                # For the keys `user_messages` and `bot_messages` we merge the dictionaries.
-                # For the key `flows` and `models` we merge the lists.
-                raw_config["user_messages"] = {
-                    **raw_config.get("user_messages", {}),
-                    **_raw_config.get("user_messages", {}),
-                }
+                    # If it's a file in the `kb` folder we need to append it to the docs
+                    if rel_path.startswith("kb/"):
+                        _raw_config = {"docs": []}
+                        if rel_path.endswith(".md"):
+                            with open(full_path) as f:
+                                _raw_config["docs"].append(
+                                    {"format": "md", "content": f.read()}
+                                )
 
-                raw_config["bot_messages"] = {
-                    **raw_config.get("bot_messages", {}),
-                    **_raw_config.get("bot_messages", {}),
-                }
+                    elif file.endswith(".yml") or file.endswith(".yaml"):
+                        with open(full_path) as f:
+                            _raw_config = yaml.safe_load(f.read())
+                    elif file.endswith(".co"):
+                        with open(full_path) as f:
+                            _raw_config = parse_colang_file(file, content=f.read())
 
-                raw_config["instructions"] = raw_config.get(
-                    "instructions", []
-                ) + _raw_config.get("instructions", [])
+                    # We join _raw_config with raw_config.
+                    # For the keys `user_messages` and `bot_messages` we merge the dictionaries.
+                    # For the key `flows` and `models` we merge the lists.
+                    raw_config["user_messages"] = {
+                        **raw_config.get("user_messages", {}),
+                        **_raw_config.get("user_messages", {}),
+                    }
 
-                raw_config["flows"] = raw_config.get("flows", []) + _raw_config.get(
-                    "flows", []
-                )
-                raw_config["models"] = raw_config.get("models", []) + _raw_config.get(
-                    "models", []
-                )
+                    raw_config["bot_messages"] = {
+                        **raw_config.get("bot_messages", {}),
+                        **_raw_config.get("bot_messages", {}),
+                    }
+
+                    raw_config["instructions"] = raw_config.get(
+                        "instructions", []
+                    ) + _raw_config.get("instructions", [])
+
+                    raw_config["flows"] = raw_config.get("flows", []) + _raw_config.get(
+                        "flows", []
+                    )
+
+                    raw_config["models"] = raw_config.get(
+                        "models", []
+                    ) + _raw_config.get("models", [])
+
+                    raw_config["docs"] = raw_config.get("docs", []) + _raw_config.get(
+                        "docs", []
+                    )
         else:
             raise Exception(f"Invalid config path {config_path}.")
 
