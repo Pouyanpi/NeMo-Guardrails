@@ -84,7 +84,7 @@ This will install the Colang Flows framework and all its dependencies.
 To apply rails, you first create a `LLMRails` instance, configure the desired rails and then use it to interact with the LLM.
 
 ```python
-from colangflows import LLMRails, RailsConfig
+from colangflows.rails import LLMRails, RailsConfig
 
 # Initialization from a config YAML file or a Colang file.
 # In practice, a folder will be used with the config split across multiple files.
