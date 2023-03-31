@@ -11,3 +11,13 @@ sast:
   stage: test
 include:
 - template: Security/SAST.gitlab-ci.yml
+
+# Runs the tests suite.
+test:
+  stage: test
+  image: python:3.8
+  before_script:
+    - pip install -r requirements.txt
+    - pip install -r requirements-dev.txt
+  script:
+    - python -m pytest
