@@ -1,10 +1,13 @@
 """LLM Rails entry point."""
 import asyncio
 import logging
+import os
 from typing import List, Optional
 
-from langchain.llms import OpenAI
+import yaml
+from langchain.llms import BaseLLM, OpenAI
 
+from colangflows.actions.llm.generation import LLMGenerationActions
 from colangflows.flows.runtime import Runtime
 from colangflows.llm.nemollm import NeMoLLM
 from colangflows.rails.llm.config import RailsConfig
@@ -15,14 +18,30 @@ log = logging.getLogger(__name__)
 class LLMRails:
     """Rails based on a given configuration."""
 
-    def __init__(self, config: RailsConfig, verbose: bool = False):
+    def __init__(
+        self, config: RailsConfig, llm: Optional[BaseLLM] = None, verbose: bool = False
+    ):
         self.config = config
+        self.llm = llm
 
-        # First, we initialize the LLM engine.
+        # We also load the default flows from the `default_flows.yml` file in the current folder.
+        current_folder = os.path.dirname(__file__)
+        default_flows_path = os.path.join(current_folder, "llm_flows.yml")
+        with open(default_flows_path, "r") as f:
+            default_flows = yaml.safe_load(f)["flows"]
+
+        # We add the default flows to the config.
+        self.config.flows.extend(default_flows)
+
+        # First, we initialize the runtime.
+        self.runtime = Runtime(config=config, verbose=verbose)
+
+        # Next, we initialize the LLM engine.
         self._init_llm()
 
-        # Next, the runtime.
-        self.runtime = Runtime(config=config, llm=self.llm, verbose=verbose)
+        # Next, we initialize the LLM Generate actions and register them.
+        actions = LLMGenerationActions(config=config, llm=self.llm, verbose=verbose)
+        self.runtime.register_actions(actions)
 
         # NOTE: we currently keep an explicit history of events per LLMRails instance.
         # This means this instance can only be used for one conversation.
@@ -32,7 +51,10 @@ class LLMRails:
 
     def _init_llm(self):
         """Initializes the right LLM engine based on the configuration."""
-        self.llm = None
+
+        # If we already have a pre-configured one, we do nothing.
+        if self.llm is not None:
+            return
 
         # TODO: Currently we assume the first model is the main one. Add proper support
         #  to search for the main model config.

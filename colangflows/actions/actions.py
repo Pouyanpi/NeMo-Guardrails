@@ -2,6 +2,18 @@ from dataclasses import dataclass
 from typing import Any, List, Optional
 
 
+# A decorator that sets a property on the function to indicate if it's a system action or not.
+def action(is_system_action: bool, name: Optional[str] = None):
+    def decorator(func):
+        func.action_meta = {
+            "name": name or func.__name__,
+            "is_system_action": is_system_action,
+        }
+        return func
+
+    return decorator
+
+
 @dataclass
 class ActionResult:
     # The value returned by the action

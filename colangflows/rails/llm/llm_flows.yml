@@ -1,5 +1,5 @@
 flows:
-  # These are the default flows
+  # These are the default flows for the LLM rails
   - id: generate user intent
     elements:
       - user_said: ...

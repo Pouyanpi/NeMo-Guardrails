@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Renaming from CoLLM to Colang flows
 - Invoking LLM related code as actions, not as methods on the Runtime instance
+- Refactored the LLM actions out of the runtime.
 
 ### Deprecated
 - ...
