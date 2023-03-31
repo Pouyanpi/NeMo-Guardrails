@@ -7,10 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- ...
+- Support for multi-turn flows
+- Generic matching of bot and user messages using "..."
+- Basic interruption mechanism
+- Support for priority flows and extension flows
 
 ### Changed
-- ...
+- Renaming from CoLLM to Colang flows
+- Invoking LLM related code as actions, not as methods on the Runtime instance
 
 ### Deprecated
 - ...
