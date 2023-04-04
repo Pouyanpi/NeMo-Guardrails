@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Generic matching of bot and user messages using "..."
 - Basic interruption mechanism
 - Support for priority flows and extension flows
+- Basic server setup with Chat UI included
 
 ### Changed
 - Renaming from CoLLM to Colang flows

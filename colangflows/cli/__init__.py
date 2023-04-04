@@ -1,8 +1,10 @@
 import logging
 
 import typer
+import uvicorn
 
 from colangflows.cli.chat import run_chat
+from colangflows.server import api
 
 app = typer.Typer()
 
@@ -28,7 +30,11 @@ def chat(
 
 
 @app.command()
-def server():
-    """Starts the Colang Flows server."""
+def server(
+    port: int = typer.Option(
+        default=8000, help="The port that the server should listen on. "
+    ),
+):
+    """Starts a Colang Flows server."""
 
-    typer.echo("Not yet implemented.")
+    uvicorn.run(api.app, port=port, log_level="info", host="0.0.0.0")

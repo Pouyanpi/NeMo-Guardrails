@@ -118,26 +118,75 @@ For testing purposes, the Colang Flows framework provides a command line chat th
 
 ## Server
 
-** NOTE: not yet implemented **
-
 An rails server exposes multiple "railed LLM endpoints". Each endpoint can have a different rail configuration.
 
 ```
-> colangflows server --config=...
+> colangflows server
 
-Listening on port 8080.
+INFO:     Started server process
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 ```
 
+By default, the server will use the example rails configuration and listen on port 8000.
+
+### Chat UI
+
+The server exposes a simple chat UI that can be used to interact with a rails configuration. The chat UI is available at `http://localhost:8000`.
+
+![Chat UI Screenshot](docs/images/chat-ui-screenshot.png)
+
+### Endpoints
+
+The OpenAPI specification for the server is available at `http://localhost:8000/redoc` or `http://localhost:8000/docs`.
+
+To list the available rails configurations for a Colang Flows server, use the `/v1/rails/configs` endpoint:
+
 ```
-POST /{RAIL_CONFIG_ID}/completions
-POST /{RAIL_CONFIG_ID}/chat/completions
+GET /v1/rails/configs
+```
+
+Sample response:
+```json
+[
+  {"id":"general"},
+  {"id":"benefits_co"},
+  {"id":"game"},
+  {"id":"math"},
+  {"id":"fact_checking"},
+  {"id":"benefits"}
+]
+```
+
+To get the completion for a chat session, uses the `/v1/chat/completions` endpoint:
+```
+POST /v1/chat/completions
+```
+```json
+{
+    "config_id": "benefits_co",
+    "messages": [{
+      "role":"user",
+      "content":"Hello! What can you do for me?"
+    }]
+}
+```
+
+Sample response:
+
+```json
+[{
+  "role": "bot",
+  "content": "I can help you with your benefits questions. What can I help you with?"
+}]
 ```
 
 ## Playground
 
-The Colang playground can be used to create a rails configuration.
+**NOTE: not yet implemented**.
 
-**TODO**: explain how (after decoupling from Firebase).
+The Colang Flows playground can be used to create rails configurations.
 
 ```
 > colangflows playground start
