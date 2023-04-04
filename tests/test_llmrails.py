@@ -74,6 +74,7 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_user_intent",
+            "context_updates": None,
             "events": [{"intent": "express greeting", "type": "user_intent"}],
             "is_system_action": True,
             "return_value": None,
@@ -89,6 +90,7 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_bot_message",
+            "context_updates": {},
             "events": [{"content": "Hello! How are you?", "type": "bot_said"}],
             "is_system_action": True,
             "return_value": None,
@@ -103,6 +105,7 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_next_step",
+            "context_updates": None,
             "events": None,
             "is_system_action": True,
             "return_value": None,
@@ -125,6 +128,7 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_user_intent",
+            "context_updates": None,
             "events": [{"intent": "ask math question", "type": "user_intent"}],
             "is_system_action": True,
             "return_value": None,
@@ -135,6 +139,7 @@ async def test_1(rails_config):
         {"action_name": "compute", "is_system_action": False, "type": "start_action"},
         {
             "action_name": "compute",
+            "context_updates": None,
             "events": [],
             "is_system_action": False,
             "return_value": 5,
@@ -149,12 +154,14 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_bot_message",
+            "context_updates": {"relevant_chunks": ""},
             "events": [{"content": "The answer is 5", "type": "bot_said"}],
             "is_system_action": True,
             "return_value": None,
             "status": "success",
             "type": "action_finished",
         },
+        {"data": {"relevant_chunks": ""}, "type": "context_update"},
         {"content": "The answer is 5", "type": "bot_said"},
         {"intent": "ask if user happy", "type": "bot_intent"},
         {
@@ -164,6 +171,7 @@ async def test_1(rails_config):
         },
         {
             "action_name": "generate_bot_message",
+            "context_updates": {"relevant_chunks": ""},
             "events": [
                 {"content": "Are you happy with the result?", "type": "bot_said"}
             ],
@@ -172,6 +180,7 @@ async def test_1(rails_config):
             "status": "success",
             "type": "action_finished",
         },
+        {"data": {"relevant_chunks": ""}, "type": "context_update"},
         {"content": "Are you happy with the result?", "type": "bot_said"},
         {"type": "listen"},
     ]

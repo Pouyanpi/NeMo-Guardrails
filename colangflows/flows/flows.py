@@ -119,6 +119,18 @@ def compute_next_state(state: State, event: dict) -> State:
     if event["type"] == "start_action":
         return state
 
+    # Also, we don't need to do anything on `context_update` events.
+    if event["type"] == "context_update":
+        state.next_step = None
+        return state
+
+    # We update the context with the new data
+    if event["type"] == "context_update":
+        # TODO: add support to also remove keys from the context.
+        #  maybe with a special context key e.g. "__remove__": ["key1", "key2"]
+        state.context.update(event["data"])
+        return state
+
     # Initialize the new state
     new_state = State(
         context=state.context, flow_states=[], flow_configs=state.flow_configs
@@ -279,11 +291,27 @@ def compute_next_state(state: State, event: dict) -> State:
                             next_step_priority = flow_config.priority
                     break
 
-    # If the current event was an "action_finished" with an event attached, the next
-    # step is always that creation of that event.
-    if event["type"] == "action_finished" and event.get("events"):
-        # NOTE: we only support one event per action_finished event
-        new_state.next_step = {"create_event": event["events"][0]}
+    # If the current event was an "action_finished" with events/context updates attached,
+    # the next step is always that creation of that event.
+    if event["type"] == "action_finished" and (
+        event.get("events") or event.get("context_updates")
+    ):
+        new_events = []
+
+        # If we have context updates, we first generate the event for that
+        if event.get("context_updates"):
+            new_events.append(
+                {
+                    "type": "context_update",
+                    "data": event["context_updates"],
+                }
+            )
+
+        # Next, we add the actual events decided by the action
+        if event.get("events"):
+            new_events.extend(event["events"])
+
+        new_state.next_step = {"create_events": new_events}
 
     return new_state
 
@@ -298,3 +326,27 @@ def compute_next_step(
         state = compute_next_state(state, event)
 
     return state.next_step
+
+
+def compute_context(history: List[dict]):
+    """Computes the context given a history of events.
+
+    # We also include a few special context variables:
+    - $last_user_message: the last message sent by the user.
+    - $last_bot_message: the last message sent by the bot.
+    """
+    context = {
+        "last_user_message": None,
+        "last_bot_message": None,
+    }
+
+    for event in history:
+        if event["type"] == "context_update":
+            context.update(event["data"])
+
+        if event["type"] == "user_said":
+            context["last_user_message"] = event["content"]
+        elif event["type"] == "bot_said":
+            context["last_bot_message"] = event["content"]
+
+    return context

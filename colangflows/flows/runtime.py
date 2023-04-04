@@ -6,7 +6,7 @@ from typing import List, Optional
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
 from colangflows.actions.math import wolfram_alpha_request
-from colangflows.flows.flows import FlowConfig, compute_next_step
+from colangflows.flows.flows import FlowConfig, compute_context, compute_next_step
 from colangflows.rails.llm.config import RailsConfig
 
 log = logging.getLogger(__name__)
@@ -90,11 +90,11 @@ class Runtime:
             # print the array of events in JSON format
             # print(f"\033[91m{json.dumps(events, indent=True)}\033[0m")
 
-            next_event = None
+            next_events = None
 
             # If we need to execute an action, we start doing that.
             if last_event["type"] == "start_action":
-                next_event = await self._process_start_action(events)
+                next_events = [await self._process_start_action(events)]
             else:
                 # We need to slide all the flows based on the current event,
                 # to compute the next step.
@@ -104,7 +104,9 @@ class Runtime:
                     next_step_type = list(next_step.keys())[0]
 
                     if next_step_type == "bot":
-                        next_event = {"type": "bot_intent", "intent": next_step["bot"]}
+                        next_events = [
+                            {"type": "bot_intent", "intent": next_step["bot"]}
+                        ]
 
                     elif next_step_type == "execute":
                         action_name = next_step["execute"]
@@ -116,24 +118,26 @@ class Runtime:
                                 "is_system_action", False
                             )
 
-                        next_event = {
-                            "type": "start_action",
-                            "is_system_action": is_system_action,
-                            "action_name": next_step["execute"],
-                        }
+                        next_events = [
+                            {
+                                "type": "start_action",
+                                "is_system_action": is_system_action,
+                                "action_name": next_step["execute"],
+                            }
+                        ]
 
-                    elif next_step_type == "create_event":
-                        next_event = next_step["create_event"]
+                    elif next_step_type == "create_events":
+                        next_events = next_step["create_events"]
 
                 else:
-                    next_event = {"type": "listen"}
+                    next_events = [{"type": "listen"}]
 
             # Otherwise, we append the event and continue the processing.
-            events.append(next_event)
-            new_events.append(next_event)
+            events.extend(next_events)
+            new_events.extend(next_events)
 
             # If the next event is a listen, we stop the processing.
-            if next_event["type"] == "listen":
+            if next_events[-1]["type"] == "listen":
                 break
 
         return new_events
@@ -160,24 +164,7 @@ class Runtime:
             }
 
         # TODO: pass parameters and context
-        context = {}
-
-        # Quick hack to add the last user message
-        context["last_user_message"] = None
-        context["last_bot_message"] = None
-
-        i = len(events) - 1
-        while i >= 0:
-            if (
-                events[i]["type"] == "user_said"
-                and context["last_user_message"] is None
-            ):
-                context["last_user_message"] = events[i]["content"]
-
-            if events[i]["type"] == "bot_said" and context["last_bot_message"] is None:
-                context["last_bot_message"] = events[i]["content"]
-
-            i -= 1
+        context = compute_context(events)
 
         fn = self.registered_actions[action_name]
         action_meta = getattr(fn, "action_meta", {})
@@ -185,25 +172,29 @@ class Runtime:
         # We only pass the parameters that are required
         kwargs = {}
 
-        # Check if fn has a parameter called "runtime"
-        if "runtime" in inspect.signature(fn).parameters:
-            kwargs["runtime"] = self
-
-        if "events" in inspect.signature(fn).parameters:
+        parameters = inspect.signature(fn).parameters
+        if "events" in parameters:
             kwargs["events"] = events
 
-        if "context" in inspect.signature(fn).parameters:
+        if "context" in parameters:
             kwargs["context"] = context
+
+        # Add any additional registered parameters
+        for k, v in self.registered_action_params.items():
+            if k in parameters:
+                kwargs[k] = v
 
         # TODO: here we'll need to call the Actions Server if it is available.
         result = await fn(**kwargs)
 
         return_value = result
         return_events = []
+        context_updates = None
 
         if isinstance(result, ActionResult):
             return_value = result.return_value
             return_events = result.events
+            context_updates = result.context_updates
 
         return {
             "type": "action_finished",
@@ -211,5 +202,6 @@ class Runtime:
             "status": "success",
             "return_value": return_value,
             "events": return_events,
+            "context_updates": context_updates,
             "is_system_action": action_meta.get("is_system_action", False),
         }

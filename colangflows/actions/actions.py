@@ -21,3 +21,6 @@ class ActionResult:
 
     # The events that should be added to the stream
     events: Optional[List[dict]] = None
+
+    # The updates made to the context by this action
+    context_updates: Optional[dict] = None
