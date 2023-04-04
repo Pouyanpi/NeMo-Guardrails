@@ -276,6 +276,7 @@ class LLMGenerationActions:
         assert event["type"] == "bot_intent"
 
         bot_intent = event["intent"]
+        context_updates = {}
 
         if bot_intent in self.config.bot_messages:
             # Choose a message randomly from self.config.bot_messages[bot_message]
@@ -304,6 +305,9 @@ class LLMGenerationActions:
 
                 relevant_chunks = "\n".join([chunk["body"] for chunk in chunks])
 
+            # Storing the relevant chunks in the context, for later use.
+            context_updates["relevant_chunks"] = relevant_chunks
+
             # Otherwise, we generate a message with the LLM
             bot_message_prompt = PromptTemplate(
                 input_variables=["history", "examples", "relevant_chunks"],
@@ -328,4 +332,7 @@ class LLMGenerationActions:
 
             log.info("Generated bot message: " + bot_utterance)
 
-        return ActionResult(events=[{"type": "bot_said", "content": bot_utterance}])
+        return ActionResult(
+            events=[{"type": "bot_said", "content": bot_utterance}],
+            context_updates=context_updates,
+        )

@@ -2,17 +2,17 @@ import logging
 import random
 from typing import Optional
 
+from langchain.llms import BaseLLM
+
 log = logging.getLogger(__name__)
 
 
 async def check_facts(
     query: Optional[str] = None,
     context: Optional[dict] = None,
-    runtime: Optional["Runtime"] = None,
+    llm: Optional[BaseLLM] = None,
 ):
     """Checks the facts for the bot response."""
-
-    llm = runtime.llm
 
     # TODO: fetch the relevant chunks
     #  they should be in context["relevant_chunks"]
