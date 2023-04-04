@@ -1,4 +1,5 @@
 import logging
+from typing import List
 
 import typer
 import uvicorn
@@ -11,8 +12,8 @@ app = typer.Typer()
 
 @app.command()
 def chat(
-    config: str = typer.Option(
-        default="config",
+    config: List[str] = typer.Option(
+        default=["config"],
         exists=True,
         help="A configuration file to use.",
     ),
@@ -25,8 +26,13 @@ def chat(
     if verbose:
         logging.basicConfig(level=logging.INFO)
 
+    if len(config) > 1:
+        typer.secho(f"Multiple configurations are not supported.", fg=typer.colors.RED)
+        typer.echo("Please provide a single .yml file or a folder.")
+        raise typer.Exit(1)
+
     typer.echo("Starting the chat...")
-    run_chat(config_path=config, verbose=verbose)
+    run_chat(config_path=config[0], verbose=verbose)
 
 
 @app.command()
