@@ -182,6 +182,37 @@ Sample response:
 }]
 ```
 
+
+## Actions Server
+
+**NOTE: not yet implemented**.
+
+To start the action server:
+```
+> colangflows actions server
+```
+
+To have a server connect to an action server, use the `--actions-server-url` argument.
+
+```
+> colangflows server --actions-server-url=http://localhost:8001
+```
+
+To have the chat connect to an action server:
+```
+> colangflows chat --actions-server-url=http://localhost:8001
+```
+
+To connect a `LLMRails` instance to an action server, include the `actions_server_url` in the rails configuration:
+
+```yaml
+...
+
+# Configure the URL for the action server.
+actions_server_url: http://localhost:8001
+...
+```
+
 ## Playground
 
 **NOTE: not yet implemented**.

@@ -74,6 +74,11 @@ class RailsConfig(BaseModel):
         description="List of documents that should be used for question answering.",
     )
 
+    actions_server_url: Optional[str] = Field(
+        default=None,
+        description="The URL of the actions server that should be used for the rails.",
+    )
+
     @staticmethod
     def from_path(config_path: str):
         """Loads a configuration from a given path.
