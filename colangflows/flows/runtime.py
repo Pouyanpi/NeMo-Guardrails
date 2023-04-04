@@ -25,6 +25,9 @@ class Runtime:
             "check facts": check_facts,
         }
 
+        # The list of additional parameters that can be passed to the actions.
+        self.registered_action_params = {}
+
         self._init_flow_configs()
 
     def _init_flow_configs(self):
@@ -70,6 +73,14 @@ class Runtime:
 
             if hasattr(val, "action_meta"):
                 self.register_action(val)
+
+    def register_action_param(self, name: str, value: any):
+        """Registers an additional parameter that can be passed to the actions.
+
+        :param name: The name of the parameter.
+        :param value: The value of the parameter.
+        """
+        self.registered_action_params[name] = value
 
     async def generate_events(self, events: List[dict]) -> List[dict]:
         """Generates the next events based on the provided history.
