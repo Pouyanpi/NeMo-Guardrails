@@ -168,6 +168,13 @@ class Runtime:
 
         # We also add the "special" parameters.
         parameters = inspect.signature(fn).parameters
+
+        if "runtime" in inspect.signature(fn).parameters:
+            kwargs["runtime"] = self
+
+        if "llm" in parameters:
+            kwargs["llm"] = self.llm
+
         if "events" in parameters:
             kwargs["events"] = events
 

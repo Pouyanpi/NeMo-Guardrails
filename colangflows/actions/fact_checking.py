@@ -2,6 +2,7 @@ import logging
 import random
 from typing import Optional
 
+from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
 
 log = logging.getLogger(__name__)
@@ -16,10 +17,22 @@ async def check_facts(
 
     # TODO: fetch the relevant chunks
     #  they should be in context["relevant_chunks"]
-    relevant_chunks = context.get("relevant_chunks", [])
-    last_bot_message = context.get("last_bot_message")
+    evidence = context.get("relevant_chunks", [])
+    bot_response = context.get("last_bot_message")
 
-    # TODO: use the LLM instance to check the facts.
+    if evidence:
+        fact_check_template = 'you are given a task to identify if the hypothesis is grounded and entailed to the evidence. you will only use the contents of the evidence and not rely on external knowledge. Answer with yes/no. "evidence": {evidence} "hypothesis": {response} "entails":'
 
-    # Provide a random response of whether the answer is correct or not
-    return random.choice(["The response is correct.", "The answer is not correct."])
+        prompt = PromptTemplate(
+            template=fact_check_template, input_variables=["evidence", "response"]
+        )
+
+        fact_check_chain = LLMChain(prompt=prompt, llm=llm)
+        entails = fact_check_chain.predict(evidence=evidence, response=bot_response)
+
+        entails = entails.lower().strip()
+        log.info(f"Entailment result is {entails}.")
+
+        if "yes" in entails:
+            return "The response is correct."
+    return "The response is unverified. Inform user you are not sure."
