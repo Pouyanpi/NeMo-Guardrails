@@ -23,7 +23,7 @@ class FlowConfig:
     is_extension: bool = False
 
     # The events that can trigger this flow to advance.
-    trigger_event_types = ["user_intent", "bot_intent", "action_finished"]
+    trigger_event_types = ["user_intent", "bot_intent", "run_action", "action_finished"]
 
 
 class FlowStatus(Enum):
@@ -74,31 +74,53 @@ class State:
 
 def _is_actionable(element: dict) -> bool:
     """Checks if the given element is actionable."""
-    return ("bot" in element and element["bot"] != "...") or "execute" in element
+    if element["_type"] == "run_action":
+        if (
+            element["action_name"] == "utter"
+            and element["action_params"]["value"] == "..."
+        ):
+            return False
+
+        return True
+
+    return False
 
 
 def _is_match(element: dict, event: dict) -> bool:
     """Checks if the given element matches the given event."""
 
     # The element type is the first key in the element dictionary
-    element_type = list(element.keys())[0]
+    element_type = element["_type"]
 
     if event["type"] == "user_intent":
-        return element_type == "user" and (
-            element["user"] == "..." or element["user"] == event["intent"]
+        return element_type == "user_intent" and (
+            element["intent_name"] == "..." or element["intent_name"] == event["intent"]
         )
 
     elif event["type"] == "bot_intent":
-        return element_type == "bot" and (
-            element["bot"] == "..." or element["bot"] == event["intent"]
+        return (
+            element_type == "run_action"
+            and element["action_name"] == "utter"
+            and (
+                element["action_params"]["value"] == "..."
+                or element["action_params"]["value"] == event["intent"]
+            )
         )
 
     elif event["type"] == "action_finished":
-        return element_type == "execute" and element["execute"] == event["action_name"]
+        return (
+            element_type == "run_action"
+            and element["action_name"] == event["action_name"]
+        )
 
     elif event["type"] == "user_said":
         return element_type == "user_said" and (
-            element["user_said"] == "..." or element["user_said"] == event["content"]
+            element["content"] == "..." or element["content"] == event["content"]
+        )
+
+    elif event["type"] == "bot_said":
+        return element_type == "bot_said" and (
+            element["content"] == "..." or element["content"] == event["content"]
         )
 
     return False
@@ -119,17 +141,11 @@ def compute_next_state(state: State, event: dict) -> State:
     if event["type"] == "start_action":
         return state
 
-    # Also, we don't need to do anything on `context_update` events.
-    if event["type"] == "context_update":
-        state.next_step = None
-        return state
-
     # We update the context with the new data
     if event["type"] == "context_update":
         # TODO: add support to also remove keys from the context.
         #  maybe with a special context key e.g. "__remove__": ["key1", "key2"]
         state.context.update(event["data"])
-        return state
 
     # Initialize the new state
     new_state = State(
@@ -257,7 +273,7 @@ def compute_next_state(state: State, event: dict) -> State:
         ):
             flow_state.interrupted_by = next_step_by_flow_uid
 
-    # If we have aborted flows, and the current flow is an extension, when we interrupt them.
+    # We compute the decision flow config and state
     decision_flow_config = None
     for flow_state in new_state.flow_states:
         if flow_state.uid == next_step_by_flow_uid:
@@ -292,26 +308,31 @@ def compute_next_state(state: State, event: dict) -> State:
                     break
 
     # If the current event was an "action_finished" with events/context updates attached,
-    # the next step is always that creation of that event.
+    # the next step is always that creation of that event. The same is true if the return
+    # value needs to be saved in a context var.
     if event["type"] == "action_finished" and (
-        event.get("events") or event.get("context_updates")
+        event.get("events")
+        or event.get("context_updates")
+        or event.get("action_result_key")
     ):
         new_events = []
+        context_updates = {}
 
         # If we have context updates, we first generate the event for that
         if event.get("context_updates"):
-            new_events.append(
-                {
-                    "type": "context_update",
-                    "data": event["context_updates"],
-                }
-            )
+            context_updates.update(event["context_updates"])
+
+        if event.get("action_result_key"):
+            context_updates[event["action_result_key"]] = event["return_value"]
+
+        if context_updates:
+            new_events.append({"type": "context_update", "data": context_updates})
 
         # Next, we add the actual events decided by the action
         if event.get("events"):
             new_events.extend(event["events"])
 
-        new_state.next_step = {"create_events": new_events}
+        new_state.next_step = {"_type": "create_events", "events": new_events}
 
     return new_state
 

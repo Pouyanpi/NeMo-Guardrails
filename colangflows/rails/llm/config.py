@@ -6,6 +6,7 @@ import yaml
 from pydantic import BaseModel
 from pydantic.fields import Field
 
+from colangflows.language.coyml_parser import parse_flow_elements
 from colangflows.language.parser import parse_colang_file
 
 
@@ -90,6 +91,7 @@ class RailsConfig(BaseModel):
         if config_path.endswith(".yaml") or config_path.endswith(".yml"):
             with open(config_path) as f:
                 raw_config = yaml.safe_load(f.read())
+
         elif os.path.isdir(config_path):
             # Iterate all .yml files and join them
             raw_config = {}
@@ -115,6 +117,7 @@ class RailsConfig(BaseModel):
                     elif file.endswith(".yml") or file.endswith(".yaml"):
                         with open(full_path) as f:
                             _raw_config = yaml.safe_load(f.read())
+
                     elif file.endswith(".co"):
                         with open(full_path) as f:
                             _raw_config = parse_colang_file(file, content=f.read())
@@ -150,4 +153,15 @@ class RailsConfig(BaseModel):
         else:
             raise Exception(f"Invalid config path {config_path}.")
 
-        return RailsConfig.parse_obj(raw_config)
+        return RailsConfig.parse_object(raw_config)
+
+    @classmethod
+    def parse_object(cls, obj):
+        """Parses a configuration object from a given dictionary."""
+        # If we have flows, we need to process them further from CoYML to CIL.
+        for flow_data in obj.get("flows", []):
+            # If the first element in the flow does not have a "_type", we need to convert
+            if flow_data.get("elements") and not flow_data["elements"][0].get("_type"):
+                flow_data["elements"] = parse_flow_elements(flow_data["elements"])
+
+        return RailsConfig.parse_obj(obj)

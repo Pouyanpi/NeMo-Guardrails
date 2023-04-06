@@ -9,6 +9,7 @@ from langchain.llms import BaseLLM, OpenAI
 
 from colangflows.actions.llm.generation import LLMGenerationActions
 from colangflows.flows.runtime import Runtime
+from colangflows.language.coyml_parser import parse_flow_elements
 from colangflows.llm.nemollm import NeMoLLM
 from colangflows.rails.llm.config import RailsConfig
 
@@ -29,6 +30,11 @@ class LLMRails:
         default_flows_path = os.path.join(current_folder, "llm_flows.yml")
         with open(default_flows_path, "r") as f:
             default_flows = yaml.safe_load(f)["flows"]
+            for flow_data in default_flows:
+                if flow_data.get("elements") and not flow_data["elements"][0].get(
+                    "_type"
+                ):
+                    flow_data["elements"] = parse_flow_elements(flow_data["elements"])
 
         # We add the default flows to the config.
         self.config.flows.extend(default_flows)

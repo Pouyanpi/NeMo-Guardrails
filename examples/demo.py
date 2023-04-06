@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO)
 
 def demo():
     """Quick demo using LLMRails with config from dict."""
-    config = RailsConfig.parse_obj(
+    config = RailsConfig.parse_object(
         {
             "models": [
                 {"type": "main", "engine": "openai", "model": "text-davinci-003"}
