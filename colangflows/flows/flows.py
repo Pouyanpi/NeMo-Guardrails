@@ -275,11 +275,20 @@ def compute_next_state(state: State, event: dict) -> State:
 
     # We compute the decision flow config and state
     decision_flow_config = None
+    decision_flow_state = None
+
     for flow_state in new_state.flow_states:
         if flow_state.uid == next_step_by_flow_uid:
             decision_flow_config = state.flow_configs[flow_state.flow_id]
+            decision_flow_state = flow_state
 
-    if decision_flow_config and decision_flow_config.is_extension:
+    # If we have aborted flows, and the current flow is an extension, when we interrupt them.
+    # We are only interested when the extension flow actually decided, not just started.
+    if (
+        decision_flow_config
+        and decision_flow_config.is_extension
+        and decision_flow_state.head > 1
+    ):
         for flow_state in new_state.flow_states:
             if flow_state.status == FlowStatus.ABORTED:
                 flow_state.status = FlowStatus.INTERRUPTED
