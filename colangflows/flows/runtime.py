@@ -167,6 +167,10 @@ class Runtime:
             if next_events[-1]["type"] == "listen":
                 break
 
+            # As a safety measure, we stop the processing if we have too many events.
+            if len(new_events) > 100:
+                raise Exception("Too many events.")
+
         return new_events
 
     async def compute_next_step(self, events: List[dict]) -> dict:
