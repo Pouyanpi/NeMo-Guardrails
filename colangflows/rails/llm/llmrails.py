@@ -44,7 +44,7 @@ class LLMRails:
 
         # Next, we initialize the LLM engine.
         self._init_llm()
-        self.runtime.llm = self.llm
+        self.runtime.register_action_param("llm", llm)
 
         # Next, we initialize the LLM Generate actions and register them.
         actions = LLMGenerationActions(config=config, llm=self.llm, verbose=verbose)
