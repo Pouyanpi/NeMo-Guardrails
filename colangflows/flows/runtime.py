@@ -6,7 +6,6 @@ from typing import List, Optional
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
 from colangflows.actions.math import wolfram_alpha_request
-from colangflows.actions.jailbreak_check import check_jailbreak
 from colangflows.flows.flows import FlowConfig, compute_context, compute_next_step
 from colangflows.rails.llm.config import RailsConfig
 
@@ -23,8 +22,7 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check facts": check_facts,
-            "check jailbreak": check_jailbreak
+            "check facts": check_facts
         }
 
         # The list of additional parameters that can be passed to the actions.
