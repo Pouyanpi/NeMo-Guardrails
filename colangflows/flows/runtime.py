@@ -22,7 +22,7 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check facts": check_facts,
+            "check facts": check_facts
         }
 
         # The list of additional parameters that can be passed to the actions.
@@ -212,7 +212,7 @@ class Runtime:
 
         if "context" in parameters:
             kwargs["context"] = context
-
+        
         # Add any additional registered parameters
         for k, v in self.registered_action_params.items():
             if k in parameters:
