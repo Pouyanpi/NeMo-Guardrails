@@ -1,0 +1,19 @@
+define user express greeting
+  "hi"
+  "hello"
+  "hey"
+
+define user request help
+  "I need help"
+  "Can you help me with something?"
+
+define flow
+  user express greeting
+  $account = execute fetch_profile
+  bot express greeting
+
+define bot express greeting
+  "Hello!"
+
+define bot offer to help
+  "How can I help you today?"
