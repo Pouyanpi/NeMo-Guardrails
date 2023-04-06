@@ -218,6 +218,13 @@ class Runtime:
             if k in parameters:
                 kwargs[k] = v
 
+        # If there are parameters which are variables, we replace with actual values.
+        for k, v in kwargs.items():
+            if isinstance(v, str) and v.startswith("$"):
+                var_name = v[1:]
+                if var_name in context:
+                    kwargs[k] = context[var_name]
+
         # TODO: here we'll need to call the Actions Server if it is available.
         result = await fn(**kwargs)
 

@@ -13,13 +13,8 @@ def rails_config():
     return RailsConfig.from_path(os.path.join(TEST_CONFIGS_PATH, "simple_actions"))
 
 
-@pytest.mark.asyncio
-async def test_action_execution_with_result(rails_config):
-    llm = FakeLLM(
-        responses=[
-            "  express greeting",
-        ]
-    )
+def _get_llm_rails(rails_config, llm):
+    """Helper to return a LLMRails instance."""
 
     llm_rails = LLMRails(config=rails_config, llm=llm)
 
@@ -28,10 +23,26 @@ async def test_action_execution_with_result(rails_config):
             "name": "John",
         }
 
+    async def check_access(account):
+        return account["name"] == "John"
+
     llm_rails.runtime.register_action(fetch_profile)
+    llm_rails.runtime.register_action(check_access)
+
+    return llm_rails
+
+
+@pytest.mark.asyncio
+async def test_action_execution_with_result(rails_config):
+    llm = FakeLLM(
+        responses=[
+            "  express greeting",
+        ]
+    )
+
+    llm_rails = _get_llm_rails(rails_config, llm)
 
     events = [{"type": "user_said", "content": "Hello!"}]
-
     new_events = await llm_rails.runtime.generate_events(events)
 
     assert new_events == [
@@ -95,3 +106,22 @@ async def test_action_execution_with_result(rails_config):
         {"content": "Hello!", "type": "bot_said"},
         {"type": "listen"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_action_execution_with_parameter(rails_config):
+    llm = FakeLLM(
+        responses=["  express greeting", "  request access", '  "Access granted!"']
+    )
+
+    llm_rails = _get_llm_rails(rails_config, llm)
+
+    events = [{"type": "user_said", "content": "hello!"}]
+    new_events = await llm_rails.runtime.generate_events(events)
+    events.extend(new_events)
+
+    events.append({"type": "user_said", "content": "Please let me in"})
+    new_events = await llm_rails.runtime.generate_events(events)
+
+    # We check that is_allowed was correctly set to True
+    assert {"data": {"is_allowed": True}, "type": "context_update"} in new_events
