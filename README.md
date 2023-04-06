@@ -169,7 +169,12 @@ Sample response:
 
 To start the action server:
 ```
-> colangflows actions server
+> colangflows actions-server
+
+INFO:     Started server process [1256309]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
 ```
 
 To have a server connect to an action server, use the `--actions-server-url` argument.

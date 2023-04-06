@@ -4,6 +4,7 @@ from typing import List
 import typer
 import uvicorn
 
+from colangflows.actions_server import actions_server
 from colangflows.cli.chat import run_chat
 from colangflows.server import api
 
@@ -44,3 +45,14 @@ def server(
     """Starts a Colang Flows server."""
 
     uvicorn.run(api.app, port=port, log_level="info", host="0.0.0.0")
+
+
+@app.command("actions-server")
+def action_server(
+    port: int = typer.Option(
+        default=8001, help="The port that the server should listen on. "
+    ),
+):
+    """Starts a Colang Flows actions server."""
+
+    uvicorn.run(actions_server.app, port=port, log_level="info", host="0.0.0.0")
