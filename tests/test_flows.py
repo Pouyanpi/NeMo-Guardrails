@@ -6,27 +6,51 @@ FLOW_CONFIGS = {
     "greeting": FlowConfig(
         id="greeting",
         elements=[
-            {"user": "express greeting"},
-            {"bot": "express greeting"},
-            {"user": "ask capabilities"},
-            {"bot": "inform capabilities"},
+            {"_type": "user_intent", "intent_name": "express greeting"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "express greeting"},
+            },
+            {"_type": "user_intent", "intent_name": "ask capabilities"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "inform capabilities"},
+            },
         ],
     ),
     "benefits": FlowConfig(
         id="benefits",
         elements=[
-            {"user": "ask about benefits"},
-            {"bot": "respond about benefits"},
-            {"bot": "ask if user happy"},
+            {"_type": "user_intent", "intent_name": "ask about benefits"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "respond about benefits"},
+            },
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "ask if user happy"},
+            },
         ],
     ),
     "math": FlowConfig(
         id="math",
         elements=[
-            {"user": "ask math question"},
-            {"execute": "wolfram alpha request"},
-            {"bot": "respond to math question"},
-            {"bot": "ask if user happy"},
+            {"_type": "user_intent", "intent_name": "ask math question"},
+            {"_type": "run_action", "action_name": "wolfram alpha request"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "respond to math question"},
+            },
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "ask if user happy"},
+            },
         ],
     ),
 }
@@ -43,7 +67,11 @@ def test_simple_sequence():
             "intent": "express greeting",
         },
     )
-    assert state.next_step == {"bot": "express greeting"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "express greeting"},
+    }
 
     state = compute_next_state(
         state,
@@ -61,7 +89,11 @@ def test_simple_sequence():
             "intent": "ask capabilities",
         },
     )
-    assert state.next_step == {"bot": "inform capabilities"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "inform capabilities"},
+    }
 
     state = compute_next_state(
         state,
@@ -98,7 +130,11 @@ def test_two_consecutive_bot_messages():
             "intent": "ask about benefits",
         },
     )
-    assert state.next_step == {"bot": "respond about benefits"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "respond about benefits"},
+    }
 
     state = compute_next_state(
         state,
@@ -107,7 +143,11 @@ def test_two_consecutive_bot_messages():
             "intent": "respond about benefits",
         },
     )
-    assert state.next_step == {"bot": "ask if user happy"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "ask if user happy"},
+    }
 
     state = compute_next_state(
         state,
@@ -130,7 +170,10 @@ def test_action_execution():
             "intent": "ask math question",
         },
     )
-    assert state.next_step == {"execute": "wolfram alpha request"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "wolfram alpha request",
+    }
 
     state = compute_next_state(
         state,
@@ -139,7 +182,11 @@ def test_action_execution():
             "action_name": "wolfram alpha request",
         },
     )
-    assert state.next_step == {"bot": "respond to math question"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "respond to math question"},
+    }
 
     state = compute_next_state(
         state,
@@ -148,7 +195,11 @@ def test_action_execution():
             "intent": "respond to math question",
         },
     )
-    assert state.next_step == {"bot": "ask if user happy"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "ask if user happy"},
+    }
 
     state = compute_next_state(
         state,
@@ -170,7 +221,11 @@ def test_flow_interruption():
             "intent": "express greeting",
         },
     )
-    assert state.next_step == {"bot": "express greeting"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "express greeting"},
+    }
 
     state = compute_next_state(
         state,
@@ -188,7 +243,11 @@ def test_flow_interruption():
             "intent": "ask about benefits",
         },
     )
-    assert state.next_step == {"bot": "respond about benefits"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "respond about benefits"},
+    }
 
     state = compute_next_state(
         state,
@@ -197,7 +256,11 @@ def test_flow_interruption():
             "intent": "respond about benefits",
         },
     )
-    assert state.next_step == {"bot": "ask if user happy"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "ask if user happy"},
+    }
 
     state = compute_next_state(
         state,
@@ -215,7 +278,11 @@ def test_flow_interruption():
             "intent": "ask capabilities",
         },
     )
-    assert state.next_step == {"bot": "inform capabilities"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "inform capabilities"},
+    }
 
     state = compute_next_state(
         state,

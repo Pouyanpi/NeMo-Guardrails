@@ -54,12 +54,16 @@ def flow_to_colang(flow: dict):
 
     """
 
+    # TODO: use the source code lines if available.
+
     colang_flow = ""
-    for step in flow["elements"]:
-        if "user" in step:
-            colang_flow += f'user {step["user"]}\n'
-        elif "bot" in step:
-            colang_flow += f'bot {step["bot"]}\n'
+    for element in flow["elements"]:
+        if "_type" not in element:
+            raise Exception("bla")
+        if element["_type"] == "user_intent":
+            colang_flow += f'user {element["intent_name"]}\n'
+        elif element["_type"] == "run_action" and element["action_name"] == "utter":
+            colang_flow += f'bot {element["action_params"]["value"]}\n'
 
     return colang_flow
 

@@ -5,6 +5,7 @@ from colangflows.language.colang_parser import (
     parse_snippets_and_imports,
 )
 from colangflows.language.comd_parser import parse_md_file
+from colangflows.language.coyml_parser import parse_flow_elements
 
 log = logging.getLogger(__name__)
 
@@ -17,7 +18,8 @@ def parse_colang_file(filename: str, content: str):
     )
 
     flows = []
-    for flow_id, elements in result["flows"].items():
+    for flow_id, items in result["flows"].items():
+        elements = parse_flow_elements(items)
         flows.append({"id": flow_id, "elements": elements})
 
     user_messages = {}

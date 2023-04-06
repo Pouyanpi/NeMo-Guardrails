@@ -23,27 +23,7 @@ Types of rails:
 - **Prompt Injection**: prevent user from hijacking the prompt;
 - **Data format**: output should follow a specific format e.g. JSON, possibly with some constraints.
 
-Rails can be defined [using plain YAML](docs/co-yml-format.md) or using [Colang](https://colang.nvidia.com).
-
-Quick example of topical rails config (using CoYML):
-
-```yaml
-user_messages:
-  ask about finance:
-    - "What stock should I invest in?"
-    - "Can you recommend a good strategy to beat the S&P?"
-
-bot_messages:
-  explain cant talk about financial advice:
-    - "As the official Benefits AI, I cannot provide personalized financial advice or stock recommendations. Stock markets are highly unpredictable and volatile, and investing in stocks carries a certain level of risk."
-
-flows:
-  - elements:
-    - user: ask about finance
-    - bot: explain cant provide financial advice
-```
-
-The same can be achieved using Colang:
+Rails can be defined using a YAML and Colang. Quick example of topical rails config:
 
 ```colang
 define user ask about finance:

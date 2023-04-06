@@ -8,7 +8,7 @@ from tests.utils import FakeLLM
 
 @pytest.fixture
 def rails_config():
-    return RailsConfig.parse_obj(
+    return RailsConfig.parse_object(
         {
             "models": [
                 {
@@ -69,11 +69,15 @@ async def test_1(rails_config):
     assert new_events == [
         {
             "action_name": "generate_user_intent",
+            "action_params": {},
+            "action_result_key": None,
             "is_system_action": True,
             "type": "start_action",
         },
         {
             "action_name": "generate_user_intent",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": None,
             "events": [{"intent": "express greeting", "type": "user_intent"}],
             "is_system_action": True,
@@ -85,11 +89,15 @@ async def test_1(rails_config):
         {"intent": "express greeting", "type": "bot_intent"},
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "is_system_action": True,
             "type": "start_action",
         },
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": {},
             "events": [{"content": "Hello! How are you?", "type": "bot_said"}],
             "is_system_action": True,
@@ -98,20 +106,6 @@ async def test_1(rails_config):
             "type": "action_finished",
         },
         {"content": "Hello! How are you?", "type": "bot_said"},
-        {
-            "action_name": "generate_next_step",
-            "is_system_action": True,
-            "type": "start_action",
-        },
-        {
-            "action_name": "generate_next_step",
-            "context_updates": None,
-            "events": None,
-            "is_system_action": True,
-            "return_value": None,
-            "status": "success",
-            "type": "action_finished",
-        },
         {"type": "listen"},
     ]
 
@@ -123,11 +117,15 @@ async def test_1(rails_config):
     assert new_events == [
         {
             "action_name": "generate_user_intent",
+            "action_params": {},
+            "action_result_key": None,
             "is_system_action": True,
             "type": "start_action",
         },
         {
             "action_name": "generate_user_intent",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": None,
             "events": [{"intent": "ask math question", "type": "user_intent"}],
             "is_system_action": True,
@@ -136,9 +134,17 @@ async def test_1(rails_config):
             "type": "action_finished",
         },
         {"intent": "ask math question", "type": "user_intent"},
-        {"action_name": "compute", "is_system_action": False, "type": "start_action"},
         {
             "action_name": "compute",
+            "action_params": {},
+            "action_result_key": None,
+            "is_system_action": False,
+            "type": "start_action",
+        },
+        {
+            "action_name": "compute",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": None,
             "events": [],
             "is_system_action": False,
@@ -149,11 +155,15 @@ async def test_1(rails_config):
         {"intent": "provide math response", "type": "bot_intent"},
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "is_system_action": True,
             "type": "start_action",
         },
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": {"relevant_chunks": ""},
             "events": [{"content": "The answer is 5", "type": "bot_said"}],
             "is_system_action": True,
@@ -166,11 +176,15 @@ async def test_1(rails_config):
         {"intent": "ask if user happy", "type": "bot_intent"},
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "is_system_action": True,
             "type": "start_action",
         },
         {
             "action_name": "generate_bot_message",
+            "action_params": {},
+            "action_result_key": None,
             "context_updates": {"relevant_chunks": ""},
             "events": [
                 {"content": "Are you happy with the result?", "type": "bot_said"}

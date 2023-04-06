@@ -112,15 +112,27 @@ class Runtime:
                 next_step = await self.compute_next_step(events)
 
                 if next_step:
-                    next_step_type = list(next_step.keys())[0]
+                    next_step_type = next_step["_type"]
+
+                    if (
+                        next_step_type == "run_action"
+                        and next_step["action_name"] == "utter"
+                    ):
+                        next_step_type = "bot"
 
                     if next_step_type == "bot":
                         next_events = [
-                            {"type": "bot_intent", "intent": next_step["bot"]}
+                            {
+                                "type": "bot_intent",
+                                "intent": next_step["action_params"]["value"],
+                            }
                         ]
 
-                    elif next_step_type == "execute":
-                        action_name = next_step["execute"]
+                    elif next_step_type == "run_action":
+                        action_name = next_step["action_name"]
+                        action_params = next_step.get("action_params", {})
+                        action_result_key = next_step.get("action_result_key")
+
                         is_system_action = False
                         fn = self.registered_actions.get(action_name)
                         if fn:
@@ -133,12 +145,16 @@ class Runtime:
                             {
                                 "type": "start_action",
                                 "is_system_action": is_system_action,
-                                "action_name": next_step["execute"],
+                                "action_name": action_name,
+                                "action_params": action_params,
+                                "action_result_key": action_result_key,
                             }
                         ]
 
                     elif next_step_type == "create_events":
-                        next_events = next_step["create_events"]
+                        next_events = next_step["events"]
+                    else:
+                        raise ValueError(f"Unknown next step type: {next_step_type}")
 
                 else:
                     next_events = [{"type": "listen"}]
@@ -150,6 +166,10 @@ class Runtime:
             # If the next event is a listen, we stop the processing.
             if next_events[-1]["type"] == "listen":
                 break
+
+            # As a safety measure, we stop the processing if we have too many events.
+            if len(new_events) > 100:
+                raise Exception("Too many events.")
 
         return new_events
 
@@ -165,6 +185,8 @@ class Runtime:
         event = events[-1]
 
         action_name = event["action_name"]
+        action_params = event["action_params"]
+        action_result_key = event["action_result_key"]
 
         if action_name not in self.registered_actions:
             return {
@@ -180,9 +202,10 @@ class Runtime:
         fn = self.registered_actions[action_name]
         action_meta = getattr(fn, "action_meta", {})
 
-        # We only pass the parameters that are required
-        kwargs = {}
+        # We pass all the parameters that are passed explicitly to the action.
+        kwargs = {**action_params}
 
+        # We also add the "special" parameters.
         parameters = inspect.signature(fn).parameters
         if "events" in parameters:
             kwargs["events"] = events
@@ -194,6 +217,13 @@ class Runtime:
         for k, v in self.registered_action_params.items():
             if k in parameters:
                 kwargs[k] = v
+
+        # If there are parameters which are variables, we replace with actual values.
+        for k, v in kwargs.items():
+            if isinstance(v, str) and v.startswith("$"):
+                var_name = v[1:]
+                if var_name in context:
+                    kwargs[k] = context[var_name]
 
         # TODO: here we'll need to call the Actions Server if it is available.
         result = await fn(**kwargs)
@@ -210,6 +240,8 @@ class Runtime:
         return {
             "type": "action_finished",
             "action_name": action_name,
+            "action_params": action_params,
+            "action_result_key": action_result_key,
             "status": "success",
             "return_value": return_value,
             "events": return_events,
