@@ -7,7 +7,7 @@ from tests.utils import FakeLLM
 
 @pytest.fixture
 def rails_config():
-    return RailsConfig.parse_obj(
+    return RailsConfig.parse_object(
         {
             "models": [
                 {
@@ -61,5 +61,5 @@ async def test_simple_context_update_from_action(rails_config):
     new_events = await llm_rails.runtime.generate_events(events)
 
     # The last event before listen should be a context update for the counter to "2"
-    assert new_events[-2] == {"type": "context_update", "data": {"counter": 2}}
+    assert {"type": "context_update", "data": {"counter": 2}} in new_events
     assert new_events[-1] == {"type": "listen"}

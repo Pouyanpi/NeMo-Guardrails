@@ -6,9 +6,17 @@ FLOW_CONFIGS = {
     "greeting": FlowConfig(
         id="greeting",
         elements=[
-            {"user": "express greeting"},
-            {"bot": "express greeting"},
-            {"bot": "offer to help"},
+            {"_type": "user_intent", "intent_name": "express greeting"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "express greeting"},
+            },
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "offer to help"},
+            },
         ],
     ),
     "greeting follow up": FlowConfig(
@@ -16,8 +24,16 @@ FLOW_CONFIGS = {
         is_extension=True,
         priority=2,
         elements=[
-            {"bot": "express greeting"},
-            {"bot": "comment random fact about today"},
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "express greeting"},
+            },
+            {
+                "_type": "run_action",
+                "action_name": "utter",
+                "action_params": {"value": "comment random fact about today"},
+            },
         ],
     ),
 }
@@ -34,7 +50,11 @@ def test_extension_flows_1():
             "intent": "express greeting",
         },
     )
-    assert state.next_step == {"bot": "express greeting"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "express greeting"},
+    }
 
     state = compute_next_state(
         state,
@@ -43,7 +63,11 @@ def test_extension_flows_1():
             "intent": "express greeting",
         },
     )
-    assert state.next_step == {"bot": "comment random fact about today"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "comment random fact about today"},
+    }
 
     state = compute_next_state(
         state,
@@ -52,7 +76,11 @@ def test_extension_flows_1():
             "intent": "comment random fact about today",
         },
     )
-    assert state.next_step == {"bot": "offer to help"}
+    assert state.next_step == {
+        "_type": "run_action",
+        "action_name": "utter",
+        "action_params": {"value": "offer to help"},
+    }
 
     state = compute_next_state(
         state,
