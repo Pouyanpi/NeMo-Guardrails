@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Dict, List, Optional
 
+from colangflows.flows.sliding import slide
+
 
 @dataclass
 class FlowConfig:
@@ -199,10 +201,14 @@ def compute_next_state(state: State, event: dict) -> State:
             # The flow can advance
             flow_state.head += 1
 
+            # We slide the flow until the next actionable element
+            flow_state.head = slide(state, flow_config, flow_state.head)
+
             new_state.flow_states.append(flow_state)
 
             # If we did not reach the end of the flow, we add it to the new state
-            if flow_state.head < len(flow_config.elements):
+            # (by convention, when we reach the end of the flow, the head is set to -1 * last head)
+            if flow_state.head >= 0:
                 # And if we don't have a next step yet, we set it to the next element
                 if (
                     new_state.next_step is None
@@ -232,15 +238,18 @@ def compute_next_state(state: State, event: dict) -> State:
         if flow_config.id in [fs.flow_id for fs in new_state.flow_states]:
             continue
 
+        # We try to slide first, just in case a flow starts with sliding logic
+        start_head = slide(state, flow_config, 0)
+
         # If the first element matches the current event, we start a new flow
-        if _is_match(flow_config.elements[0], event):
+        if _is_match(flow_config.elements[start_head], event):
             flow_uid = str(uuid.uuid4())
             new_state.flow_states.append(
-                FlowState(uid=flow_uid, flow_id=flow_config.id, head=1)
+                FlowState(uid=flow_uid, flow_id=flow_config.id, head=start_head + 1)
             )
 
             # And if we don't have a next step yet, we set it to the next element
-            flow_head_element = flow_config.elements[1]
+            flow_head_element = flow_config.elements[start_head + 1]
             if (
                 new_state.next_step is None or next_step_priority < flow_config.priority
             ) and _is_actionable(flow_head_element):
@@ -264,7 +273,7 @@ def compute_next_state(state: State, event: dict) -> State:
                     next_step_by_flow_uid = flow_state.uid
                     next_step_priority = flow_config.priority
 
-    # If there are any flows that have been interrupted in this interation, we consider
+    # If there are any flows that have been interrupted in this iteration, we consider
     # them to be interrupted by the flow that determined the next step.
     for flow_state in new_state.flow_states:
         if (

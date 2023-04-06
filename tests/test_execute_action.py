@@ -125,3 +125,20 @@ async def test_action_execution_with_parameter(rails_config):
 
     # We check that is_allowed was correctly set to True
     assert {"data": {"is_allowed": True}, "type": "context_update"} in new_events
+
+
+@pytest.mark.asyncio
+async def test_action_execution_with_if(rails_config):
+    llm = FakeLLM(responses=["  request access", '  "Access denied!"'])
+
+    llm_rails = _get_llm_rails(rails_config, llm)
+
+    events = [
+        {"type": "context_update", "data": {"account": {"name": "Josh"}}},
+        {"type": "user_said", "content": "Please let me in"},
+    ]
+
+    new_events = await llm_rails.runtime.generate_events(events)
+
+    # We check that is_allowed was correctly set to True
+    assert {"intent": "inform access denied", "type": "bot_intent"} in new_events
