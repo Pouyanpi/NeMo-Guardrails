@@ -212,6 +212,9 @@ class Runtime:
 
         if "context" in parameters:
             kwargs["context"] = context
+        
+        if "llm" in parameters:
+            kwargs["llm"] = self.llm
 
         # Add any additional registered parameters
         for k, v in self.registered_action_params.items():
