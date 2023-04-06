@@ -28,7 +28,6 @@ async def check_jailbreak(
         check = jailbreak_check_chain.predict(user_input=user_input)
 
         check = check.lower().strip()
-        import pdb; pdb.set_trace()
         log.info(f"Jailbreak check result is {check}.")
 
         if "yes" in check:

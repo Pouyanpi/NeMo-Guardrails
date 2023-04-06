@@ -13,8 +13,6 @@ user_messages:
 flows:
   - elements:
     - user: ...
-    - execute: check jailbreak
-    - bot: inform if jailbreak attempt  
     - bot: ...
     
 
@@ -22,7 +20,6 @@ flows:
     - user_said: ...
     - execute: check jailbreak
     - bot: inform if jailbreak attempt  
-    - bot: ...
 
 
 # Using OpenAI
