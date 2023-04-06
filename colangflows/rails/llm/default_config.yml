@@ -1,36 +1,3 @@
-# Rails config
-
-Below are the elements that should be configured using YAML:
-
-## The models
-
-The main model that will be used is configure as shown below:
-
-```yaml
-models:
-  - type: main
-    engine: openai
-    model: text-davinci-003
-```
-
-## General Instruction
-
-The general instruction (or system instruction) is the one that gets appended at the beginning of every prompt and you can configure it as shown below:
-
-```yaml
-instructions:
-  - type: general
-    content: |
-      Below is a conversation between the official Benefits AI bot and a user.
-      The bot is talkative and provides lots of specific details from its context.
-      If the bot does not know the answer to a question, it truthfully says it does not know.
-```
-
-## Sample Conversation
-
-The sample conversation sets the tone for how the conversation between the user and the bot should go. It will help the LLM learn better the format but also other things such us the tone of the conversation, or how verbose it should be. This should have a minimum of two turns. It also gets included in every prompt, so it should be kept short and relevant.
-
-```yaml
 sample_conversation: |
   user "Hello there!"
     express greeting
@@ -52,4 +19,11 @@ sample_conversation: |
     express appreciation
   bot express appreciation and offer additional help
     "You're welcome. If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."
-```
+
+instructions:
+  - type: "general"
+    content:
+      Below is a conversation between a helpful AI assistant and a user.
+      The bot is designed to generate human-like text based on the input that it receives.
+      The bot is talkative and provides lots of specific details.
+      If the bot does not know the answer to a question, it truthfully says it does not know.

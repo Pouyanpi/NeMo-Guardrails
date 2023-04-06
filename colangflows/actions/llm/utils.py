@@ -1,3 +1,4 @@
+import re
 from typing import List
 
 
@@ -75,3 +76,32 @@ def get_last_user_utterance(events: List[dict]):
             return event["content"]
 
     return None
+
+
+def remove_text_messages_from_history(history: str):
+    """Helper that given a history in colang format, removes all texts."""
+
+    # Get rid of messages from the user
+    history = re.sub(r'user "[^\n]+"\n {2}', "user ", history)
+
+    # Get rid of one line user messages
+    history = re.sub(r"^\s*user [^\n]+\n\n", "", history)
+
+    # Get rid of bot messages
+    history = re.sub(r'bot ([^\n]+)\n {2}"[\s\S]*?"', r"bot \1", history)
+
+    return history
+
+
+def get_first_nonempty_line(s: str):
+    if not s:
+        return None
+
+    if s[0] == "\n":
+        s = s[1:]
+
+    return s.split("\n")[0].strip()
+
+
+def print_completion(completion):
+    print(f"\033[42m\033[97m{completion}\033[0m")

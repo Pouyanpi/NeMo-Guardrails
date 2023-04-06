@@ -2,6 +2,7 @@
 
 import logging
 import random
+from functools import lru_cache
 from typing import List
 
 from langchain import LLMChain, PromptTemplate
@@ -11,7 +12,10 @@ from colangflows.actions.actions import ActionResult, action
 from colangflows.actions.llm.utils import (
     flow_to_colang,
     get_colang_history,
+    get_first_nonempty_line,
     get_last_user_utterance,
+    print_completion,
+    remove_text_messages_from_history,
 )
 from colangflows.kb.basic import BasicEmbeddingsIndex
 from colangflows.kb.index import IndexItem
@@ -120,6 +124,39 @@ class LLMGenerationActions:
         self.kb.init()
         self.kb.build()
 
+    def _get_general_instruction(self):
+        """Helper to extract the general instruction."""
+        text = ""
+        for instruction in self.config.instructions:
+            if instruction.type == "general":
+                text = instruction.content
+
+                # We stop at the first one for now
+                break
+
+        return text
+
+    @lru_cache
+    def _get_sample_conversation_two_turns(self):
+        """Helper to extract only the two turns from the sample conversation.
+
+        This is needed to be included to "seed" the conversation so that the model
+        can follow the format more easily.
+        """
+        lines = self.config.sample_conversation.split("\n")
+        i = 0
+        user_count = 0
+        while i < len(lines):
+            if lines[i].startswith("user "):
+                user_count += 1
+
+            if user_count == 3:
+                break
+
+            i += 1
+
+        return "\n".join(lines[0:i])
+
     @action(is_system_action=True)
     async def generate_user_intent(self, events: List[dict]):
         """Generate the canonical form for what the user said i.e. user intent."""
@@ -151,7 +188,13 @@ class LLMGenerationActions:
 
             # We have user messages, so we need to identify the canonical form.
             canonical_form_prompt = PromptTemplate(
-                input_variables=["history", "examples"],
+                input_variables=[
+                    "history",
+                    "examples",
+                    "sample_conversation",
+                    "general_instruction",
+                    "sample_conversation_two_turns",
+                ],
                 template=get_prompt(
                     self.config, Step.DETECT_USER_MESSAGE_CANONICAL_FORM
                 )["content"],
@@ -161,15 +204,27 @@ class LLMGenerationActions:
             chain = LLMChain(
                 prompt=canonical_form_prompt, llm=self.llm, verbose=self.verbose
             )
-            result = await chain.apredict(history=history, examples=examples)
-            if result[0] == "\n":
-                result = result[1:]
-            result = result.split("\n")[0].strip()
-            user_intent = result
+            result = await chain.apredict(
+                history=history,
+                examples=examples,
+                sample_conversation=self.config.sample_conversation,
+                general_instruction=self._get_general_instruction(),
+                sample_conversation_two_turns=self._get_sample_conversation_two_turns(),
+            )
+            if self.verbose:
+                print_completion(result)
+            user_intent = get_first_nonempty_line(result)
 
             log.info("Canonical form for user intent: " + user_intent)
 
-            return ActionResult(events=[{"type": "user_intent", "intent": user_intent}])
+            if user_intent is None:
+                return ActionResult(
+                    events=[{"type": "user_intent", "intent": "unknown message"}]
+                )
+            else:
+                return ActionResult(
+                    events=[{"type": "user_intent", "intent": user_intent}]
+                )
         else:
             # This is the pass-through behavior.
             # First, we compute the general instructions.
@@ -201,6 +256,8 @@ class LLMGenerationActions:
                 history=history,
                 stop=["User: "],
             )
+            if self.verbose:
+                print_completion(result)
 
             return ActionResult(
                 events=[{"type": "bot_said", "content": result.strip()}]
@@ -233,7 +290,13 @@ class LLMGenerationActions:
                     examples += f"{result.text}\n"
 
             predict_next_step_prompt = PromptTemplate(
-                input_variables=["history", "examples"],
+                input_variables=[
+                    "history",
+                    "examples",
+                    "sample_conversation",
+                    "general_instruction",
+                    "sample_conversation_two_turns",
+                ],
                 template=get_prompt(self.config, Step.PREDICT_NEXT_STEP)["content"],
             )
 
@@ -241,12 +304,23 @@ class LLMGenerationActions:
             chain = LLMChain(
                 prompt=predict_next_step_prompt, llm=self.llm, verbose=self.verbose
             )
-            result = await chain.apredict(history=history, examples=examples)
-            if result[0] == "\n":
-                result = result[1:]
-            result = result.split("\n")[0].strip()
+            result = await chain.apredict(
+                history=history,
+                examples=examples,
+                sample_conversation=remove_text_messages_from_history(
+                    self.config.sample_conversation
+                ),
+                general_instruction=self._get_general_instruction(),
+                sample_conversation_two_turns=remove_text_messages_from_history(
+                    self._get_sample_conversation_two_turns()
+                ),
+            )
+            if self.verbose:
+                print_completion(result)
 
-            if result.startswith("bot "):
+            result = get_first_nonempty_line(result)
+
+            if result and result.startswith("bot "):
                 next_step = {"bot": result[4:]}
             else:
                 next_step = {"bot": "general response"}
@@ -310,7 +384,14 @@ class LLMGenerationActions:
 
             # Otherwise, we generate a message with the LLM
             bot_message_prompt = PromptTemplate(
-                input_variables=["history", "examples", "relevant_chunks"],
+                input_variables=[
+                    "history",
+                    "examples",
+                    "sample_conversation",
+                    "general_instruction",
+                    "sample_conversation_two_turns",
+                    "relevant_chunks",
+                ],
                 template=get_prompt(self.config, Step.GENERATE_BOT_MESSAGE)["content"],
             )
 
@@ -318,21 +399,33 @@ class LLMGenerationActions:
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
             )
             result = await chain.apredict(
-                history=history, examples=examples, relevant_chunks=relevant_chunks
+                history=history,
+                examples=examples,
+                relevant_chunks=relevant_chunks,
+                sample_conversation=self.config.sample_conversation,
+                general_instruction=self._get_general_instruction(),
+                sample_conversation_two_turns=self._get_sample_conversation_two_turns(),
             )
-            if result[0] == "\n":
-                result = result[1:]
-            result = result.split("\n")[0].strip()
+            if self.verbose:
+                print_completion(result)
+
+            result = get_first_nonempty_line(result)
 
             # Strip the quotes
-            if result[0] == '"':
+            if result and result[0] == '"':
                 result = result[1:-1]
 
             bot_utterance = result
 
-            log.info("Generated bot message: " + bot_utterance)
+            log.info(f"Generated bot message: {bot_utterance}")
 
-        return ActionResult(
-            events=[{"type": "bot_said", "content": bot_utterance}],
-            context_updates=context_updates,
-        )
+        if bot_utterance:
+            return ActionResult(
+                events=[{"type": "bot_said", "content": bot_utterance}],
+                context_updates=context_updates,
+            )
+        else:
+            return ActionResult(
+                events=[{"type": "bot_said", "content": "I'm not sure what to say."}],
+                context_updates=context_updates,
+            )

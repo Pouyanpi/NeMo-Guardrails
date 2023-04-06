@@ -40,6 +40,11 @@ class Document(BaseModel):
     content: str
 
 
+# Load the default config values from the file
+with open(os.path.join(os.path.dirname(__file__), "default_config.yml")) as f:
+    default_config = yaml.safe_load(f)
+
+
 class RailsConfig(BaseModel):
     """Configuration object for the models and the rails.
 
@@ -66,7 +71,7 @@ class RailsConfig(BaseModel):
     )
 
     instructions: Optional[List[Instruction]] = Field(
-        default=None,
+        default=[Instruction.parse_obj(obj) for obj in default_config["instructions"]],
         description="List of instructions in natural language that the LLM should use.",
     )
 
@@ -78,6 +83,11 @@ class RailsConfig(BaseModel):
     actions_server_url: Optional[str] = Field(
         default=None,
         description="The URL of the actions server that should be used for the rails.",
+    )
+
+    sample_conversation: Optional[str] = Field(
+        default=default_config["sample_conversation"],
+        description="The sample conversation that should be used inside the prompts.",
     )
 
     @staticmethod
@@ -94,7 +104,7 @@ class RailsConfig(BaseModel):
 
         elif os.path.isdir(config_path):
             # Iterate all .yml files and join them
-            raw_config = {}
+            raw_config = {"instructions": default_config["instructions"]}
 
             for root, dirs, files in os.walk(config_path):
                 for file in files:
