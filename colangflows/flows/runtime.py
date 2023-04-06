@@ -7,7 +7,7 @@ from colangflows.actions.action_dispatcher import ActionDispatcher
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
 from colangflows.actions.math import wolfram_alpha_request
-from colangflows.actions.output_moderation import output_moderation
+from colangflows.actions.jailbreak_check import check_jailbreak
 from colangflows.flows.flows import FlowConfig, compute_context, compute_next_steps
 from colangflows.rails.llm.config import RailsConfig
 
@@ -24,8 +24,8 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check_facts": check_facts,
-            "output_moderation": output_moderation,
+            "check facts": check_facts,
+            "check jailbreak": check_jailbreak
         }
 
         # Register the actions with the dispatcher.
@@ -174,7 +174,6 @@ class Runtime:
 
         if "context" in parameters:
             kwargs["context"] = context
-
         # Add any additional registered parameters
         for k, v in self.registered_action_params.items():
             if k in parameters:
