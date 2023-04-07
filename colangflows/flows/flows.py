@@ -202,9 +202,22 @@ def compute_next_state(state: State, event: dict) -> State:
                 next_step_priority = 0.9 * flow_config.priority
             continue
 
-        if _is_match(flow_config.elements[flow_state.head], event):
+        # If we're at a branching point, we look at all individual heads.
+        matching_head = None
+
+        if flow_head_element["_type"] == "branch":
+            for branch_head in flow_head_element["branch_heads"]:
+                if _is_match(
+                    flow_config.elements[flow_state.head + branch_head], event
+                ):
+                    matching_head = flow_state.head + branch_head + 1
+        else:
+            if _is_match(flow_head_element, event):
+                matching_head = flow_state.head + 1
+
+        if matching_head:
             # The flow can advance
-            flow_state.head += 1
+            flow_state.head = matching_head
 
             # We slide the flow until the next actionable element
             flow_state.head = slide(new_state, flow_config, flow_state.head)
