@@ -9,6 +9,11 @@ define user ask capabilities
   "tell me what you can do"
   "tell me about you"
 
+define user ask about bot inventor
+  "Who created you?"
+  "Who made you?"
+  "Did you come from a tech company?"
+
 define user ask about sick leave policy
   "How many hours of paid sick leave will I receive per year?"
   "Will I be able to receive additional paid sick leave if required by the laws of my location?"
@@ -29,11 +34,23 @@ define flow
 
 define flow
   user ask about sick leave policy
-  bot response about sick leave policy
+  bot respond about sick leave policy
+
+define flow
+  user ask about medical providers
+  bot respond about medical providers
+
+define flow
+  user ask about medicare
+  bot respond about medicare
+
+define flow
+  user ask about 401k withdrawal
+  bot respond about 401k withdrawal
 
 define flow
   user ask about distribution of benefits
-  bot response about distribution of benefits
+  bot respond about distribution of benefits
 
 define bot inform capabilities
   "As an AI, I can provide you with a wide range of services, such as answering your queries, offering guidance, and providing relevant information about NVIDIA Benefits."
