@@ -2,7 +2,6 @@ import re
 from typing import Optional, Union
 
 import yaml
-from unidecode import unidecode
 
 from .utils import get_stripped_tokens, split_max
 
@@ -415,10 +414,6 @@ def parse_md_file(file_name, content=None):
                                 del params[k]
 
                                 pattern = pattern.replace(f"{{{k}}}", f"{{{new_k}}}")
-
-                    # Finally, we normalize to ASCII and get rid of accents before saving the pattern
-                    # TODO: extract this into a configurable option
-                    pattern = unidecode(pattern)
 
                     # if the symbol does not start with its type, we prepend it
                     pattern_config = dict(
