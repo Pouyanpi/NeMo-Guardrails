@@ -207,7 +207,7 @@ def compute_next_state(state: State, event: dict) -> State:
             flow_state.head += 1
 
             # We slide the flow until the next actionable element
-            flow_state.head = slide(state, flow_config, flow_state.head)
+            flow_state.head = slide(new_state, flow_config, flow_state.head)
 
             new_state.flow_states.append(flow_state)
 
@@ -244,17 +244,21 @@ def compute_next_state(state: State, event: dict) -> State:
             continue
 
         # We try to slide first, just in case a flow starts with sliding logic
-        start_head = slide(state, flow_config, 0)
+        start_head = slide(new_state, flow_config, 0)
 
         # If the first element matches the current event, we start a new flow
         if _is_match(flow_config.elements[start_head], event):
             flow_uid = str(uuid.uuid4())
-            new_state.flow_states.append(
-                FlowState(uid=flow_uid, flow_id=flow_config.id, head=start_head + 1)
+            flow_state = FlowState(
+                uid=flow_uid, flow_id=flow_config.id, head=start_head + 1
             )
+            new_state.flow_states.append(flow_state)
+
+            # We also need to slide
+            flow_state.head = slide(new_state, flow_config, flow_state.head)
 
             # And if we don't have a next step yet, we set it to the next element
-            flow_head_element = flow_config.elements[start_head + 1]
+            flow_head_element = flow_config.elements[flow_state.head]
             if (
                 new_state.next_step is None or next_step_priority < flow_config.priority
             ) and _is_actionable(flow_head_element):
