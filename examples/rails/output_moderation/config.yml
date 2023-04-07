@@ -19,7 +19,7 @@ flows:
     - user_said: ...
     - bot: ...
     - execute: output moderation
-    - bot: inform if response was appropriate based on result
+    - bot: inform if response was appropriate and passed moderation
 
 
 # Using OpenAI
