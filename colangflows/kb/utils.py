@@ -4,7 +4,7 @@ import yaml
 
 
 def split_markdown_in_topic_chunks(
-    content: str, max_chunk_size: int = 1000
+    content: str, max_chunk_size: int = 400
 ) -> List[dict]:
     """Splits a markdown content into topic chunks.
 

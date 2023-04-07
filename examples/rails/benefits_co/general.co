@@ -28,6 +28,10 @@ define flow
   bot inform own name
 
 define flow
+  user ask about bot inventor
+  bot respond about bot inventor
+
+define flow
   user ask age
   bot inform own age
 

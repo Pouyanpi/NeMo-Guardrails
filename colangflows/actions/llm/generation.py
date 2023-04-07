@@ -403,6 +403,7 @@ class LLMGenerationActions:
             chain = LLMChain(
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
             )
+            # TODO: catch openai.error.InvalidRequestError from exceeding max token length
             result = await chain.apredict(
                 history=history,
                 examples=examples,
