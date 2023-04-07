@@ -22,7 +22,7 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check facts": check_facts,
+            "check_facts": check_facts,
         }
 
         # The list of additional parameters that can be passed to the actions.
@@ -168,6 +168,7 @@ class Runtime:
 
         # We also add the "special" parameters.
         parameters = inspect.signature(fn).parameters
+
         if "events" in parameters:
             kwargs["events"] = events
 

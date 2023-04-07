@@ -111,7 +111,11 @@ class LLMRails:
         responses = []
         for event in new_events:
             if event["type"] == "bot_said":
-                responses.append(event["content"])
+                # Check if we need to remove a message
+                if event["content"] == "(remove last message)":
+                    responses = responses[0:-1]
+                else:
+                    responses.append(event["content"])
 
         return {"role": "assistant", "content": "\n".join(responses)}
 
