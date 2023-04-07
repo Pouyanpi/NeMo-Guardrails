@@ -1,6 +1,6 @@
 """A simplified modeling of the CoFlows engine."""
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
 
@@ -73,6 +73,9 @@ class State:
     # The next step of the flow-driven system
     next_step: Optional[dict] = None
 
+    # The updates to the context that should be applied before the next step
+    context_updates: dict = field(default_factory=dict)
+
 
 def _is_actionable(element: dict) -> bool:
     """Checks if the given element is actionable."""
@@ -143,11 +146,13 @@ def compute_next_state(state: State, event: dict) -> State:
     if event["type"] == "start_action":
         return state
 
-    # We update the context with the new data
+    # We don't need to decide any next step on context updates.
     if event["type"] == "context_update":
         # TODO: add support to also remove keys from the context.
         #  maybe with a special context key e.g. "__remove__": ["key1", "key2"]
         state.context.update(event["data"])
+        state.next_step = None
+        return state
 
     # Initialize the new state
     new_state = State(
@@ -321,50 +326,58 @@ def compute_next_state(state: State, event: dict) -> State:
                             or next_step_priority < flow_config.priority
                         ) and _is_actionable(flow_config.elements[flow_state.head]):
                             new_state.next_step = flow_config.elements[flow_state.head]
-                            next_step_by_flow_uid = flow_state.uid
                             next_step_priority = flow_config.priority
                     break
-
-    # If the current event was an "action_finished" with events/context updates attached,
-    # the next step is always that creation of that event. The same is true if the return
-    # value needs to be saved in a context var.
-    if event["type"] == "action_finished" and (
-        event.get("events")
-        or event.get("context_updates")
-        or event.get("action_result_key")
-    ):
-        new_events = []
-        context_updates = {}
-
-        # If we have context updates, we first generate the event for that
-        if event.get("context_updates"):
-            context_updates.update(event["context_updates"])
-
-        if event.get("action_result_key"):
-            context_updates[event["action_result_key"]] = event["return_value"]
-
-        if context_updates:
-            new_events.append({"type": "context_update", "data": context_updates})
-
-        # Next, we add the actual events decided by the action
-        if event.get("events"):
-            new_events.extend(event["events"])
-
-        new_state.next_step = {"_type": "create_events", "events": new_events}
 
     return new_state
 
 
-def compute_next_step(
+def _step_to_event(step: dict) -> dict:
+    """Helper to convert a next step coming from a flow element into the actual event."""
+    step_type = step["_type"]
+
+    if step_type == "run_action":
+        if step["action_name"] == "utter":
+            return {
+                "type": "bot_intent",
+                "intent": step["action_params"]["value"],
+            }
+
+        else:
+            action_name = step["action_name"]
+            action_params = step.get("action_params", {})
+            action_result_key = step.get("action_result_key")
+
+            return {
+                "type": "start_action",
+                "action_name": action_name,
+                "action_params": action_params,
+                "action_result_key": action_result_key,
+            }
+    else:
+        raise ValueError(f"Unknown next step type: {step_type}")
+
+
+def compute_next_steps(
     history: List[dict], flow_configs: Dict[str, FlowConfig]
-) -> Optional[dict]:
+) -> List[dict]:
     """Computes the next step in a flow-driven system given a history of events."""
     state = State(context={}, flow_states=[], flow_configs=flow_configs)
 
     for event in history:
         state = compute_next_state(state, event)
 
-    return state.next_step
+    next_steps = []
+
+    # If we have context updates after this event, we first add that.
+    if state.context_updates:
+        next_steps.append({"type": "context_update", "data": state.context_updates})
+
+    # If we have a next step, we make sure to convert it to proper event structure.
+    if state.next_step:
+        next_steps.append(_step_to_event(state.next_step))
+
+    return next_steps
 
 
 def compute_context(history: List[dict]):
@@ -385,6 +398,7 @@ def compute_context(history: List[dict]):
 
         if event["type"] == "user_said":
             context["last_user_message"] = event["content"]
+
         elif event["type"] == "bot_said":
             context["last_bot_message"] = event["content"]
 

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
 
@@ -23,4 +23,4 @@ class ActionResult:
     events: Optional[List[dict]] = None
 
     # The updates made to the context by this action
-    context_updates: Optional[dict] = None
+    context_updates: Optional[dict] = field(default_factory=dict)

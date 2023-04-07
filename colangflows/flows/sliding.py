@@ -106,12 +106,12 @@ def slide(state: "State", flow_config: "FlowConfig", head: int) -> Optional[int]
 
             key_name = pattern_item["key"]
 
-            # Update the context with the result of the expression
-            # TODO: change this! should return an explicit update
+            # Update the context with the result of the expression and also record
+            # the explicit update.
             context.update({key_name: value})
+            state.context_updates.update({key_name: value})
 
             head += int(pattern_item.get("_next", 1))
-
         else:
             break
 

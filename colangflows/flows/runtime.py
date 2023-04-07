@@ -6,7 +6,7 @@ from typing import List, Optional
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
 from colangflows.actions.math import wolfram_alpha_request
-from colangflows.flows.flows import FlowConfig, compute_context, compute_next_step
+from colangflows.flows.flows import FlowConfig, compute_context, compute_next_steps
 from colangflows.rails.llm.config import RailsConfig
 
 log = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check facts": check_facts
+            "check facts": check_facts,
         }
 
         # The list of additional parameters that can be passed to the actions.
@@ -98,65 +98,15 @@ class Runtime:
 
             log.info("Processing event: %s", last_event)
 
-            # print the array of events in JSON format
-            # print(f"\033[91m{json.dumps(events, indent=True)}\033[0m")
-
-            next_events = None
-
             # If we need to execute an action, we start doing that.
             if last_event["type"] == "start_action":
-                next_events = [await self._process_start_action(events)]
+                next_events = await self._process_start_action(events)
             else:
                 # We need to slide all the flows based on the current event,
-                # to compute the next step.
-                next_step = await self.compute_next_step(events)
+                # to compute the next steps.
+                next_events = await self.compute_next_steps(events)
 
-                if next_step:
-                    next_step_type = next_step["_type"]
-
-                    if (
-                        next_step_type == "run_action"
-                        and next_step["action_name"] == "utter"
-                    ):
-                        next_step_type = "bot"
-
-                    if next_step_type == "bot":
-                        next_events = [
-                            {
-                                "type": "bot_intent",
-                                "intent": next_step["action_params"]["value"],
-                            }
-                        ]
-
-                    elif next_step_type == "run_action":
-                        action_name = next_step["action_name"]
-                        action_params = next_step.get("action_params", {})
-                        action_result_key = next_step.get("action_result_key")
-
-                        is_system_action = False
-                        fn = self.registered_actions.get(action_name)
-                        if fn:
-                            action_meta = getattr(fn, "action_meta", {})
-                            is_system_action = action_meta.get(
-                                "is_system_action", False
-                            )
-
-                        next_events = [
-                            {
-                                "type": "start_action",
-                                "is_system_action": is_system_action,
-                                "action_name": action_name,
-                                "action_params": action_params,
-                                "action_result_key": action_result_key,
-                            }
-                        ]
-
-                    elif next_step_type == "create_events":
-                        next_events = next_step["events"]
-                    else:
-                        raise ValueError(f"Unknown next step type: {next_step_type}")
-
-                else:
+                if len(next_events) == 0:
                     next_events = [{"type": "listen"}]
 
             # Otherwise, we append the event and continue the processing.
@@ -173,13 +123,23 @@ class Runtime:
 
         return new_events
 
-    async def compute_next_step(self, events: List[dict]) -> dict:
+    async def compute_next_steps(self, events: List[dict]) -> List[dict]:
         """Computes the next step based on the current flow."""
-        next_step = compute_next_step(events, self.flow_configs)
+        next_steps = compute_next_steps(events, self.flow_configs)
 
-        return next_step
+        # If there are any start_action events, we mark if they are system actions or not
+        for event in next_steps:
+            if event["type"] == "start_action":
+                is_system_action = False
+                fn = self.registered_actions.get(event["action_name"])
+                if fn:
+                    action_meta = getattr(fn, "action_meta", {})
+                    is_system_action = action_meta.get("is_system_action", False)
+                event["is_system_action"] = is_system_action
 
-    async def _process_start_action(self, events: List[dict]):
+        return next_steps
+
+    async def _process_start_action(self, events: List[dict]) -> List[dict]:
         """Starts the specified action, waits for it to finish and posts back the result."""
 
         event = events[-1]
@@ -189,14 +149,15 @@ class Runtime:
         action_result_key = event["action_result_key"]
 
         if action_name not in self.registered_actions:
-            return {
-                "type": "action_finished",
-                "action_name": action_name,
-                "status": "error",
-                "return_value": "Action not found.",
-            }
+            return [
+                {
+                    "type": "action_finished",
+                    "action_name": action_name,
+                    "status": "error",
+                    "return_value": "Action not found.",
+                }
+            ]
 
-        # TODO: pass parameters and context
         context = compute_context(events)
 
         fn = self.registered_actions[action_name]
@@ -212,7 +173,7 @@ class Runtime:
 
         if "context" in parameters:
             kwargs["context"] = context
-        
+
         # Add any additional registered parameters
         for k, v in self.registered_action_params.items():
             if k in parameters:
@@ -226,25 +187,42 @@ class Runtime:
                     kwargs[k] = context[var_name]
 
         # TODO: here we'll need to call the Actions Server if it is available.
+        #  But not for system actions, those should still run locally.
         result = await fn(**kwargs)
 
         return_value = result
         return_events = []
-        context_updates = None
+        context_updates = {}
 
         if isinstance(result, ActionResult):
             return_value = result.return_value
             return_events = result.events
-            context_updates = result.context_updates
+            context_updates.update(result.context_updates)
 
-        return {
-            "type": "action_finished",
-            "action_name": action_name,
-            "action_params": action_params,
-            "action_result_key": action_result_key,
-            "status": "success",
-            "return_value": return_value,
-            "events": return_events,
-            "context_updates": context_updates,
-            "is_system_action": action_meta.get("is_system_action", False),
-        }
+        # If we have an action result key, we also record the update.
+        if action_result_key:
+            context_updates[action_result_key] = return_value
+
+        next_steps = []
+
+        if context_updates:
+            next_steps.append({"type": "context_update", "data": context_updates})
+
+        next_steps.append(
+            {
+                "type": "action_finished",
+                "action_name": action_name,
+                "action_params": action_params,
+                "action_result_key": action_result_key,
+                "status": "success",
+                "return_value": return_value,
+                "events": return_events,
+                "is_system_action": action_meta.get("is_system_action", False),
+            }
+        )
+
+        # If the action returned additional events, we also add them to the next steps.
+        if return_events:
+            next_steps.extend(return_events)
+
+        return next_steps
