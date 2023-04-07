@@ -103,9 +103,11 @@ class LLMRails:
         #         events.append({"type": "bot_said", "content": message["content"]})
 
         self.events.append({"type": "user_said", "content": messages[-1]["content"]})
-
+        
         new_events = await self.runtime.generate_events(self.events)
 
+        if "remove last user message" in str(new_events):
+            self.events[-1]["content"] = "unanswerable question"
         # Save the new events in the history.
         self.events.extend(new_events)
 
@@ -115,6 +117,8 @@ class LLMRails:
             if event["type"] == "bot_said":
                 # Check if we need to remove a message
                 if event["content"] == "(remove last message)":
+                    responses = responses[0:-1]
+                elif event["content"] == "(remove last user message)":
                     responses = responses[0:-1]
                 else:
                     responses.append(event["content"])
