@@ -31,5 +31,5 @@ async def output_moderation(
         log.info(f"Output moderation check result is {check}.")
 
         if "no" in check:
-            return "inappropriate"
-    return "valid"
+            return False
+    return True

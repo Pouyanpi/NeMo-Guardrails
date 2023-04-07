@@ -1,27 +1,3 @@
-# Simple example of how to use actions.
-
-user_messages:
-  express greeting:
-    - hi
-    - hello
-    - hey there!
-
-  ask about vacation days:
-    - how many free days do I get
-    - what is the number of free days
-
-flows:
-  - elements:
-    - user: ...
-    - bot: ...
-
-  - elements:
-    - user_said: ...
-    - bot: ...
-    - execute: output moderation
-    - bot: inform if response was appropriate and passed moderation
-
-
 # Using OpenAI
 models:
   - type: main
