@@ -74,6 +74,9 @@ def _join_config(dest_config: dict, additional_config: dict):
         "docs", []
     )
 
+    if additional_config.get("sample_conversation"):
+        dest_config["sample_conversation"] = additional_config["sample_conversation"]
+
 
 class RailsConfig(BaseModel):
     """Configuration object for the models and the rails.
