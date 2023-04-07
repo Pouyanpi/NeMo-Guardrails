@@ -1,0 +1,27 @@
+ define user express greeting
+  "hi"
+  "hello"
+  "hey"
+
+define user ask name
+  "What is your name?"
+
+define user request help
+  "I need help"
+  "Can you help me with something?"
+
+define user request repeat
+  "Please repeat that"
+  "repeat"
+  "What was that?"
+
+define user express sadness
+  "I am sad"
+  "I feel sad"
+
+
+define bot express thank you for information
+  "Thanks for this information."
+
+define bot bot offer additional help
+  "If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."

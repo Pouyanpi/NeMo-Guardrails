@@ -30,6 +30,7 @@ async def check_jailbreak(
         check = check.lower().strip()
         log.info(f"Jailbreak check result is {check}.")
 
-        if "yes" in check:
-            return "The user input is not consistent with model behavior. Do not respond."
-    return "Valid user input"
+        return "no" in check
+    
+    # If there was no user input, we always return false
+    return False

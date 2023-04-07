@@ -24,8 +24,8 @@ class Runtime:
         # The dictionary of registered actions, initialized with default ones.
         self.registered_actions = {
             "wolfram alpha request": wolfram_alpha_request,
-            "check facts": check_facts,
-            "check jailbreak": check_jailbreak
+            "check_facts": check_facts,
+            "check_jailbreak": check_jailbreak
         }
 
         # Register the actions with the dispatcher.
