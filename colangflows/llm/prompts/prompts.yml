@@ -16,7 +16,7 @@ prompts:
 
   # Prompt for detecting the user message canonical form
   detect_user_message_canonical_form:
-    - content: |
+    - content: |-
         """
         {general_instruction}
         """
@@ -36,7 +36,7 @@ prompts:
 
   # Prompt for predicting the next step
   predict_next_step:
-    - content: |
+    - content: |-
         """
         {general_instruction}
         """
@@ -57,7 +57,7 @@ prompts:
 
   # Prompt for detecting the user message canonical form
   generate_bot_message:
-    - content: |
+    - content: |-
         """
         {general_instruction}
         """

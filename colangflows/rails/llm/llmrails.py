@@ -68,7 +68,7 @@ class LLMRails:
         main_llm_config = self.config.models[0]
 
         if main_llm_config.engine == "openai":
-            self.llm = OpenAI(model_name=main_llm_config.model)
+            self.llm = OpenAI(model_name=main_llm_config.model, temperature=0.1)
 
         elif main_llm_config.engine == "nemollm":
             self.llm = NeMoLLM(model=main_llm_config.model)
