@@ -2,6 +2,7 @@
 
 import logging
 import random
+import sys
 from functools import lru_cache
 from typing import List
 
@@ -354,7 +355,11 @@ class LLMGenerationActions:
 
         if bot_intent in self.config.bot_messages:
             # Choose a message randomly from self.config.bot_messages[bot_message]
-            bot_utterance = random.choice(self.config.bot_messages[bot_intent])
+            # However, in test mode, we always choose the first one, to keep it predictable.
+            if "pytest" in sys.modules:
+                bot_utterance = self.config.bot_messages[bot_intent][0]
+            else:
+                bot_utterance = random.choice(self.config.bot_messages[bot_intent])
 
             log.info("Found existing bot message: " + bot_utterance)
         else:
