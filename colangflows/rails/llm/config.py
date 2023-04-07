@@ -41,8 +41,38 @@ class Document(BaseModel):
 
 
 # Load the default config values from the file
-with open(os.path.join(os.path.dirname(__file__), "default_config.yml")) as f:
-    default_config = yaml.safe_load(f)
+with open(os.path.join(os.path.dirname(__file__), "default_config.yml")) as fc:
+    default_config = yaml.safe_load(fc)
+
+
+def _join_config(dest_config: dict, additional_config: dict):
+    """Helper to join two configuration."""
+
+    dest_config["user_messages"] = {
+        **dest_config.get("user_messages", {}),
+        **additional_config.get("user_messages", {}),
+    }
+
+    dest_config["bot_messages"] = {
+        **dest_config.get("bot_messages", {}),
+        **additional_config.get("bot_messages", {}),
+    }
+
+    dest_config["instructions"] = dest_config.get(
+        "instructions", []
+    ) + additional_config.get("instructions", [])
+
+    dest_config["flows"] = dest_config.get("flows", []) + additional_config.get(
+        "flows", []
+    )
+
+    dest_config["models"] = dest_config.get("models", []) + additional_config.get(
+        "models", []
+    )
+
+    dest_config["docs"] = dest_config.get("docs", []) + additional_config.get(
+        "docs", []
+    )
 
 
 class RailsConfig(BaseModel):
@@ -132,36 +162,26 @@ class RailsConfig(BaseModel):
                         with open(full_path) as f:
                             _raw_config = parse_colang_file(file, content=f.read())
 
-                    # We join _raw_config with raw_config.
-                    # For the keys `user_messages` and `bot_messages` we merge the dictionaries.
-                    # For the key `flows` and `models` we merge the lists.
-                    raw_config["user_messages"] = {
-                        **raw_config.get("user_messages", {}),
-                        **_raw_config.get("user_messages", {}),
-                    }
-
-                    raw_config["bot_messages"] = {
-                        **raw_config.get("bot_messages", {}),
-                        **_raw_config.get("bot_messages", {}),
-                    }
-
-                    raw_config["instructions"] = raw_config.get(
-                        "instructions", []
-                    ) + _raw_config.get("instructions", [])
-
-                    raw_config["flows"] = raw_config.get("flows", []) + _raw_config.get(
-                        "flows", []
-                    )
-
-                    raw_config["models"] = raw_config.get(
-                        "models", []
-                    ) + _raw_config.get("models", [])
-
-                    raw_config["docs"] = raw_config.get("docs", []) + _raw_config.get(
-                        "docs", []
-                    )
+                    _join_config(raw_config, _raw_config)
         else:
             raise Exception(f"Invalid config path {config_path}.")
+
+        return RailsConfig.parse_object(raw_config)
+
+    @staticmethod
+    def from_content(
+        colang_content: Optional[str] = None, yaml_content: Optional[str] = None
+    ):
+        """Loads a configuration from the provided colang/YAML content."""
+        raw_config = {"instructions": default_config["instructions"]}
+
+        if colang_content:
+            _join_config(
+                raw_config, parse_colang_file("main.co", content=colang_content)
+            )
+
+        if yaml_content:
+            _join_config(raw_config, yaml.safe_load(yaml_content))
 
         return RailsConfig.parse_object(raw_config)
 
