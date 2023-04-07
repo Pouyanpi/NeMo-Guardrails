@@ -13,8 +13,6 @@ define bot remove last message
 define flow check bot response
   bot ...
   $allowed = execute output_moderation
-  if $allowed
-    bot show response to user
-  else
+  if not $allowed
     bot remove last message
     bot inform answer unknown
