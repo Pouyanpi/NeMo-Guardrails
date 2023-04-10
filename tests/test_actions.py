@@ -7,18 +7,18 @@ client = TestClient(actions_server.app)
 
 
 @pytest.mark.parametrize(
-    "action_name, action_parameters, return_value, events",
+    "action_name, action_parameters, result_field, status",
     [
         (
             "action-test",
             {"content": "Hello", "parameter": "parameters"},
-            type(None),
             [],
+            "failed",
         ),
-        ("wikipedia", {"query": "president of US?"}, str, []),
+        ("wikipedia", {"query": "president of US?"}, ["text"], "success"),
     ],
 )
-def test_run(action_name, action_parameters, return_value, events):
+def test_run(action_name, action_parameters, result_field, status):
     response = client.post(
         "/v1/action/run",
         json={
@@ -29,8 +29,8 @@ def test_run(action_name, action_parameters, return_value, events):
 
     assert response.status_code == 200
     res = response.json()
-    assert type(res["return_value"]) is return_value
-    assert res["events"] == events
+    assert list(res["results"].keys()) == result_field
+    assert res["status"] == status
 
 
 def test_get_actions():

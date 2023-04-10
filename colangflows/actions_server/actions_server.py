@@ -40,22 +40,30 @@ class RequestBody(BaseModel):
     )
 
 
+class ResponseBody(BaseModel):
+    status: str = "success"  # success / failed
+    results: dict = Field(
+        default={}, description="The new messages in the conversation"
+    )
+
+
 @app.post(
     "/v1/action/run",
     summary="execute actions with give param.",
-    response_model=ActionResult,
+    response_model=ResponseBody,
 )
 def run_action(body: RequestBody):
     """Execute action_name with action_parameters and return result."""
 
-    # TODO: Maintain an object of action dispatcher and pass action parameters
     log.info(f"Request body: {body}")
-    res = app.action_dispatcher.execute_action(body.action_name, body.action_parameters)
-    log.info(f"Response: {res}")
-    return res
+    result, status = app.action_dispatcher.execute_action(
+        body.action_name, body.action_parameters
+    )
+    resp = {"status": status, "results": result}
+    log.info(f"Response: {resp}")
+    return resp
 
 
-# TODO: Implement get action to get list of available actions
 @app.get(
     "/v1/action/list",
     summary="Get List of available actions.",
