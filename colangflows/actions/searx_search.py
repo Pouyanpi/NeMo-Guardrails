@@ -15,7 +15,7 @@ class SearxSearch(SearxSearchWrapper):
 
     @validator("query")
     def validate_query(cls, query: str):
-        if not isinstance(query, str) or not query:
+        if not query:
             raise ValueError("Query is not a valid string")
         if len(query) > MAX_QUERY_LEN:
             raise ValueError("Searx Search Query length exceeded limits")
@@ -44,9 +44,3 @@ class SearxSearch(SearxSearchWrapper):
             self.query, self.engines, self.query_suffix, **kwargs
         )
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     searx_obj = SearxSearch(query="Who is the Joe Biden?")
-#     output = searx_obj.run()
-#     print(output)

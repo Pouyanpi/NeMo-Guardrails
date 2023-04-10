@@ -11,7 +11,7 @@ class SerpAPI(SerpAPIWrapper):
 
     @validator("query")
     def validate_query(cls, query: str):
-        if not isinstance(query, str) or not query:
+        if not query:
             raise ValueError("Query is not a valid string")
         if len(query) > MAX_QUERY_LEN:
             raise ValueError("SerpAPI Query length exceeded limits")
@@ -36,9 +36,3 @@ class SerpAPI(SerpAPIWrapper):
 
         response = await super().arun(self.query)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     serp_obj = SerpAPI(query="Who is the Joe Biden?")
-#     output = serp_obj.run()
-#     print(output)

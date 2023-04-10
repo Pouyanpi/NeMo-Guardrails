@@ -14,7 +14,7 @@ class Zapier(ZapierNLAWrapper):
 
     @validator("instructions")
     def validate_instruction(cls, instructions):
-        if not isinstance(instructions, str) or not instructions:
+        if not instructions:
             raise ValueError("Zapier Instruction is not a valid string")
         if len(instructions) > MAX_QUERY_LEN:
             raise ValueError("Zapier Instruction length exceeded limits")
@@ -47,9 +47,3 @@ class Zapier(ZapierNLAWrapper):
 
         response = super().preview(self.action_id, self.instructions, params)
         return self.validate_response(response.get("Message_Text", ""))
-
-
-# if __name__ == "__main__":
-#     zapier = Zapier(action_id="add_id/delete", instructions="how are you today?")
-#     out = zapier.run()
-#     print(out)

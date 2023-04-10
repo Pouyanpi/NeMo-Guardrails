@@ -11,7 +11,7 @@ class Human(HumanInputRun):
 
     @validator("query")
     def validate_query(cls, query: str):
-        if not isinstance(query, str) or not query:
+        if not query:
             raise ValueError("Query is not a valid string")
         if len(query) > MAX_QUERY_LEN:
             raise ValueError("Human Action Query length exceeded limits")
@@ -28,9 +28,3 @@ class Human(HumanInputRun):
     def run(self) -> str:
         response = self._run(self.query)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     serp_obj = Human(query="Who is the Joe Biden?")
-#     output = serp_obj.run()
-#     print(output)

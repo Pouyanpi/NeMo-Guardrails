@@ -19,7 +19,7 @@ class Apify(ApifyWrapper):
 
         return query
 
-    def call_actor(
+    def run(
         self,
         run_input: Dict,
         dataset_mapping_function: Callable[[Dict], Document],
@@ -28,7 +28,7 @@ class Apify(ApifyWrapper):
         memory_mbytes: Optional[int] = None,
         timeout_secs: Optional[int] = None,
     ):
-        return super().call_actor(
+        return self.call_actor(
             actor_id=self.actor_id,
             run_input=run_input,
             dataset_mapping_function=dataset_mapping_function,
@@ -37,7 +37,7 @@ class Apify(ApifyWrapper):
             timeout_secs=timeout_secs,
         )
 
-    async def acall_actor(
+    async def arun(
         self,
         run_input: Dict,
         dataset_mapping_function: Callable[[Dict], Document],
@@ -46,7 +46,7 @@ class Apify(ApifyWrapper):
         memory_mbytes: Optional[int] = None,
         timeout_secs: Optional[int] = None,
     ):
-        response = await super().acall_actor(
+        response = await self.acall_actor(
             actor_id=self.actor_id,
             run_input=run_input,
             dataset_mapping_function=dataset_mapping_function,
@@ -56,9 +56,3 @@ class Apify(ApifyWrapper):
         )
 
         return response
-
-
-# if __name__ == "__main__":
-#     search_obj = BingSearch(query="Who is the Joe Biden?")
-#     output = search_obj.run()
-#     print(output)

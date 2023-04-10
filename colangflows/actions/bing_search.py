@@ -11,7 +11,7 @@ class BingSearch(BingSearchAPIWrapper):
 
     @validator("query")
     def validate_query(cls, query: str):
-        if not isinstance(query, str) or not query:
+        if not query:
             raise ValueError("Query is not a valid string")
         if len(query) > MAX_QUERY_LEN:
             raise ValueError("Bing Search Query length exceeded limits")
@@ -30,9 +30,3 @@ class BingSearch(BingSearchAPIWrapper):
 
         response = super().run(self.query)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     search_obj = BingSearch(query="Who is the Joe Biden?")
-#     output = search_obj.run()
-#     print(output)

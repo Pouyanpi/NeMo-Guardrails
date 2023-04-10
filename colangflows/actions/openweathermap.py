@@ -11,7 +11,7 @@ class OpenWeatherMap(OpenWeatherMapAPIWrapper):
 
     @validator("location")
     def validate_location(cls, location: str):
-        if not isinstance(location, str) or not location:
+        if not location:
             raise ValueError("Location is not a valid string")
         if len(location) > MAX_LOCATION_LEN:
             raise ValueError("OpenWeatherMap location length exceeded limits")
@@ -30,9 +30,3 @@ class OpenWeatherMap(OpenWeatherMapAPIWrapper):
 
         response = super().run(self.location)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     owm_obj = OpenWeatherMap(location="santa clara")
-#     output = owm_obj.run()
-#     print(output)
