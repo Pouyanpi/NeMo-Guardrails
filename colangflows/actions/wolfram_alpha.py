@@ -2,8 +2,7 @@ import re
 from typing import Dict
 
 from langchain.utilities.wolfram_alpha import WolframAlphaAPIWrapper
-from langchain.utils import get_from_dict_or_env
-from pydantic import root_validator
+from pydantic import validator
 
 MAX_QUERY_LEN = 50
 
@@ -11,15 +10,14 @@ MAX_QUERY_LEN = 50
 class WolframAlpha(WolframAlphaAPIWrapper):
     query: str
 
-    @root_validator()
-    def validate_query(cls, values: Dict):
-        query = get_from_dict_or_env(values, "query", "")
-        if not isinstance(query, str) or not query:
+    @validator("query")
+    def validate_query(cls, query: str):
+        if not query:
             raise ValueError("Query is not a valid string")
         if len(query) > MAX_QUERY_LEN:
             raise ValueError("WolframAlpha Query length exceeded limits")
 
-        return values
+        return query
 
     def validate_response(self, response: str) -> str:
         """Filter out IP addreess from the response."""
