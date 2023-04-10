@@ -63,7 +63,19 @@ def get_rails_configs():
         if os.path.isdir(os.path.join(rails_config_path, f))
     ]
 
-    return [{"id": config_id} for config_id in config_ids]
+    # If there is a "config" folder in the current folder, we also use that
+    local_path = os.getcwd()
+    local_configs_path = os.path.join(local_path, "config")
+
+    local_config_ids = []
+    if os.path.exists(local_configs_path):
+        local_config_ids = [
+            f
+            for f in os.listdir(local_configs_path)
+            if os.path.isdir(os.path.join(local_configs_path, f))
+        ]
+
+    return [{"id": config_id} for config_id in (config_ids + local_config_ids)]
 
 
 # One instance of LLMRails per config id
@@ -80,7 +92,16 @@ def _get_rails(config_id: str) -> LLMRails:
     if config_id in llm_rails_instances:
         return llm_rails_instances[config_id]
 
-    rails_config = RailsConfig.from_path(f"examples/rails/{config_id}")
+    rails_config_path = os.path.join("examples/rails", config_id)
+    local_config_path = os.path.join(os.getcwd(), "config", config_id)
+
+    if os.path.exists(rails_config_path):
+        rails_config = RailsConfig.from_path(rails_config_path)
+    elif os.path.exists(local_config_path):
+        rails_config = RailsConfig.from_path(local_config_path)
+    else:
+        raise ValueError(f"Could not find rails configuration {config_id}")
+
     llm_rails = LLMRails(config=rails_config)
     llm_rails_instances[config_id] = llm_rails
     history[config_id] = []
