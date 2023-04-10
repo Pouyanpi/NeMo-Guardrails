@@ -19,9 +19,10 @@ define bot inform cannot answer
 define flow check jailbreak
   user ...
   $allowed = execute check_jailbreak
-  if $allowed
-    bot show response for question 
-  else
+
+  if not $allowed
     bot remove last user message
     bot inform cannot answer
-
+  else
+    bot show response for question 
+  

@@ -16,7 +16,7 @@ def get_colang_history(events: List[dict], include_texts: bool = True):
     """
 
     history = ""
-    for event in events:
+    for idx, event in enumerate(events):
         if event["type"] == "user_said" and include_texts:
             history += f'user "{event["content"]}"\n'
         elif event["type"] == "user_intent":
@@ -33,7 +33,10 @@ def get_colang_history(events: List[dict], include_texts: bool = True):
             history += f'execute {event["action_name"]}\n'
         elif event["type"] == "action_finished" and not event.get("is_system_action"):
             history += f'# The result was {event["return_value"]}\n'
-
+        elif event["type"] == "mask_prev_user_message":
+            last_user_utterance = get_last_user_utterance(events[:idx])
+            history = history.replace(last_user_utterance, "unanswerable question")
+            
     return history
 
 

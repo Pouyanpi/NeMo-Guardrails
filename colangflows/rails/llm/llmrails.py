@@ -106,8 +106,6 @@ class LLMRails:
         
         new_events = await self.runtime.generate_events(self.events)
 
-        if "remove last user message" in str(new_events):
-            self.events[-1]["content"] = "unanswerable question"
         # Save the new events in the history.
         self.events.extend(new_events)
 
