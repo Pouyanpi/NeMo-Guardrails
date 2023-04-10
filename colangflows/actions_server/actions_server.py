@@ -5,6 +5,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
+from colangflows.actions_server.action_dispatcher import ActionDispatcher
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
@@ -25,6 +27,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Create action dispatcher object to communicate with actions
+app.action_dispatcher = ActionDispatcher()
 
 
 class RequestBody(BaseModel):
