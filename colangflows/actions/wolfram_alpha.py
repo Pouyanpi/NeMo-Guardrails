@@ -33,9 +33,3 @@ class WolframAlpha(WolframAlphaAPIWrapper):
 
         response = super().run(self.query)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     wolfram_alpha_obj = WolframAlpha(query="(2 + 9) ^ 2")
-#     output = wolfram_alpha_obj.run()
-#     print(output)

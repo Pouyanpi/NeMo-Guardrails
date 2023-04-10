@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
+from colangflows.actions.actions import ActionResult
 from colangflows.actions_server.action_dispatcher import ActionDispatcher
 
 logging.basicConfig(level=logging.INFO)
@@ -35,20 +36,23 @@ app.action_dispatcher = ActionDispatcher()
 class RequestBody(BaseModel):
     action_name: str = ""
     action_parameters: Dict = Field(
-        default=None, description="The list of action parameters."
+        default={}, description="The list of action parameters."
     )
 
 
 @app.post(
     "/v1/action/run",
     summary="execute actions with give param.",
+    response_model=ActionResult,
 )
 def run_action(body: RequestBody):
     """Execute action_name with action_parameters and return result."""
 
     # TODO: Maintain an object of action dispatcher and pass action parameters
     log.info(f"Request body: {body}")
-    return {"action-name": body.action_name, "param": body.action_parameters}
+    res = app.action_dispatcher.execute_action(body.action_name, body.action_parameters)
+    log.info(f"Response: {res}")
+    return res
 
 
 # TODO: Implement get action to get list of available actions
@@ -59,4 +63,4 @@ def run_action(body: RequestBody):
 def get_actions_list():
     """Returns the list of available actions."""
 
-    return []
+    return app.action_dispatcher.get_registered_actions()

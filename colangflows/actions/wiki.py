@@ -33,9 +33,3 @@ class Wikipedia(WikipediaAPIWrapper):
 
         response = super().run(self.query)
         return self.validate_response(response)
-
-
-# if __name__ == "__main__":
-#     wolfram_alpha_obj = Wikipedia(query="Who is the Joe Biden?")
-#     output = wolfram_alpha_obj.run()
-#     print(output)
