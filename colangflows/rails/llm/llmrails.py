@@ -116,8 +116,6 @@ class LLMRails:
                 # Check if we need to remove a message
                 if event["content"] == "(remove last message)":
                     responses = responses[0:-1]
-                elif event["content"] == "(remove last user message)":
-                    responses = responses[0:-1]
                 else:
                     responses.append(event["content"])
 

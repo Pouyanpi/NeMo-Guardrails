@@ -21,7 +21,7 @@ define flow check jailbreak
   $allowed = execute check_jailbreak
 
   if not $allowed
-    bot remove last user message
+    bot remove last message
     bot inform cannot answer
   else
     bot show response for question 
