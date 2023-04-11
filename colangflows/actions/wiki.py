@@ -3,12 +3,12 @@ import re
 from langchain.utilities.wikipedia import WikipediaAPIWrapper
 from pydantic import validator
 
-from colangflows.actions_server.actions import action
+from colangflows.actions.actions import base_action
 
 MAX_QUERY_LEN = 50
 
 
-@action
+@base_action
 class Wikipedia(WikipediaAPIWrapper):
     query: str
 
