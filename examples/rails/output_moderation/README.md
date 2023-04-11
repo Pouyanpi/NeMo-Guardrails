@@ -12,5 +12,7 @@ To utilize this rail, you can take a look at the file ```config.co```. The flow 
     bot inform answer unknown
 ```
 
-The output moderation rail is invoked after a bot response using the ```execute output_moderation``` command. This runs the action ```output_moderation``` and returns True if the bot response passes moderation and False otherwise. If the bot response does not pass moderation, we do not display the generated response to the user and instead ask the bot to say that it does not know the answer.
+The ```bot ...``` command is used to indicate that the bot needs to generate a response. The placeholder ```...``` is utilized by the Colang runtime to replacce it with the response from the bot.
+
+The output moderation rail is invoked after a bot response (```bot ...```) using the ```execute output_moderation``` command. This runs the action ```output_moderation``` and returns True if the bot response passes moderation and False otherwise. If the bot response does not pass moderation, we do not display the generated response to the user and instead ask the bot to say that it does not know the answer.
 
