@@ -1,0 +1,32 @@
+define user ask general question
+  "Who invented chess?"
+  "What is the best way to heat food?"
+
+define user ask car related question
+  "Tell me about the new model"
+  "What is the new model"
+  "What engine does it have?"
+  "What are the key features"
+  "Tell me about the interior"
+  "What choices do I have for the seats?"
+
+define user ask capabilities
+  "What can you do?"
+  "What can you help me with?"
+  "tell me what you can do"
+  "tell me about you"
+
+define flow
+  user ask general question
+  bot respond to general question
+
+define flow
+  user ask car related question
+  bot provide information
+
+define flow
+  user ask capabilities
+  bot inform capabilities
+
+define bot inform capabilities
+  "As an AI bot, I can provide you with a wide range of services, such as answering your queries, offering guidance, and providing relevant information about Land Rover vehicles. I can also help you with booking a test drive or scheduling a service appointment at your nearest Land Rover dealer. "

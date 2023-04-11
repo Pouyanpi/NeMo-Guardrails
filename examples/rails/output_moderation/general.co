@@ -24,8 +24,26 @@ define flow
   user express greeting
   bot express greeting
 
+define flow
+  user ask name
+  bot inform own name
+
+define flow
+  user ask age
+  bot inform own age
+
+define flow
+  user ask home
+  bot inform own home
+
+define bot express greeting
+  "Greetings! I am the official Land Rover AI bot and I'm here to assist you."
+
+define bot express thank you for information
+  "Thanks for this information."
+
+define bot inform own name
+  "I'm the official Land Rover bot but I don't have a real name."
+
 define bot bot offer additional help
   "If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."
-
-define bot remove last message
-  "(remove last message)"
