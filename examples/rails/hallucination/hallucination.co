@@ -1,0 +1,15 @@
+define user express greeting
+  "hi"
+  "hello"
+  "hey there!"
+
+define user ask about person
+  "Who is Jensen Huang?"
+  "Can you tell me about Michael Jordan"
+  "What do you know about Simona Halep?"
+
+define flow check hallucination about person
+  bot ...
+  $result = execute check_hallucination
+  if $result
+     bot inform answer prone to hallucination
