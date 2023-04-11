@@ -13,11 +13,17 @@ class BasicEmbeddingsIndex(EmbeddingsIndex):
     It uses Annoy to perform the search.
     """
 
-    def __init__(self):
+    def __init__(self, index=None):
         self._model = None
         self._items = []
         self._embeddings = []
-        self._index = None
+
+        # When the index is provided, it means it's from the cache.
+        self._index = index
+
+    @property
+    def embeddings_index(self):
+        return self._index
 
     def _init_model(self):
         """Initialize the model used for computing the embeddings."""
@@ -34,12 +40,18 @@ class BasicEmbeddingsIndex(EmbeddingsIndex):
     def add_item(self, item: IndexItem):
         """Add a single item to the index."""
         self._items.append(item)
-        self._embeddings.append(self._get_embeddings([item.text])[0])
+
+        # If the index is already built, we skip this
+        if self._index is None:
+            self._embeddings.append(self._get_embeddings([item.text])[0])
 
     def add_items(self, items: List[IndexItem]):
         """Add multiple items to the index at once."""
         self._items.extend(items)
-        self._embeddings.extend(self._get_embeddings([item.text for item in items]))
+
+        # If the index is already built, we skip this
+        if self._index is None:
+            self._embeddings.extend(self._get_embeddings([item.text for item in items]))
 
     def build(self):
         """Builds the Annoy index."""

@@ -8,6 +8,7 @@ import yaml
 from langchain.llms import BaseLLM, OpenAI
 
 from colangflows.actions.llm.generation import LLMGenerationActions
+from colangflows.actions.llm.utils import get_colang_history
 from colangflows.flows.runtime import Runtime
 from colangflows.language.coyml_parser import parse_flow_elements
 from colangflows.llm.nemollm import NeMoLLM
@@ -24,6 +25,7 @@ class LLMRails:
     ):
         self.config = config
         self.llm = llm
+        self.verbose = verbose
 
         # We also load the default flows from the `default_flows.yml` file in the current folder.
         current_folder = os.path.dirname(__file__)
@@ -117,6 +119,12 @@ class LLMRails:
                 else:
                     responses.append(event["content"])
 
+        # If logging is enabled, we log the conversation
+        # TODO: add support for logging flag
+        if self.verbose:
+            history = get_colang_history(self.events)
+            log.info(f"Conversation history so far: \n{history}")
+
         return {"role": "assistant", "content": "\n".join(responses)}
 
     def generate(
@@ -124,3 +132,7 @@ class LLMRails:
     ):
         """Synchronous version of generate_async."""
         return asyncio.run(self.generate_async(prompt=prompt, messages=messages))
+
+    def register_action(self, action: callable, name: Optional[str] = None):
+        """Register a custom action for the rails configuration."""
+        self.runtime.register_action(action, name)

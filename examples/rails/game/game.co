@@ -64,12 +64,9 @@ define flow
   user ask about work
   bot talk about work
   bot ask to deliver sword
-  user agree to deliver sword
-  bot express thank you
 
-define flow
-  user ask about work
-  bot talk about work
-  bot ask to deliver sword
-  user express disagreement
-  bot express goodbye
+  when user agree to deliver sword
+    bot express thank you
+
+  else when express disagreement
+    bot express goodbye

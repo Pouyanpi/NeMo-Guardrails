@@ -5,7 +5,10 @@
 For testing purposes, the Colang Flows framework provides a command line chat that can be used to interact with the LLM.
 
 ```
-> colangflows chat --config=...
+> colangflows chat
 ```
 
-The `config` option can either be a `.yml` file or a folder containing multiple `.yml` and `.co` files.
+### Options
+
+- `--config`: The configuration that should be used. Can be a folder or a .co/.yml file.
+- `--verbose`: In verbose mode, debugging information is also shown.

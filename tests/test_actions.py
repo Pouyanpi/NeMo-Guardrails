@@ -18,7 +18,7 @@ client = TestClient(actions_server.app)
             [],
             "failed",
         ),
-        ("wikipedia", {"query": "president of US?"}, ["text"], "success"),
+        ("Wikipedia", {"query": "president of US?"}, ["text"], "success"),
     ],
 )
 def test_run(action_name, action_parameters, result_field, status):
