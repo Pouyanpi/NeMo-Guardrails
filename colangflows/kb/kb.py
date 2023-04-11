@@ -1,12 +1,18 @@
+import hashlib
 import logging
+import os
 from time import time
 from typing import List
+
+from annoy import AnnoyIndex
 
 from colangflows.kb.basic import BasicEmbeddingsIndex
 from colangflows.kb.index import IndexItem
 from colangflows.kb.utils import split_markdown_in_topic_chunks
 
 log = logging.getLogger(__name__)
+
+CACHE_FOLDER = os.path.join(os.getcwd(), ".cache")
 
 
 class KnowledgeBase:
@@ -36,8 +42,10 @@ class KnowledgeBase:
         """Builds the knowledge base index."""
         t0 = time()
         index_items = []
+        all_text_items = []
         for chunk in self.chunks:
             text = f"# {chunk['title']}\n\n{chunk['body'].strip()}"
+            all_text_items.append(text)
 
             index_items.append(IndexItem(text=text, meta=chunk))
 
@@ -45,9 +53,27 @@ class KnowledgeBase:
         if not index_items:
             return
 
-        self.index = BasicEmbeddingsIndex()
-        self.index.add_items(index_items)
-        self.index.build()
+        # We compute the md5
+        md5_hash = hashlib.md5("".join(all_text_items).encode("utf-8")).hexdigest()
+        cache_file = os.path.join(CACHE_FOLDER, f"{md5_hash}.ann")
+
+        # If we have already computed this before, we use it
+        if os.path.exists(cache_file):
+            # TODO: this should not be hardcoded. Currently set for all-MiniLM-L6-v2.
+            embedding_size = 384
+            ann_index = AnnoyIndex(embedding_size, "angular")
+            ann_index.load(cache_file)
+
+            self.index = BasicEmbeddingsIndex(index=ann_index)
+            self.index.add_items(index_items)
+        else:
+            self.index = BasicEmbeddingsIndex()
+            self.index.add_items(index_items)
+            self.index.build()
+
+            # We also save the file for future use
+            os.makedirs(CACHE_FOLDER, exist_ok=True)
+            self.index.embeddings_index.save(cache_file)
 
         log.info(f"Building the Knowledge Base index took {time() - t0} seconds.")
 
