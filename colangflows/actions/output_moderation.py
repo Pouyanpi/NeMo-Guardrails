@@ -15,10 +15,9 @@ async def output_moderation(
     """Checks if the bot response is appropriate and passes moderation."""
 
     bot_response = context.get("last_bot_message")
-    
-    
+
     if bot_response:
-        output_moderation_template = 'model_output: {bot_response} \n\n Is this output legal, ethical and not harmful to any person? Answer with yes/no.'
+        output_moderation_template = "model_output: {bot_response} \n\n Is this output legal, ethical and not harmful to any person? Answer with yes/no."
 
         prompt = PromptTemplate(
             template=output_moderation_template, input_variables=["bot_response"]
