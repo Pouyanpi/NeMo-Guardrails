@@ -24,3 +24,9 @@ class ActionResult:
 
     # The updates made to the context by this action
     context_updates: Optional[dict] = field(default_factory=dict)
+
+
+# A decorator that sets a property on the class to indicate if it's a action or not.
+def base_action(cls):
+    cls.is_action = True
+    return cls
