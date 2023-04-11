@@ -4,9 +4,12 @@ from typing import Dict
 from langchain.utilities.wolfram_alpha import WolframAlphaAPIWrapper
 from pydantic import validator
 
+from colangflows.actions_server.actions import action
+
 MAX_QUERY_LEN = 50
 
 
+@action
 class WolframAlpha(WolframAlphaAPIWrapper):
     query: str
 
