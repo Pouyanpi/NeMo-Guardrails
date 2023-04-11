@@ -132,3 +132,7 @@ class LLMRails:
     ):
         """Synchronous version of generate_async."""
         return asyncio.run(self.generate_async(prompt=prompt, messages=messages))
+
+    def register_action(self, action: callable, name: Optional[str] = None):
+        """Register a custom action for the rails configuration."""
+        self.runtime.register_action(action, name)
