@@ -3,8 +3,12 @@
 import importlib.util
 import inspect
 import logging
-import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple, Union
+
+from colangflows.actions.langchain_tools.wiki import Wikipedia
+from colangflows.actions.langchain_tools.wolfram_alpha import WolframAlpha
+
+# Langchain actions import
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +27,7 @@ class ActionDispatcher:
 
     def execute_action(
         self, action_name: str, params: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Union[str, Dict[str, Any]], str]:
         """Endpoint called from action server to execute an action.
         This endpoint interacts with different supported actions
         """
