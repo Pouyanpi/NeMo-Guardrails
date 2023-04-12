@@ -3,13 +3,13 @@ from typing import Any, List, Optional
 
 
 # A decorator that sets a property on the function to indicate if it's a system action or not.
-def action(is_system_action: bool, name: Optional[str] = None):
-    def decorator(func):
-        func.action_meta = {
-            "name": name or func.__name__,
+def action(is_system_action: bool = False, name: Optional[str] = None):
+    def decorator(fn_or_cls):
+        fn_or_cls.action_meta = {
+            "name": name or fn_or_cls.__name__,
             "is_system_action": is_system_action,
         }
-        return func
+        return fn_or_cls
 
     return decorator
 
@@ -24,9 +24,3 @@ class ActionResult:
 
     # The updates made to the context by this action
     context_updates: Optional[dict] = field(default_factory=dict)
-
-
-# A decorator that sets a property on the class to indicate if it's a action or not.
-def base_action(cls):
-    cls.is_action = True
-    return cls

@@ -123,6 +123,10 @@ class RailsConfig(BaseModel):
         description="The sample conversation that should be used inside the prompts.",
     )
 
+    config_path: Optional[str] = Field(
+        default=None, description="The path from which the configuration was loaded."
+    )
+
     @staticmethod
     def from_path(config_path: str):
         """Loads a configuration from a given path.
@@ -168,6 +172,8 @@ class RailsConfig(BaseModel):
                     _join_config(raw_config, _raw_config)
         else:
             raise Exception(f"Invalid config path {config_path}.")
+
+        raw_config["config_path"] = config_path
 
         return RailsConfig.parse_object(raw_config)
 

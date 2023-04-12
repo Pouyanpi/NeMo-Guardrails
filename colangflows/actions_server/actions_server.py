@@ -5,10 +5,8 @@ from fastapi import FastAPI
 from pydantic import BaseModel, Field
 from starlette.middleware.cors import CORSMiddleware
 
-from colangflows.actions.actions import ActionResult
-from colangflows.actions_server.action_dispatcher import ActionDispatcher
+from colangflows.actions.action_dispatcher import ActionDispatcher
 
-logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
 api_description = """Colang Flows Action Sever API."""
@@ -30,7 +28,7 @@ app.add_middleware(
 )
 
 # Create action dispatcher object to communicate with actions
-app.action_dispatcher = ActionDispatcher()
+app.action_dispatcher = ActionDispatcher(load_all_actions=True)
 
 
 class RequestBody(BaseModel):
@@ -52,11 +50,11 @@ class ResponseBody(BaseModel):
     summary="execute actions with give param.",
     response_model=ResponseBody,
 )
-def run_action(body: RequestBody):
+async def run_action(body: RequestBody):
     """Execute action_name with action_parameters and return result."""
 
     log.info(f"Request body: {body}")
-    result, status = app.action_dispatcher.execute_action(
+    result, status = await app.action_dispatcher.execute_action(
         body.action_name, body.action_parameters
     )
     resp = {"status": status, "results": result}

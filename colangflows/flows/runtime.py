@@ -3,6 +3,7 @@ import logging
 import uuid
 from typing import List, Optional
 
+from colangflows.actions.action_dispatcher import ActionDispatcher
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
 from colangflows.actions.math import wolfram_alpha_request
@@ -26,6 +27,11 @@ class Runtime:
             "check_facts": check_facts,
             "output_moderation": output_moderation,
         }
+
+        # Register the actions with the dispatcher.
+        self.action_dispatcher = ActionDispatcher(config_path=config.config_path)
+        for action_name, action_fn in self.registered_actions.items():
+            self.action_dispatcher.register_action(action_fn, action_name)
 
         # The list of additional parameters that can be passed to the actions.
         self.registered_action_params = {}
@@ -61,20 +67,11 @@ class Runtime:
         :param name: The name of the action.
         :param action: The action function.
         """
-        if name is None:
-            action_meta = getattr(action, "action_meta", None)
-            name = action_meta["name"] if action_meta else action.__name__
-
-        self.registered_actions[name] = action
+        self.action_dispatcher.register_action(action, name)
 
     def register_actions(self, actions_obj: any):
         """Registers all the actions from the given object."""
-        # Register the actions
-        for attr in dir(actions_obj):
-            val = getattr(actions_obj, attr)
-
-            if hasattr(val, "action_meta"):
-                self.register_action(val)
+        self.action_dispatcher.register_actions(actions_obj)
 
     def register_action_param(self, name: str, value: any):
         """Registers an additional parameter that can be passed to the actions.
@@ -133,7 +130,7 @@ class Runtime:
         for event in next_steps:
             if event["type"] == "start_action":
                 is_system_action = False
-                fn = self.registered_actions.get(event["action_name"])
+                fn = self.action_dispatcher.get_action(event["action_name"])
                 if fn:
                     action_meta = getattr(fn, "action_meta", {})
                     is_system_action = action_meta.get("is_system_action", False)
@@ -150,7 +147,9 @@ class Runtime:
         action_params = event["action_params"]
         action_result_key = event["action_result_key"]
 
-        if action_name not in self.registered_actions:
+        fn = self.action_dispatcher.get_action(action_name)
+
+        if fn is None:
             return [
                 {
                     "type": "action_finished",
@@ -162,7 +161,6 @@ class Runtime:
 
         context = compute_context(events)
 
-        fn = self.registered_actions[action_name]
         action_meta = getattr(fn, "action_meta", {})
 
         # We pass all the parameters that are passed explicitly to the action.
@@ -191,7 +189,10 @@ class Runtime:
 
         # TODO: here we'll need to call the Actions Server if it is available.
         #  But not for system actions, those should still run locally.
-        result = await fn(**kwargs)
+        # result = await fn(**kwargs)
+        result, status = await self.action_dispatcher.execute_action(
+            action_name, kwargs
+        )
 
         return_value = result
         return_events = []
