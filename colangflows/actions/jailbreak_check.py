@@ -26,7 +26,7 @@ async def check_jailbreak(
         )
 
         jailbreak_check_chain = LLMChain(prompt=prompt, llm=llm)
-        check = jailbreak_check_chain.predict(user_input=user_input)
+        check = await jailbreak_check_chain.apredict(user_input=user_input)
 
         check = check.lower().strip()
         log.info(f"Jailbreak check result is {check}.")
