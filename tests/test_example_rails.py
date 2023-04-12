@@ -51,3 +51,17 @@ def test_game():
 
     chat.user("sure")
     chat.bot("Thank you!")
+
+
+def test_with_custom_action():
+    config = RailsConfig.from_path(os.path.join(CONFIGS_FOLDER, "with_custom_action"))
+    chat = TestChat(
+        config,
+        llm_completions=[
+            "  ask service status",
+            '  "Yes, the service is currently online and running."',
+        ],
+    )
+
+    chat >> "is the service up?"
+    chat << "Yes, the service is currently online and running."

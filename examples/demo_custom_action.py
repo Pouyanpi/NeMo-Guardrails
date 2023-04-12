@@ -7,9 +7,9 @@ logging.basicConfig(level=logging.INFO)
 
 COLANG_CONFIG = """
 define user ask service status
-  what is the status of my service
-  is the service up?
-  is the service down?
+  "what is the status of my service"
+  "is the service up?"
+  "is the service down?"
 
 define flow
   user ask service status
