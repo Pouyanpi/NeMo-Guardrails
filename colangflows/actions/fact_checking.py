@@ -27,7 +27,9 @@ async def check_facts(
         )
 
         fact_check_chain = LLMChain(prompt=prompt, llm=llm)
-        entails = fact_check_chain.predict(evidence=evidence, response=bot_response)
+        entails = await fact_check_chain.apredict(
+            evidence=evidence, response=bot_response
+        )
 
         entails = entails.lower().strip()
         log.info(f"Entailment result is {entails}.")

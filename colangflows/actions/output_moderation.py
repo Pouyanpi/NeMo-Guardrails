@@ -24,7 +24,7 @@ async def output_moderation(
         )
 
         output_moderation_chain = LLMChain(prompt=prompt, llm=llm)
-        check = output_moderation_chain.predict(bot_response=bot_response)
+        check = await output_moderation_chain.apredict(bot_response=bot_response)
 
         check = check.lower().strip()
         log.info(f"Output moderation check result is {check}.")
