@@ -66,20 +66,15 @@ To apply rails, you first create a `LLMRails` instance, configure the desired ra
 ```python
 from colangflows.rails import LLMRails, RailsConfig
 
-# Initialization from a config YAML file or a Colang file.
 # In practice, a folder will be used with the config split across multiple files.
-config = RailsConfig.from_path("config.yml")
+config = RailsConfig.from_path("path/to/config")
 rails = LLMRails(config)
-
-# For completion
-completion = rails.generate(prompt="Explain the Internet for a 5-year old child.")
 
 # For chat
 new_message = rails.generate(messages=[{
     "role": "user",
     "content": "Hello! What can you do for me?"
 }])
-
 ```
 
 ## Rails configuration
