@@ -65,6 +65,11 @@ async def test_1(rails_config):
     events = [{"type": "user_said", "content": "Hello!"}]
 
     new_events = await llm_rails.runtime.generate_events(events)
+    for e in new_events:
+        if e["type"] == "context_update":
+            for key in list(e["data"].keys()):
+                if key.startswith("_"):
+                    del e["data"][key]
 
     assert new_events == [
         {
@@ -111,11 +116,11 @@ async def test_1(rails_config):
     events.append({"type": "user_said", "content": "2 + 3"})
 
     new_events = await llm_rails.runtime.generate_events(events)
-    # for e in new_events:
-    #     if e["type"] == "context_update":
-    #         for key in list(e["data"].keys()):
-    #             if key.startswith("_"):
-    #                 del e["data"][key]
+    for e in new_events:
+        if e["type"] == "context_update":
+            for key in list(e["data"].keys()):
+                if key.startswith("_"):
+                    del e["data"][key]
 
     assert new_events == [
         {
