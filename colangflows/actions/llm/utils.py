@@ -82,6 +82,13 @@ def get_last_user_utterance(events: List[dict]):
 
     return None
 
+def get_last_bot_intent(events: List[dict]):
+    """Returns the last bot intent from the events."""
+    for event in reversed(events):
+        if event["type"] == "bot_intent":
+            return event
+
+    return None
 
 def remove_text_messages_from_history(history: str):
     """Helper that given a history in colang format, removes all texts."""
