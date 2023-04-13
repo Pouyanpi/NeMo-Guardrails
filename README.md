@@ -55,6 +55,7 @@ To install from source:
 > git clone https://gitlab-master.nvidia.com/dialogue-research/colangflows.git
 > cd colangflows
 > pip install -e .
+> pip install -r requirements.txt
 ```
 
 This will install the Colang Flows framework and all its dependencies.
@@ -85,7 +86,7 @@ Rails can be configured using YAML, JSON or using [Colang](https://colang.nvidia
 
 ## Command Line Chat
 
-For testing purposes, the Colang Flows framework provides a command line chat that can be used to interact with the LLM.
+For testing purposes, the Colang Flows framework provides a command line chat that can be used to interact with the LLM. Pass the path to a directory containing the desired configuration files (in both `.co` and `.yml` formats) into the `--config` parameter.
 
 ```
 > colangflows chat --config=...
@@ -93,7 +94,7 @@ For testing purposes, the Colang Flows framework provides a command line chat th
 
 ## Server
 
-An rails server exposes multiple "railed LLM endpoints". Each endpoint can have a different rail configuration.
+A rails server exposes multiple "railed LLM endpoints". Each endpoint can have a different rail configuration.
 
 ```
 > colangflows server
