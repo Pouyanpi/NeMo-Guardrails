@@ -22,7 +22,7 @@ async def check_hallucination(
     """Checks if the last bot response is a hallucination."""
 
     bot_response = context.get("last_bot_message")
-    last_bot_prompt = context.get("last_bot_prompt")
+    last_bot_prompt = context.get("_last_bot_prompt")
 
     if bot_response and last_bot_prompt:
         num_responses = HALLUCINATION_NUM_EXTRA_RESPONSES

@@ -414,7 +414,8 @@ class LLMGenerationActions:
                 "general_instruction": self._get_general_instruction(),
                 "sample_conversation_two_turns": self._get_sample_conversation_two_turns(),
             }
-            context_updates["last_bot_prompt"] = last_bot_prompt
+            # Context variable starting with "_" are considered private (not used in tests or logging)
+            context_updates["_last_bot_prompt"] = last_bot_prompt
 
             chain = LLMChain(
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
