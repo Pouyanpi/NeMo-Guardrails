@@ -16,7 +16,7 @@ def get_colang_history(events: List[dict], include_texts: bool = True):
     """
 
     history = ""
-    for event in events:
+    for idx, event in enumerate(events):
         if event["type"] == "user_said" and include_texts:
             history += f'user "{event["content"]}"\n'
         elif event["type"] == "user_intent":
@@ -33,7 +33,12 @@ def get_colang_history(events: List[dict], include_texts: bool = True):
             history += f'execute {event["action_name"]}\n'
         elif event["type"] == "action_finished" and not event.get("is_system_action"):
             history += f'# The result was {event["return_value"]}\n'
-
+        elif event["type"] == "mask_prev_user_message":
+            utterance_to_replace = get_last_user_utterance(events[:idx])
+            # We replace the last user utterance that led to jailbreak rail trigger with a placeholder text
+            split_history = history.rsplit(utterance_to_replace, 1)
+            placeholder_text = "unanswerable question"
+            history = placeholder_text.join(split_history)
     return history
 
 
@@ -77,6 +82,13 @@ def get_last_user_utterance(events: List[dict]):
 
     return None
 
+def get_last_bot_intent(events: List[dict]):
+    """Returns the last bot intent from the events."""
+    for event in reversed(events):
+        if event["type"] == "bot_intent":
+            return event
+
+    return None
 
 def get_last_user_utterance_event(events: List[dict]):
     """Returns the last user utterance from the events."""

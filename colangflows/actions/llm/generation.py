@@ -20,6 +20,7 @@ from colangflows.actions.llm.utils import (
     get_last_bot_intent_event,
     print_completion,
     remove_text_messages_from_history,
+    get_last_bot_intent
 )
 from colangflows.kb.basic import BasicEmbeddingsIndex
 from colangflows.kb.index import IndexItem
@@ -348,7 +349,6 @@ class LLMGenerationActions:
     @action(is_system_action=True)
     async def generate_bot_message(self, events: List[dict]):
         """Generate a bot message based on the desired bot intent."""
-
         # The last event should be the "start_action" and the one before it the "bot_intent".
         event = get_last_bot_intent_event(events)
         assert event["type"] == "bot_intent"
