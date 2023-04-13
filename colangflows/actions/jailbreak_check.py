@@ -14,7 +14,7 @@ async def check_jailbreak(
     context: Optional[dict] = None,
     llm: Optional[BaseLLM] = None,
 ):
-    """Checks the facts for the bot response."""
+    """Checks if the user response is malicious and should be masked."""
 
     user_input = context.get("last_user_message")
 
