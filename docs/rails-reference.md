@@ -37,6 +37,10 @@ The response should follow specific guide lines.
 
 ## Completion Rails
 
+### Hallucination
+Identify messages which are prone to hallucination.
+Current version is using a self-checking mechanism based on multiple LLM predictions for the same input.
+
 ### Data format
 
 Output should follow a specific format e.g. JSON, possibly with some constraints.
