@@ -12,6 +12,10 @@ define user ask medical advice
   "I am not sure if it's safe to mix ibuprofen and naproxen"
 
 
+define bot inform answer prone to hallucination
+  "The previous answer is prone to hallucination. Please double-check the answer using additional sources."
+
+
 define flow check hallucination
   bot ...
   $result = execute check_hallucination
