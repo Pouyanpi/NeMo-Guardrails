@@ -34,8 +34,6 @@ log = logging.getLogger(__name__)
 class LLMGenerationActions:
     """A container objects for multiple related actions."""
 
-    last_bot_prompt = {}
-
     def __init__(self, config: RailsConfig, llm: BaseLLM, verbose: bool = False):
         self.config = config
         self.llm = llm
@@ -405,19 +403,18 @@ class LLMGenerationActions:
                 template=get_prompt(self.config, Step.GENERATE_BOT_MESSAGE)["content"],
             )
 
-            LLMGenerationActions.last_bot_prompt["prompt"] = bot_message_prompt
-            LLMGenerationActions.last_bot_prompt["history"] = history
-            LLMGenerationActions.last_bot_prompt["examples"] = examples
-            LLMGenerationActions.last_bot_prompt["relevant_chunks"] = relevant_chunks
-            LLMGenerationActions.last_bot_prompt[
-                "sample_conversation"
-            ] = self.config.sample_conversation
-            LLMGenerationActions.last_bot_prompt[
-                "general_instruction"
-            ] = self._get_general_instruction()
-            LLMGenerationActions.last_bot_prompt[
-                "sample_conversation_two_turns"
-            ] = self._get_sample_conversation_two_turns()
+            # Save the current bot message prompt and prompt inputs in the context as a dict.
+            # The last bot message prompt is needed for the hallucination rail.
+            last_bot_prompt = {
+                "prompt": bot_message_prompt,
+                "history": history,
+                "examples": examples,
+                "relevant_chunks": relevant_chunks,
+                "sample_conversation": self.config.sample_conversation,
+                "general_instruction": self._get_general_instruction(),
+                "sample_conversation_two_turns": self._get_sample_conversation_two_turns(),
+            }
+            context_updates["last_bot_prompt"] = last_bot_prompt
 
             chain = LLMChain(
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
