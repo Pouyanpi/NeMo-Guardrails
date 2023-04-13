@@ -81,11 +81,6 @@ def get_rails_configs():
 # One instance of LLMRails per config id
 llm_rails_instances = {}
 
-# The history per config id
-# TODO: this is quick hack, not meant to be released like this.
-#   We should either have caching on conversation history or explicit state passing mechanism.
-history = {}
-
 
 def _get_rails(config_id: str) -> LLMRails:
     """Returns the rails instance for the given config id."""
@@ -102,9 +97,8 @@ def _get_rails(config_id: str) -> LLMRails:
     else:
         raise ValueError(f"Could not find rails configuration {config_id}")
 
-    llm_rails = LLMRails(config=rails_config)
+    llm_rails = LLMRails(config=rails_config, verbose=True)
     llm_rails_instances[config_id] = llm_rails
-    history[config_id] = []
 
     return llm_rails
 
@@ -122,10 +116,8 @@ async def chat_completion(body: RequestBody):
 
     config_id = body.config_id
     llm_rails = _get_rails(config_id)
-    history[config_id].append(body.messages[-1])
 
-    bot_message = await llm_rails.generate_async(messages=history[config_id])
-    history[config_id].append(bot_message)
+    bot_message = await llm_rails.generate_async(messages=body.messages)
 
     return {"messages": [bot_message]}
 

@@ -13,6 +13,7 @@ from colangflows.flows.runtime import Runtime
 from colangflows.language.coyml_parser import parse_flow_elements
 from colangflows.llm.nemollm import NeMoLLM
 from colangflows.rails.llm.config import RailsConfig
+from colangflows.rails.llm.utils import get_history_cache_key
 
 log = logging.getLogger(__name__)
 
@@ -26,6 +27,11 @@ class LLMRails:
         self.config = config
         self.llm = llm
         self.verbose = verbose
+
+        # We keep a cache of the events history associated with a sequence of user messages.
+        # TODO: when we update the interface to allow to return a "state object", this
+        #   should be removed
+        self.events_history_cache = {}
 
         # We also load the default flows from the `default_flows.yml` file in the current folder.
         current_folder = os.path.dirname(__file__)
@@ -51,12 +57,6 @@ class LLMRails:
         # Next, we initialize the LLM Generate actions and register them.
         actions = LLMGenerationActions(config=config, llm=self.llm, verbose=verbose)
         self.runtime.register_actions(actions)
-
-        # NOTE: we currently keep an explicit history of events per LLMRails instance.
-        # This means this instance can only be used for one conversation.
-        # Once support for returning the history of events, and passing this back, will be
-        # added, we can remove this.
-        self.events = []
 
     def _init_llm(self):
         """Initializes the right LLM engine based on the configuration."""
@@ -95,19 +95,17 @@ class LLMRails:
         #   This is important as without it, the LLM prediction is not as good.
 
         # First, we turn the messages into a history of events.
-        # events = []
-        # for message in messages:
-        #     if message.get("role") == "user":
-        #         events.append({"type": "user_said", "content": message["content"]})
-        #     elif message.get("role") == "assistant":
-        #         events.append({"type": "bot_said", "content": message["content"]})
+        cache_key = get_history_cache_key(messages, include_last=False)
+        events = self.events_history_cache.get(cache_key, []).copy()
 
-        self.events.append({"type": "user_said", "content": messages[-1]["content"]})
-        
-        new_events = await self.runtime.generate_events(self.events)
+        events.append({"type": "user_said", "content": messages[-1]["content"]})
 
-        # Save the new events in the history.
-        self.events.extend(new_events)
+        new_events = await self.runtime.generate_events(events)
+
+        # Save the new events in the history and update the cache
+        events.extend(new_events)
+        cache_key = get_history_cache_key(messages, include_last=True)
+        self.events_history_cache[cache_key] = events
 
         # Extract and join all the messages from bot_said events as the response.
         responses = []
@@ -122,7 +120,7 @@ class LLMRails:
         # If logging is enabled, we log the conversation
         # TODO: add support for logging flag
         if self.verbose:
-            history = get_colang_history(self.events)
+            history = get_colang_history(events)
             log.info(f"Conversation history so far: \n{history}")
 
         return {"role": "assistant", "content": "\n".join(responses)}

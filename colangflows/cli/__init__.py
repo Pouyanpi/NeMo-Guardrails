@@ -16,7 +16,7 @@ def chat(
     config: List[str] = typer.Option(
         default=["config"],
         exists=True,
-        help="A configuration file to use.",
+        help="Path to a directory containing configuration files to use. Can also point to a single configuration file.",
     ),
     verbose: bool = typer.Option(
         default=False,

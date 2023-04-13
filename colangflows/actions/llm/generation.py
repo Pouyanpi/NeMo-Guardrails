@@ -15,6 +15,9 @@ from colangflows.actions.llm.utils import (
     get_colang_history,
     get_first_nonempty_line,
     get_last_user_utterance,
+    get_last_user_intent_event,
+    get_last_user_utterance_event,
+    get_last_bot_intent_event,
     print_completion,
     remove_text_messages_from_history,
     get_last_bot_intent
@@ -164,7 +167,7 @@ class LLMGenerationActions:
         """Generate the canonical form for what the user said i.e. user intent."""
 
         # The last event should be the "start_action" and the one before it the "user_said".
-        event = events[-2]
+        event = get_last_user_utterance_event(events)
         assert event["type"] == "user_said"
 
         # TODO: check for an explicit way of enabling the canonical form detection
@@ -272,7 +275,7 @@ class LLMGenerationActions:
         Currently, only generates a next step after a user intent.
         """
         # The last event should be the "start_action" and the one before it the "user_intent".
-        event = events[-2]
+        event = get_last_user_intent_event(events)
 
         # Currently, we only predict next step after a user intent using LLM
         if event["type"] == "user_intent":
@@ -347,7 +350,7 @@ class LLMGenerationActions:
     async def generate_bot_message(self, events: List[dict]):
         """Generate a bot message based on the desired bot intent."""
         # The last event should be the "start_action" and the one before it the "bot_intent".
-        event = get_last_bot_intent(events)
+        event = get_last_bot_intent_event(events)
         assert event["type"] == "bot_intent"
 
         bot_intent = event["intent"]
