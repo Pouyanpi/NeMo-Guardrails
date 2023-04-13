@@ -23,5 +23,5 @@ define user express sadness
 define bot express thank you for information
   "Thanks for this information."
 
-define bot bot offer additional help
+define bot offer additional help
   "If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."

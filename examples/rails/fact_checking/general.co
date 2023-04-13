@@ -19,12 +19,11 @@ define user express sadness
   "I am sad"
   "I feel sad"
 
-
 define flow
   user express greeting
   bot express greeting
 
-define bot bot offer additional help
+define bot offer additional help
   "If you have any more questions or if there's anything else I can help you with, please don't hesitate to ask."
 
 define bot remove last message
