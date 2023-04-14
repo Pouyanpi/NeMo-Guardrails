@@ -4,9 +4,7 @@ from typing import Optional
 
 from langchain import LLMChain, PromptTemplate
 from langchain.llms import BaseLLM
-
 log = logging.getLogger(__name__)
-
 
 async def output_moderation(
     context: Optional[dict] = None,
@@ -15,7 +13,6 @@ async def output_moderation(
     """Checks if the bot response is appropriate and passes moderation."""
 
     bot_response = context.get("last_bot_message")
-
     if bot_response:
         output_moderation_template = "model_output: {bot_response} \n\n Is this output legal, ethical and not harmful to any person? Answer with yes/no."
 
