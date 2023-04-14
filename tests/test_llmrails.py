@@ -3,7 +3,7 @@ from typing import Optional
 import pytest
 
 from colangflows.rails import LLMRails, RailsConfig
-from tests.utils import FakeLLM
+from tests.utils import FakeLLM, clean_events
 
 
 @pytest.fixture
@@ -65,11 +65,7 @@ async def test_1(rails_config):
     events = [{"type": "user_said", "content": "Hello!"}]
 
     new_events = await llm_rails.runtime.generate_events(events)
-    for e in new_events:
-        if e["type"] == "context_update":
-            for key in list(e["data"].keys()):
-                if key.startswith("_"):
-                    del e["data"][key]
+    clean_events(new_events)
 
     assert new_events == [
         {
@@ -116,11 +112,7 @@ async def test_1(rails_config):
     events.append({"type": "user_said", "content": "2 + 3"})
 
     new_events = await llm_rails.runtime.generate_events(events)
-    for e in new_events:
-        if e["type"] == "context_update":
-            for key in list(e["data"].keys()):
-                if key.startswith("_"):
-                    del e["data"][key]
+    clean_events(new_events)
 
     assert new_events == [
         {
