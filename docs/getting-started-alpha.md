@@ -58,6 +58,63 @@ You should now be able to invoke the `colang` CLI.
 
 ```bash
 > colangflows --help
+
+Usage: colangflows [OPTIONS] COMMAND [ARGS]...
+
+Options:
+  --install-completion [bash|zsh|fish|powershell|pwsh]
+                                  Install completion for the specified shell.
+  --show-completion [bash|zsh|fish|powershell|pwsh]
+                                  Show completion for the specified shell, to
+                                  copy it or customize the installation.
+  --help                          Show this message and exit.
+
+Commands:
+  actions-server  Starts a Colang Flows actions server.
+  chat            Starts an interactive chat session.
+  server          Starts a Colang Flows server.
+```
+
+You can also use the `--help` flag to learn more about each of the `colangflows` commands: 
+
+```bash
+> colangflows actions-server --help
+
+Usage: colangflows actions-server [OPTIONS]
+
+  Starts a Colang Flows actions server.
+
+Options:
+  --port INTEGER  The port that the server should listen on.   [default: 8001]
+  --help          Show this message and exit.
+```
+
+```bash
+> colangflows chat --help
+
+Usage: colangflows chat [OPTIONS]
+
+  Starts an interactive chat session.
+
+Options:
+  --config TEXT             Path to a directory containing configuration files
+                            to use. Can also point to a single configuration
+                            file.  [default: config]
+  --verbose / --no-verbose  If the chat should be verbose and output the
+                            prompts  [default: no-verbose]
+  --help                    Show this message and exit.
+```
+
+```bash
+> colangflows server --help
+
+Usage: colangflows server [OPTIONS]
+
+  Starts a Colang Flows server.
+
+Options:
+  --port INTEGER  The port that the server should listen on.   [default: 8000]
+  --help          Show this message and exit.
 ```
 
 ## Creating a basic rails application
