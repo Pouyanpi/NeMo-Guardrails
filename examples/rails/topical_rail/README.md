@@ -143,7 +143,7 @@ developer might ask is, `"Do I have to define every type of user & bot
 behavior?"`. The short answer is, it depends. The underlying large
 language model can answer undefined questions. Refer to the
 [colang runtime description guide]() for more information on the same. In the
-knowledge-base-based questions in the later section, we will see a case where 
+knowledge-base-based questions in the later section, we will see a case where
 the bot message is generated rather than defined.
 
 #### Using Flows
