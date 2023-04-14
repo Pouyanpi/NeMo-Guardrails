@@ -29,10 +29,17 @@ async def check_hallucination(
         num_responses = HALLUCINATION_NUM_EXTRA_RESPONSES
         # Use beam search for the LLM call, to get several completions with only one call.
         # At the current moment, only OpenAI LLM engines are supported for computing the additional completions.
-        extra_llm = OpenAI(temperature=1, n=num_responses, best_of=num_responses)
         if type(llm) != OpenAI:
             log.warning(f"Hallucination rail can only be used with OpenAI LLM engines.")
             return False
+
+        # Use the same model name as the original OpenAI LLM engine.
+        extra_llm = OpenAI(
+            model_name=llm.model_name,
+            temperature=1,
+            n=num_responses,
+            best_of=num_responses,
+        )
 
         prompt = last_bot_prompt.pop("prompt")
 
