@@ -23,9 +23,9 @@ async def check_hallucination(
     multiple completions for self-consistency."""
 
     bot_response = context.get("last_bot_message")
-    last_bot_prompt = context.get("_last_bot_prompt")
+    last_bot_prompt_string = context.get("_last_bot_prompt")
 
-    if bot_response and last_bot_prompt:
+    if bot_response and last_bot_prompt_string:
         num_responses = HALLUCINATION_NUM_EXTRA_RESPONSES
         # Use beam search for the LLM call, to get several completions with only one call.
         # At the current moment, only OpenAI LLM engines are supported for computing the additional completions.
@@ -41,11 +41,10 @@ async def check_hallucination(
             best_of=num_responses,
         )
 
-        prompt = last_bot_prompt.pop("prompt")
-
-        # Use the "generate" call from langchain to get all completions in the same response
-        chain = LLMChain(prompt=prompt, llm=extra_llm)
-        extra_llm_response = await chain.agenerate([last_bot_prompt])
+        # Use the "generate" call from langchain to get all completions in the same response.
+        last_bot_prompt = PromptTemplate(template="{text}", input_variables=["text"])
+        chain = LLMChain(prompt=last_bot_prompt, llm=extra_llm)
+        extra_llm_response = await chain.agenerate([{"text": last_bot_prompt_string}])
         extra_llm_completions = []
         if len(extra_llm_response.generations) > 0:
             extra_llm_completions = extra_llm_response.generations[0]
