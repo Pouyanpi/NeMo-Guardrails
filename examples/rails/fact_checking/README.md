@@ -15,4 +15,3 @@ To utilize this rail, you can take a look at the file ```config.co```. The flow 
 The ```bot ...``` command is used to indicate that the bot needs to generate a response. The wildcard ```...``` is utilized by the Colang runtime to replace it with the response from the bot.
 
 The fact checking rail is invoked after a bot response using the ```execute check_facts``` command. This runs the action ```check_facts``` and returns True if the bot response is factually valid and False otherwise. If the bot response is not factually valid, we will not display the generated response to the user and instead ask the bot to say that it does not know the answer.
-

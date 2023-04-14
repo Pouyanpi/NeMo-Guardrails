@@ -21,4 +21,4 @@ define flow check jailbreak
     bot remove last message
     bot inform cannot answer
   else
-    bot show response for question 
+    bot show response for question

@@ -75,7 +75,7 @@ Commands:
   server          Starts a Colang Flows server.
 ```
 
-You can also use the `--help` flag to learn more about each of the `colangflows` commands: 
+You can also use the `--help` flag to learn more about each of the `colangflows` commands:
 
 ```bash
 > colangflows actions-server --help
