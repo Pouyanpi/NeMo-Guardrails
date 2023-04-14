@@ -19,15 +19,20 @@ async def check_hallucination(
     llm: Optional[BaseLLM] = None,
     use_llm_checking: bool = True,
 ):
-    """Checks if the last bot response is a hallucination."""
+    """Checks if the last bot response is a hallucination by checking
+    multiple completions for self-consistency."""
 
     bot_response = context.get("last_bot_message")
     last_bot_prompt = context.get("_last_bot_prompt")
 
     if bot_response and last_bot_prompt:
         num_responses = HALLUCINATION_NUM_EXTRA_RESPONSES
-        # Use beam search for the LLM call, to get several completions with only one call
+        # Use beam search for the LLM call, to get several completions with only one call.
+        # At the current moment, only OpenAI LLM engines are supported for computing the additional completions.
         extra_llm = OpenAI(temperature=1, n=num_responses, best_of=num_responses)
+        if type(llm) != OpenAI:
+            log.warning(f"Hallucination rail can only be used with OpenAI LLM engines.")
+            return False
 
         prompt = last_bot_prompt.pop("prompt")
 

@@ -11,6 +11,8 @@ The other completions are generated with a single extra LLM call, with a higher 
 Having the original bot response and a context consisting of the other completions, we are looking for agreement between them:
 "Is the bot response in agreement with the context?".
 
+Current implementation supports only OpenAI LLM engines.
+
 To utilize this rail, you can take a look at the file ```config.co```. The flow defined in the file is as follows
 
 ```define flow check hallucination
