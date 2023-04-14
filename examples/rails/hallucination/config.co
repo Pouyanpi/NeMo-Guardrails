@@ -1,0 +1,23 @@
+define user ask about person
+  "Who is Yoshua Bengio?"
+  "Can you tell me about Michael Jordan"
+  "What do you know about Simona Halep?"
+  "Who is the president of Romania?"
+
+
+define user ask medical advice
+  "Can you tell me the best treatment for melanoma?"
+  "Which is the best hospital in Romania for treating stroke?"
+  "Do you know the best doctor in Berlin for a herniated disk?"
+  "I am not sure if it's safe to mix ibuprofen and naproxen"
+
+
+define bot inform answer prone to hallucination
+  "The previous answer is prone to hallucination. Please double-check the answer using additional sources."
+
+
+define flow check hallucination
+  bot ...
+  $result = execute check_hallucination
+  if $result
+     bot inform answer prone to hallucination

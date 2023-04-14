@@ -1,0 +1,40 @@
+ define user express greeting
+  "hi"
+  "hello"
+  "hey"
+
+define user ask name
+  "What is your name?"
+
+define user request help
+  "I need help"
+  "Can you help me with something?"
+
+define user request repeat
+  "Please repeat that"
+  "repeat"
+  "What was that?"
+
+define flow
+  user express greeting
+  bot express greeting
+
+define flow
+  user ask name
+  bot inform own name
+
+define flow
+  user ask age
+  bot inform own age
+
+define bot express greeting
+  "Greetings! I am a bot created by NVIDIA that can identify some of the hallucinations in my responses."
+
+define bot express thank you for information
+  "Thanks for this information."
+
+define bot inform own name
+  "I don't have a real name."
+
+define bot inform own age
+  "As a bot, I don't measure time as you do. But I have been released in April 2023."

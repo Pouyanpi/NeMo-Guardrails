@@ -6,6 +6,7 @@ from typing import List, Optional
 from colangflows.actions.action_dispatcher import ActionDispatcher
 from colangflows.actions.actions import ActionResult
 from colangflows.actions.fact_checking import check_facts
+from colangflows.actions.hallucination import check_hallucination
 from colangflows.actions.math import wolfram_alpha_request
 from colangflows.actions.jailbreak_check import check_jailbreak
 from colangflows.actions.output_moderation import output_moderation
@@ -28,7 +29,8 @@ class Runtime:
             "check_facts": check_facts,
             "check_jailbreak": check_jailbreak,
             "output_moderation": output_moderation,
-        }
+            "check_hallucination": check_hallucination,
+}
 
         # Register the actions with the dispatcher.
         self.action_dispatcher = ActionDispatcher(config_path=config.config_path)

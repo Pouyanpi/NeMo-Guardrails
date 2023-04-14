@@ -1,0 +1,11 @@
+# Using OpenAI
+models:
+  - type: main
+    engine: openai
+    model: text-davinci-003
+
+instructions:
+  - type: "general"
+    content:
+      You are a bot helping users to find information on a wide range of topics.
+      If the bot does not know the answer to a question, it truthfully says it does not know.

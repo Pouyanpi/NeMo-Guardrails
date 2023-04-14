@@ -403,18 +403,26 @@ class LLMGenerationActions:
                 template=get_prompt(self.config, Step.GENERATE_BOT_MESSAGE)["content"],
             )
 
+            # Save the current bot message prompt in the context as a string.
+            # The last bot message prompt is needed for the hallucination rail.
+            prompt_inputs = {
+                "history": history,
+                "examples": examples,
+                "relevant_chunks": relevant_chunks,
+                "sample_conversation": self.config.sample_conversation,
+                "general_instruction": self._get_general_instruction(),
+                "sample_conversation_two_turns": self._get_sample_conversation_two_turns(),
+            }
+            bot_message_prompt_string = bot_message_prompt.format(**prompt_inputs)
+            # Context variable starting with "_" are considered private (not used in tests or logging)
+            context_updates["_last_bot_prompt"] = bot_message_prompt_string
+
             chain = LLMChain(
                 prompt=bot_message_prompt, llm=self.llm, verbose=self.verbose
             )
             # TODO: catch openai.error.InvalidRequestError from exceeding max token length
-            result = await chain.apredict(
-                history=history,
-                examples=examples,
-                relevant_chunks=relevant_chunks,
-                sample_conversation=self.config.sample_conversation,
-                general_instruction=self._get_general_instruction(),
-                sample_conversation_two_turns=self._get_sample_conversation_two_turns(),
-            )
+            result = await chain.apredict(**prompt_inputs)
+
             if self.verbose:
                 print_completion(result)
 
