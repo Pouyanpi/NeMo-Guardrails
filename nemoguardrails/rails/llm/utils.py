@@ -15,6 +15,8 @@
 
 from typing import List
 
+from .file_reader import file_reader
+
 
 def get_history_cache_key(messages: List[dict], include_last: bool) -> str:
     """Computes the cache key for a sequence of messages and a config id."""

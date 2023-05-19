@@ -23,6 +23,7 @@ from pydantic.fields import Field
 
 from nemoguardrails.language.coyml_parser import parse_flow_elements
 from nemoguardrails.language.parser import parse_colang_file
+from nemoguardrails.rails.llm.utils import file_reader
 
 
 class Model(BaseModel):
@@ -155,8 +156,7 @@ class RailsConfig(BaseModel):
         # If the config path is a file, we load the YAML content.
         # Otherwise, if it's a folder, we iterate through all files.
         if config_path.endswith(".yaml") or config_path.endswith(".yml"):
-            with open(config_path) as f:
-                raw_config = yaml.safe_load(f.read())
+            raw_config = file_reader(".yml").load(config_path)
 
         elif os.path.isdir(config_path):
             # Iterate all .yml files and join them
