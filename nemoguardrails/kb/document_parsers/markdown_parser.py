@@ -24,44 +24,31 @@ class MarkdownParser(DocumentParser):
     def split_document_in_topic_chunks(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
-        """Splits a markdown content into topic chunks.
-
-        :param content: The markdown content to be split.
-
-        :param max_chunk_size: The maximum size of a chunk.
-
-        """
+        """Splits a markdown content into topic chunks."""
 
         chunks = []
-
         lines = content.strip().split("\n")
 
         # Meta information for the whole document
-
         meta = {}
 
         # If there's a code block at the beginning, with meta data, we parse that first.
 
         if lines[0].startswith("```"):
             meta_yaml = ""
-
             lines = lines[1:]
 
             while not lines[0].startswith("```"):
                 meta_yaml += lines[0] + "\n"
-
                 lines = lines[1:]
 
             lines = lines[1:]
-
             meta.update(yaml.safe_load(meta_yaml))
 
         # Every section and subsection title will be part of the title of the chunk.
-
         chunk_title_parts = []
 
         # The data for the current chunk.
-
         chunk_body_lines = []
 
         chunk_size = 0
@@ -70,7 +57,6 @@ class MarkdownParser(DocumentParser):
             nonlocal chunk_body_lines, chunk_size
 
             body = "\n".join(chunk_body_lines).strip()
-
             # Skip saving if body is empty
 
             if body:
@@ -84,7 +70,6 @@ class MarkdownParser(DocumentParser):
                 )
 
             chunk_body_lines = []
-
             chunk_size = 0
 
         i = 0

@@ -21,6 +21,30 @@ from .document_parser import DocumentParser
 
 
 class HtmlParser(DocumentParser):
+    """A parser for HTML documents.
+
+    This parser uses BeautifulSoup to parse HTML documents.
+    It splits the document into chunks based on the tags in the document.
+    Each chunk contains the text of a single tag, along with the tag name as the title.
+
+    Example:
+        >>> from nemoguardrails.parsers import HtmlParser
+        >>> parser = HtmlParser()
+        >>> html_content = "<html><body><h1>My First Heading</h1><p>My first paragraph.</p></body></html>"
+        >>> chunks = parser.split_document_in_topic_chunks(html_content)
+        >>> for chunk in chunks:
+        ...     print(f"Title: {chunk['title']}")
+        ...     print(f"Body: {chunk['body']}")
+        ...     print("\n---\n")
+        Title: h1
+        Body: My First Heading
+        ---
+        Title: p
+        Body: My first paragraph.
+        ---
+
+    """
+
     def split_document_in_topic_chunks(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
@@ -32,6 +56,9 @@ class HtmlParser(DocumentParser):
         return chunks
 
     def _handle_tag(self, tag, max_chunk_size: int) -> List[Dict[str, str]]:
+        """Handle an individual HTML tag."""
+
+        # Ignore tags that are just whitespace
         text = tag.get_text().strip()
 
         title = self._get_title_for_tag(tag)
@@ -51,7 +78,6 @@ class HtmlParser(DocumentParser):
 
             for i in range(0, len(text), max_chunk_size):
                 chunk_text = text[i : i + max_chunk_size]
-
                 chunks.append(
                     {
                         "title": title,
@@ -71,48 +97,8 @@ class HtmlParser(DocumentParser):
             return tag.name
 
 
-if __name__ == "__main__":
-    html_content = """
-
-    <!DOCTYPE html>
-
-    <html>
-
-    <head>
-
-        <title>Page Title</title>
-
-    </head>
-
-    <body>
-
-    <h1>My First Heading</h1>
-
-    <p>My first paragraph.</p>
-
-    <h2>My Second Heading</h2>
-
-    <p>My second paragraph is considerably longer than the first one, so it should be split into multiple chunks by the HtmlParser. Let's make it long enough to test that functionality.</p>
-
-    </body>
-
-    </html>
-
-    """
-
-    parser = HtmlParser()
-
-    chunks = parser.split_document_in_topic_chunks(html_content, max_chunk_size=50)
-
-    for chunk in chunks:
-        print(f"Title: {chunk['title']}")
-
-        print(f"Body: {chunk['body']}")
-
-        print("\n---\n")
-
-    """
-    _handle_tag: This method handles the processing of an individual HTML tag. It's responsible for generating one or more chunks from the tag's text, depending on the length of the text and the max_chunk_size.
+"""
+_handle_tag: This method handles the processing of an individual HTML tag. It's responsible for generating one or more chunks from the tag's text, depending on the length of the text and the max_chunk_size.
 
 _get_title_for_tag: This method determines the title for a chunk based on the tag. It treats heading tags (<h1> through <h6>) specially, prepending 'Heading: ' to the tag's text to form the title. For all other tags, it simply uses the tag name as the title.
 

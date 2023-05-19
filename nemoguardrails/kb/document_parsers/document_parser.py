@@ -22,4 +22,9 @@ class DocumentParser(ABC):
     def split_document_in_topic_chunks(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
+        """Abstract method to split a document into chunks.
+
+        :param content: The markdown content to be split.
+        :param max_chunk_size: The maximum size of a chunk.
+        """
         raise NotImplementedError
