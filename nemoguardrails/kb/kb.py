@@ -22,8 +22,8 @@ from typing import List
 from annoy import AnnoyIndex
 
 from nemoguardrails.kb.basic import BasicEmbeddingsIndex
+from nemoguardrails.kb.document_parsers import parsers
 from nemoguardrails.kb.index import IndexItem
-from nemoguardrails.kb.utils import split_markdown_in_topic_chunks
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,11 @@ class KnowledgeBase:
         # Start splitting every doc into topic chunks
 
         for doc in self.documents:
-            chunks = split_markdown_in_topic_chunks(doc)
+            parser_class = parsers.get(doc.format)
+            if parser_class is None:
+                raise ValueError(f"unsupported document type: {doc.format}")
+            parser = parser_class()
+            chunks = parser.split_document_in_topic_chunks(doc)
             self.chunks.extend(chunks)
 
     def build(self):

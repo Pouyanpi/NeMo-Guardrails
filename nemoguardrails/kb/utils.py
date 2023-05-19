@@ -105,3 +105,13 @@ def split_markdown_in_topic_chunks(
         _record_chunk()
 
     return chunks
+
+
+def _identify_document(document: Union[str, bytes]):
+    if isinstance(document, bytes):
+        return "pdf"
+    if document.stript().startswith("<HTML"):
+        return "html"
+    if document.strip().startswith("#"):
+        return "markdown"
+    return "txt"
