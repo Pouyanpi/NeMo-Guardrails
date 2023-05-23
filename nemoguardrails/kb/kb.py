@@ -22,7 +22,7 @@ from typing import List
 from annoy import AnnoyIndex
 
 from nemoguardrails.kb.basic import BasicEmbeddingsIndex
-from nemoguardrails.kb.document_parsers import parsers
+from nemoguardrails.kb.document_splitters import parsers
 from nemoguardrails.kb.index import IndexItem
 
 log = logging.getLogger(__name__)
@@ -49,13 +49,10 @@ class KnowledgeBase:
 
         # Start splitting every doc into topic chunks
 
-        for doc in self.documents:
-            parser_class = parsers.get(doc.format)
-            if parser_class is None:
-                raise ValueError(f"unsupported document type: {doc.format}")
-            parser = parser_class()
-            chunks = parser.split_document_in_topic_chunks(doc)
-            self.chunks.extend(chunks)
+        splitter = Splitter()
+        chunks = splitter.split_topics(self.documents)
+        self.chunks.extend(chunks)
+
 
     def build(self):
         """Builds the knowledge base index."""
