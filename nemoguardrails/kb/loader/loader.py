@@ -2,19 +2,17 @@ from typing import Any, Callable, Iterable, List
 
 from pydantic import BaseModel
 
-from unstructured.partition.html import partition_html
-from unstructured.documents.elements import Element
-from unstructured.documents.elements import Text
-from unstructured.documents.elements import FigureCaption
-from unstructured.documents.elements import NarrativeText
-from unstructured.documents.elements import ListItem
-from unstructured.documents.elements import Title
-from unstructured.documents.elements import Address
-from unstructured.documents.elements import Image
-from unstructured.documents.elements import PageBreak
-from unstructured.documents.elements import Table
 
+from .typing import (
+    Title,
+    Text, 
+    ListItem, 
+    FigureCaption, 
+    NarrativeText
+)
+from . import PartitionManager
 
+# TODO: move Document and Topic to a separate file
 
 class Document(BaseModel):
     content: str
@@ -29,19 +27,19 @@ class Topic(BaseModel):
     body: str
     metadata: Dict[str, Any] = {}     
 
-
 class DocumentLoader(ABC):
     """Abstract class for loaders.
     
-    :param file_path: The path to the file to load.
-    :type file_path: str
-    :param partition_handler: The partition handler to use.
-    :type partition_handler: Callable
-    :param kwargs: Keyword arguments to pass to the partition handler.
-    :type kwargs: Any
+    :param: file_path: The path to the file to load.
+    :param: file: A file-like object using "r" mode --> open(filename, "r").
+    :param: text: The string representation of the file to load.
+    :param: url: The URL of a webpage to parse. Only for URLs that return an HTML document.
+    :param: partition_handler: A partition handler to use for the loader.
+    :param: kwargs: Additional keyword arguments to pass to the partition handler see `unstructured.partion`.
 
+    
     Example:
-        >>> from nemoguardrails.kb.loaders import DocumentLoader
+        >>> from nemoguardrails.kb.loader import DocumentLoader
         >>> loader = DocumentLoader(file_path="path/to/file.md")
         >>> for document in loader.load():
         ...     print(document.content)
@@ -51,15 +49,34 @@ class DocumentLoader(ABC):
         ...     print(document.file_path)
         ...     print(document.loader)
 
-        
-    
-    
+        >>> file_paths = ["file1.txt", "file2.txt", "file3.txt"]
+        >>> loaders = [DocumentLoader(file_path=path) for path in file_paths]
+        >>> for loader in loaders:
+        ...     documents = loader.load()
+        ...     # process the documents for each file here
     """
-    def __init__(self, file_path: partition_handler: Callable = None , str, **kwargs: Any):
+    def __init__(self, 
+                 file_path: Optional[str] = None, 
+                 file: Optional[IO] = None , 
+                 text: Optional[str] = None, 
+                 url: Optional[str] = None, 
+                 partition_handler: Optional[Callable] = None ,
+                 **kwargs: Any):
         """Initialize a DocumentLoader."""
-        self.file_path = file_path
+        
+        # _source is a dictionary that contains the source of the document
+        # The source can be a file_path, file, text, or url
+
+        self._source = {
+            "filename": file_path,
+            "file": file,
+            "text": text,
+            "url": url,
+        }
+        
+
         self._kwargs = kwargs
-        self._partition_handler = None
+        self._partition_handler = partition_handler
 
     @property
     def partition_handler(self):
@@ -69,14 +86,19 @@ class DocumentLoader(ABC):
 
     def _get_partition_handler(self):
         """Get the partition handler for the loader."""
-
-        return PartitionFactory.get_partition_function(detect_filetype(self.file_path))
-
+        #NOTE: PartitionManager currently only supports file_path
+        #TODO: Add support for file, text, and url
+        return PartitionManager.get(self.file_path)
+    
+    @property
+    def _elements(self) -> List[Element]:
+        """Get the elements from the partition handler."""
+        return self.partition_handler(**self._source, **self._kwargs)
     
     @abstractmethod
     def load(self) -> Iterable[Document]:
         """Load documents from a file."""
-        documents = []
+
         for element in self._elements:
             yield Document(
                 content=element.text,
@@ -88,9 +110,23 @@ class DocumentLoader(ABC):
             )
 
 
-    def aggregate_topics(self):
+    def combine_topics(self):
+        """Combine multiple documents into topics.
+
+        This method aggregates the body of multiple documents into topics, using the title of each document 
+        as the title of the corresponding topic. The resulting topics are represented 
+        as dictionaries with keys for `title`, `body`, and `metadata`.
         
-    
+        It's important to note that each file can contain multiple elements, which can correspond to multiple documents. 
+        One of these elements could be a Title. The text elements that follow the Title until the next Title is encountered 
+        are considered to be the body of the current topic, with the Title serving as the title of the topic.
+        
+        Returns:
+            A list of dictionaries, each representing a topic.
+        """
+        
+        #TODO: is topics a good name for this?
+
         topics = []
         topic_schema = {
             "title": "",
@@ -115,17 +151,13 @@ class DocumentLoader(ABC):
             
         return topics
     
-    @property
-    def _elements(self) -> List[Element]:
-        """Get the elements from the partition handler."""
-        return self.partition_handler(filename=self.file_path, **self._kwargs)
 
 
 class HtmlLoader(Loader):
     """Loader that uses unstructured to load HTML files."""
     @property
     def elements(self) -> List:
-        return partition_html(filename=self.file_path, **self.unstructured_kwargs)
+        return partition_html(**self._source, **self.unstructured_kwargs)
     
         
 

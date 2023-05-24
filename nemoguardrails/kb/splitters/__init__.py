@@ -45,6 +45,25 @@ character_text_splitter_kwargs = {
     "separator": "\n\n"
 }
 
+latex_text_splitter_kwargs = {
+    "separator": "\n\n"
+}
+
+markdown_text_splitter_kwargs = {
+    "separator": "\n\n"
+}
+
+# nltk_text_splitter_kwargs = {
+#      "separator": "\n\n"
+# }
+
+# spacy_text_splitter_kwargs = {
+#     "separator": "\n\n",
+#      "pipeline": "en_core_web_sm",
+# }
+
+
+
 
 CharacterTextSplitter = partial(CharacterTextSplitter, **character_text_splitter_kwargs)
 LatexTextSplitter = partial(LatexTextSplitter, **latex_text_splitter_kwargs)
@@ -54,6 +73,7 @@ MarkdownTextSplitter = partial(MarkdownTextSplitter, **markdown_text_splitter_kw
 PythonCodeTextSplitter = partial(PythonCodeTextSplitter, **python_code_text_splitter_kwargs)
 TokenTextSplitter = partial(TokenTextSplitter, **token_text_splitter_kwargs)
 # SentencePieceTextSplitter = partial(SentencePieceTextSplitter, **sentencepiece_text_splitter_kwargs)
+
 
 
 SPLITTERS = {
@@ -76,3 +96,6 @@ splitters = {
     "txt": TxtParser,
     "pdf": PdfParser,
 }
+
+
+SplitterType = Type[TextSplitter]

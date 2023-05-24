@@ -18,7 +18,7 @@ from typing import Dict, List
 from .document_splitter import DocumentSplitter
 
 
-class TxtParser(DocumentSplitter):
+class TextSplitter(DocumentSplitter):
     def split(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
