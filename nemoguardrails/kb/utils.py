@@ -115,3 +115,55 @@ def _identify_document(document: Union[str, bytes]):
     if document.strip().startswith("#"):
         return "markdown"
     return "txt"
+
+
+
+import re
+
+def _kwargs_str_to_kwargs(kwargs_str: str):
+  """Converts given `kwargs` as str into kwargs dict."""
+  if not kwargs_str:
+    return {}
+  kwarg_strs = kwargs_str.split(',')
+  kwargs = {}
+  for kwarg_str in kwarg_strs:
+    kwarg_name, kwarg_val = kwarg_str.split('=')
+    kwargs[kwarg_name] = _cast_to_pod(kwarg_val)
+  return kwargs
+
+
+def _cast_to_pod(val: str) -> Value:
+  """Try cast to bool, int, float, str, in that order."""
+  bools = {'True': True, 'False': False}
+  if val in bools:
+    return bools[val]
+  try:
+    return int(val)
+  except ValueError:
+    try:
+      return float(val)
+    except ValueError:
+      return val
+
+
+def camelcase_to_snakecase(name: str) -> str:
+  """Convert camel-case string to snake-case."""
+  s1 = _first_cap_re.sub(r'\1_\2', name)
+  return _all_cap_re.sub(r'\1_\2', s1).lower()
+
+
+def snake_to_camelcase(name: str) -> str:
+  """Convert snake-case string to camel-case string."""
+  return ''.join(n.capitalize() for n in name.split('_'))
+
+
+def filename_prefix_for_name(name: str) -> str:
+  if os.path.basename(name) != name:
+    raise ValueError('Should be a dataset name, not a path: %s' % name)
+  return camelcase_to_snakecase(name)
+
+
+def filename_prefix_for_split(name: str, split: str) -> str:
+  if os.path.basename(name) != name:
+    raise ValueError('Should be a dataset name, not a path: %s' % name)
+  return '%s-%s' % (filename_prefix_for_name(name), split)
