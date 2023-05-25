@@ -18,10 +18,10 @@ from typing import Dict, List
 
 import PyPDF2
 
-from .document_splitter import DocumentSplitter
+from .splitter import BaseSplitter
 
 
-class PdfSplitter(DocumentSplitter):
+class PdfSplitter(BaseSplitter):
     def split(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:

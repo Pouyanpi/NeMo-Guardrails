@@ -77,15 +77,14 @@ TokenTextSplitter = partial(TokenTextSplitter, **token_text_splitter_kwargs)
 
 
 SPLITTERS = {
-    "character": CharacterTextSplitter,
-    "latex": LatexTextSplitter,
-    "markdown": MarkdownTextSplitter,\
-    "text": TextSplitter,
-    # "nltk": NLTKTextSplitter,
-    # "spacy": SpacyTextSplitter,
-    "python_code": PythonCodeTextSplitter,
-    "token": TokenTextSplitter,
-    # "sentencepiece": SentencePieceTextSplitter,
+    "character_lc": CharacterTextSplitter,
+    "latex_lc": LatexTextSplitter,
+    "markdown_lc": MarkdownTextSplitter,\
+    "text_lc": TextSplitter,
+    "nltk_lc": NLTKTextSplitter,
+    "spacy_lc": SpacyTextSplitter,
+    "python_code_lc": PythonCodeTextSplitter,
+    "token_lc": TokenTextSplitter,
 }
 
 

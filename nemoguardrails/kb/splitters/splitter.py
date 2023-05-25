@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List
 
 from pydantic import BaseModel
-
+from . import 
 # from . import SPLITTERS
 
 
@@ -15,38 +15,7 @@ class Topic(BaseModel):
             
 
 
-class SplitterRegistry:
-    def __init__(self, splitters: Dict[str, Any]) -> None:
-        self.splitters = splitters
-        self.validate_splitters()
-
-    def __get__(self, class_name: str):
-        return self.get(class_name)
-
-    def get(self, class_name):
-        """
-        Get a splitter by name.
-
-        :param class_name: The name of the splitter.
-        :raises KeyError: If the splitter name does not exist in the registry.
-        """
-        if class_name not in self.splitters:
-            raise KeyError(f"{class_name} does not exist in the registry")
-        return self.splitters.get(class_name)
-
-    def validate_splitters(self) -> None:
-        """
-        Validate that all splitters have a 'split' method.
-
-        :raises ValueError: If a splitter does not have a 'split' method.
-        """
-        for splitter_name, splitter in self.splitters.items():
-            if not hasattr(splitter, "split_text") or not callable(splitter.split_text):
-                raise ValueError(f"{splitter_name} does not have a 'split' method")
-
-splitter_registry = SplitterRegistry(SPLITTERS)
-
-class Splitter(ABC):
+class Splitter:
     """
     Abstract class for text splitters.
 
@@ -70,9 +39,9 @@ class Splitter(ABC):
     ['def hello_world():\n', '    print(', "'Hello, world!'", ')\n']
 
     """
-    def __init__(self, name: str = None, splitters: Dict[str, Any] = None, **kwargs) -> None:
+    def __init__(self, name: str = None, **kwargs) -> None:
         self._name = name
-        self._splitters = splitters or splitter_registry
+        self._splitter_registry = SplitterRegistry()
         self._kwargs = kwargs
 
     def split(self, text: str, splitter_name: str = None) -> list[str]:
@@ -108,8 +77,8 @@ class Splitter(ABC):
                 
                 chunks.append(chunked_topic.to_dict())
         return chunks
-
-    def _get_splitter(self, splitter_name: str = "character") -> "TextSplitter":
+   
+    def _get_splitter(self, splitter_name: str = "character_lc") -> "TextSplitter":
         """
         Get a splitter by name.
         :param splitter_name: The name of the splitter to get.
@@ -117,13 +86,15 @@ class Splitter(ABC):
         :raises ValueError: If the splitter name is invalid.
         :return: An instance of the selected splitter. 
         """
-        splitter_class = self._splitters.get(splitter_name)
+        splitter_class = self._splitter_registry.get(splitter_name)
         if splitter_class is None:
             raise ValueError(f"Invalid splitter name: {splitter_name}")
         return splitter_class(**self._kwargs)
 
-class BaseSplitter(ABC):
+class BaseSplitter(RegisteredSplitter, ABC):
     """Base class for all splitters."""
+
+    name : ClassVar = None
    
     @abstractmethod
     def split_text(self, text: str) -> list[str]:
@@ -137,65 +108,26 @@ class BaseSplitter(ABC):
         """
         raise NotImplementedError
     
-    def register(self):
-        """Register the splitter."""
-        splitter_registry.splitters[self.name] = self.__class__
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}()"
     
 
-# from html.parser import HTMLParser
-# from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-# from html.parser import HTMLParser
+class CharacterSplitter(BaseSplitter):
+    """Split a text into characters."""
 
-# class HtmlTextSplitter(RecursiveCharacterTextSplitter):
-#     """Attempts to split the text along HTML-formatted layout elements.
-    
-#     :param separators: A list of separators to use.
-#     :type separators: List[str], optional
+    name : ClassVar = "character"
 
-#     :Examples:
+    def split_text(self, text: str) -> list[str]:
+        """
+        Split a text into characters.
 
-#     >>> splitter = HtmlTextSplitter()
-#     >>> splitter.split("<h1>Hello, world!</h1>")
-#     ['<h1>', 'Hello, world!', '</h1>']
+        :param text: The text to split.
+        :type text: str
+        :return: The list of characters.
+        :rtype: list[str]
+        """
+        return list(text)
 
-#     """
 
-#     def __init__(self, separators: List[str] = None, **kwargs: Any):
-#         """Initialize an HtmlTextSplitter."""
-#         super().__init__(**kwargs)
-
-#     def split_text(self, text: str) -> List[str]:
-#         """Split the text along HTML-formatted layout elements."""
-#         self._text = text
-#         self._separators = self._get_html_tags()
-#         print(self._separators)
-#         return super().split_text(text)
-
-#     def _get_html_tags(self) -> List[str]:
-#         """Extract HTML tags from a given text and return them as a list of separators."""
-#         class TagExtractor(HTMLParser):
-#             def __init__(self):
-#                 super().__init__()
-#                 self.tags = []
-
-#             def handle_starttag(self, tag, attrs):
-#                 self.tags.append(tag)
-
-#         parser = TagExtractor()
-#         parser.feed(self._text)
-#         tags = [f"</{tag}>" for tag in parser.tags]
-#         tags.extend([f"<{tag}>" for tag in parser.tags])
-#         return tags
-
-# if __name__ == "__main__":
-    # splitter = HtmlTextSplitter(chunk_size=1, chunk_overlap=0)
-    # html_text = """
-    # <h1>Hello, world!</h1>
-    # <p>This is a paragraph.</p>
-    # <p>This is another paragraph.</p>
-    # <li>This is a list item.</li>
-    # <li>This is another list item.</li>
-    # """
-    # result = splitter.split_text(html_text)
-    # print(result)

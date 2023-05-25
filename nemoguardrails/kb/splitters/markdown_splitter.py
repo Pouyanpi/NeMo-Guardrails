@@ -20,7 +20,7 @@ import yaml
 from .document_splitter import DocumentSplitter
 
 
-class MarkdownSplitter(DocumentSplitter):
+class MarkdownSplitter(BaseSplitter):
     def split(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
