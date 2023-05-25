@@ -1,2 +1,2 @@
 from .loader import DocumentLoader
-from .partition_manager import PartitionManager
+from .partition_factory import PartitionFactory

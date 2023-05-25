@@ -1,12 +1,10 @@
+# pip install unstructured
+# pip install pdf2image
+
+
 from typing import Callable, Dict, Union
 import os
 from pathlib import Path
-
-from unstructured.file_type import FileType
-# from unstructured.file_type import EXT_TO_FILETYPE
-
-from unstructured.partition.common import exactly_one
-
 
 from unstructured.partition.text import partition_text
 from unstructured.partition.html import partition_html
@@ -16,9 +14,14 @@ from unstructured.partition.pdf import partition_pdf
 from unstructured.partition.docx import partition_docx
 from unstructured.partition.doc import partition_doc
 
+from .typing import FileType
+
+#TODO(Pouyanpi): To add auto partition?
+# from unstructured.partition.auto import partition
+# 
 
 # NOTE: to use these partition functions, uncomment the import statements below
-# TODO(Pouyanpi): Figure out which file types are planned to be supported
+# TODO(Pouyanp): Figure out which file types are planned to be supported
 
 # from unstructured.partition.csv import partition_csv
 # from unstructured.partition.xlsx import partition_xlsx
@@ -64,13 +67,11 @@ EXT_TO_FILETYPE = {
     None: FileType.UNK,
 }
 
-
-
-class PartitionManager:
+class PartitionFactory:
     """Factory for partition functions from unstructured.
     
     Example:
-        >>> partition_function = PartitionFactory.get_partition_function(".html")
+        >>> partition_function = PartitionFactory.get(".html")
     
     """
 
@@ -82,15 +83,15 @@ class PartitionManager:
         FileType.DOC: partition_doc,
     }
 
-    @staticmethod
-    def get(file_identifier: Union[str, FileType, Path]) -> Callable:
+    @classmethod
+    def get(cls, file_identifier: Union[str, FileType, Path]) -> Callable:
         if isinstance(file_identifier, FileType):
-            return PartitionFactory._get_by_filetype(file_identifier)
+            return cls._get_by_filetype(file_identifier)
         elif os.path.isfile(file_identifier):
-            file_type = PartitionFactory._detect_filetype(file_identifier)
-            return PartitionFactory._get_by_filetype(file_type)
+            file_type = cls._detect_filetype(file_identifier)
+            return cls._get_by_filetype(file_type)
         elif isinstance(file_identifier, str) and file_identifier in EXT_TO_FILETYPE:
-            return PartitionFactory._get_by_ext(file_identifier)
+            return cls._get_by_ext(file_identifier)
         else:
             raise ValueError(f"Invalid file identifier: {file_identifier}")
 
@@ -102,15 +103,15 @@ class PartitionManager:
     def list(cls):
         return cls._PARTITION_FUNCTIONS.keys()
 
-    @staticmethod
-    def _get_by_filetype(file_type: FileType) -> Callable:
+    @classmethod
+    def _get_by_filetype(cls, file_type: FileType) -> Callable:
         try:
             return PartitionFactory._PARTITION_FUNCTIONS[file_type]
         except KeyError:
             raise FileTypeNotFoundError(f"Partition function not found for file type: {file_type}")
 
-    @staticmethod
-    def _get_by_ext(ext: str) -> Callable:
+    @classmethod
+    def _get_by_ext(cls, ext: str) -> Callable:
         try:
             file_type = EXT_TO_FILETYPE[ext]
             return PartitionFactory._get_by_filetype(file_type)
@@ -124,3 +125,17 @@ class PartitionManager:
             return EXT_TO_FILETYPE[extension.lower()]
         except KeyError:
             raise FileTypeNotFoundError(f"File type not found for file identifier: {file_identifier}")
+
+class FileTypeNotFoundError(Exception):
+    """Raised when a file type is not recognized."""
+
+    def __init__(self, message="File type not recognized."):
+        self.message = message
+        super().__init__(self.message)
+
+class FileExtensionNotFoundError(Exception):
+    """Raised when a file extension is not recognized."""
+
+    def __init__(self, message="File extension not recognized."):
+        self.message = message
+        super().__init__(self.message)
