@@ -2,12 +2,17 @@ from typing import (
     Any, 
     Callable, 
     Iterable, 
-    List
+    List,
+    Optional,   
 )
 
-from pydantic import BaseModel
+from abc import ABC, abstractmethod
+
 
 from .typing import (
+    Document,
+    Topic,
+    Element,
     Title,
     Text, 
     ListItem, 
@@ -18,7 +23,56 @@ from . import PartitionFactory
 
 # TODO: move Document and Topic to a separate file
 
-class DocumentLoader:
+
+
+class BaseDocumentLoader(ABC):
+    """Base class for document loaders."""
+
+    def __init__(self, 
+                 file_path: Optional[str] = None, 
+                 file: Optional[IO] = None , 
+                 text: Optional[str] = None, 
+                 url: Optional[str] = None, 
+                 **kwargs: Any):
+        """Initialize a DocumentLoader."""
+        
+        # _source is a dictionary that contains the source of the document
+        # The source can be a file_path, file, text, or url
+
+        self._source = {
+            "filename": file_path,
+            "file": file,
+            "text": text,
+            "url": url,
+        }
+        
+        non_none_sources = _remove_none_values(self._source)
+        if len(non_none_sources) != 1:
+            raise ValueError(
+                "Exactly one of file_path, file, text, or url must be specified."\
+                f"Received {non_none_sources}"
+            ) 
+
+        self._kwargs = kwargs
+
+    @abstractmethod
+    def load(self) -> Iterable[Document]:
+        """Load documents from a source."""
+        pass
+
+    @abstractmethod
+    def combine_topics(self) -> Iterable[Topic]:
+        """Combine multiple documents into topics."""
+        pass
+
+    @abstractmethod
+    def combine_topics_by_size(self, topics, topic_size: int) -> Iterable[Topic]:
+        """Combine topics to meet a minimum size."""
+        pass
+
+
+
+class DocumentLoader(BaseDocumentLoader):
     """Abstract class for loaders.
     
     :param: file_path: The path to the file to load.
@@ -47,26 +101,11 @@ class DocumentLoader:
         ...     documents = loader.load()
         ...     # process the documents for each file here
     """
-    def __init__(self, 
-                 file_path: Optional[str] = None, 
-                 file: Optional[IO] = None , 
-                 text: Optional[str] = None, 
-                 url: Optional[str] = None, 
-                 partition_handler: Optional[Callable] = None ,
-                 **kwargs: Any):
+    def __init__(self, partition_handler: Optional[Callable] = None , **kwargs: Any):
         """Initialize a DocumentLoader."""
-        
-        # _source is a dictionary that contains the source of the document
-        # The source can be a file_path, file, text, or url
 
-        self._source = {
-            "filename": file_path,
-            "file": file,
-            "text": text,
-            "url": url,
-        }
+        super().__init__(**kwargs)
         
-
         self._kwargs = kwargs
         self._partition_handler = partition_handler
 
@@ -143,12 +182,11 @@ class DocumentLoader:
                 topics.append(topic.to_dict())
 
         if topic_size:
-    
             topics = self._combine_topics_by_size(topics, topic_size)
 
         return topics
 
-    def _combine_topics_by_size(self, topics, topic_size):
+    def _combine_topics_by_size(self, topics: List[Topic], topic_size: int) -> List[Topic]:
         """Combine topics to meet a minimum size.
 
         If the body of a topic is less than the specified size, it is combined with the body 
@@ -195,59 +233,6 @@ class DocumentLoader:
 
         return new_topics
 
-
-class Document(BaseModel):
-    content: str
-    type: str
-    format: str
-    metadata: Dict[str, Any] = {}
-    file_path: str
-    loader: str
-
-class Topic(BaseModel):
-    title: str
-    body: str
-    metadata: Dict[str, Any] = {}     
-
-
-class BaseDocumentLoader(ABC):
-    """Base class for document loaders."""
-
-    def __init__(self, 
-                 file_path: Optional[str] = None, 
-                 file: Optional[IO] = None , 
-                 text: Optional[str] = None, 
-                 url: Optional[str] = None, 
-                 **kwargs: Any):
-        """Initialize a DocumentLoader."""
-        
-        # _source is a dictionary that contains the source of the document
-        # The source can be a file_path, file, text, or url
-
-        self._source = {
-            "filename": file_path,
-            "file": file,
-            "text": text,
-            "url": url,
-        }
-        
-        if len(_remove_none_values(self._source)) != 1:
-            raise ValueError(
-                "Exactly one of file_path, file, text, or url must be specified."\
-                f"Received {self._source}"
-            )
-
-        self._kwargs = kwargs
-
-    @abstractmethod
-    def load(self) -> Iterable[Document]:
-        """Load documents from a source."""
-        pass
-
-    @abstractmethod
-    def combine_topics(self) -> List[Topic]:
-        """Combine multiple documents into topics."""
-        pass
 
 
 class PdfLoader(BaseDocumentLoader):
