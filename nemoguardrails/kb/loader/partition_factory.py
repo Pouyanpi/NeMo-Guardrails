@@ -68,10 +68,13 @@ EXT_TO_FILETYPE = {
 }
 
 class PartitionFactory:
-    """Factory for partition functions from unstructured.
+    """Factory for generating partition functions from unstructured.
     
     Example:
         >>> partition_function = PartitionFactory.get(".html")
+    
+    Attributes:
+        _PARTITION_FUNCTIONS (Dict[FileType, Callable]): Mapping of file types to partition functions.
     
     """
 
@@ -129,13 +132,15 @@ class PartitionFactory:
 class FileTypeNotFoundError(Exception):
     """Raised when a file type is not recognized."""
 
-    def __init__(self, message="File type not recognized."):
-        self.message = message
+    def __init__(self, file_type):
+        self.file_type = file_type
+        self.message = f"File type '{self.file_type}' not recognized."
         super().__init__(self.message)
 
 class FileExtensionNotFoundError(Exception):
     """Raised when a file extension is not recognized."""
 
-    def __init__(self, message="File extension not recognized."):
-        self.message = message
+    def __init__(self, file_extension):
+        self.file_extension = file_extension
+        self.message = f"File extension '{self.file_extension}' not recognized."
         super().__init__(self.message)
