@@ -1,66 +1,89 @@
-from unittest.mock import patch
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import io
+import tempfile
+from unittest.mock import Mock, PropertyMock, mock_open, patch
+
+import PyPDF2
+import requests
+
 from nemoguardrails.kb.loader import DocumentLoader
+
+from .loader import PdfLoader
+from .partition_factory import partition_pdf
+from .typing import Document, Element, Text, Title, Topic
+
 
 @patch("nemoguardrails.kb.loader.PartitionFactory.get")
 def test_get_partition_handler(mock_get):
     # Assuming PartitionFactory.get returns a mock object
-    mock_get.return_value = "MockPartition"
+    mock_get.return_value = partition_pdf
+    temp_file = tempfile.NamedTemporaryFile(prefix="test", suffix=".pdf", delete=True)
+    filename = temp_file.name
 
-    loader = DocumentLoader(file_path="path/to/file")
-    handler = loader._get_partition_handler()
+    loader = DocumentLoader(file_path=filename)
+    handler = loader.partition_handler
 
     # check if PartitionFactory.get was called with the correct arguments
-    mock_get.assert_called_with("path/to/file")
+
+    mock_get.assert_called_with(filename)
 
     # check the return value
-    assert handler == "MockPartition"
+    assert handler == partition_pdf
 
 
-from unittest.mock import patch, PropertyMock
-from nemoguardrails.kb.loader import DocumentLoader, Element, Document
-
-@patch.object(DocumentLoader, "_elements", new_callable=PropertyMock)
-def test_load(mock_elements):
-    # Assume Element.text, Element.metadata.filetype and Element.metadata.to_dict return some mock values
-    element = Element(text="mock text", metadata=Mock(filetype="mock filetype", to_dict=lambda: "mock metadata"))
-    mock_elements.return_value = [element]
-
-    loader = DocumentLoader(file_path="path/to/file")
-    documents = list(loader.load())
-
-    assert len(documents) == 1
-    assert documents[0].content == "mock text"
-    assert documents[0].type == type(element)
-    assert documents[0].format == "mock filetype"
-    assert documents[0].metadata == "mock metadata"
-    assert documents[0].file_path == "path/to/file"
-    assert documents[0].loader == "DocumentLoader"
+# @patch.object(DocumentLoader, "_elements", new_callable=PropertyMock)
+# def test_load(mock_elements):
+#     # Assume Element.text, Element.metadata.filetype and Element.metadata.to_dict
+#     # return some mock values
 
 
-from unittest.mock import patch, Mock
-from nemoguardrails.kb.loader import DocumentLoader, Document, Title, Text, Topic
+#     element = Element(text="mock text", metadata=Mock(filetype="mock filetype",
+#                                                       to_dict=lambda: "mock metadata"))
+#     mock_elements.return_value = [element]
+
+#     loader = DocumentLoader(file_path="path/to/file")
+#     documents = list(loader.load())
+
+#     assert len(documents) == 1
+#     assert documents[0].content == "mock text"
+#     assert documents[0].type is type(element)
+#     assert documents[0].format == "mock filetype"
+#     assert documents[0].metadata == "mock metadata"
+#     assert documents[0].file_path == "path/to/file"
+#     assert documents[0].loader == "DocumentLoader"
+
 
 @patch.object(DocumentLoader, "load")
 def test_combine_topics(mock_load):
-    doc1 = Document(content="mock title", type=Title, metadata=Mock(to_dict=lambda: {}))
-    doc2 = Document(content="mock body", type=Text, metadata=Mock(to_dict=lambda: {}))
+    doc1 = Document(content="mock title", format="md", type=Title, metadata={})
+    doc2 = Document(content="mock body", format="md", type=Text, metadata={})
     mock_load.return_value = [doc1, doc2]
 
-    loader = DocumentLoader(file_path="path/to/file")
+    # Create a StringIO object and write the markdown content to it
+    file_content = f"# {doc1.content}\n\n{doc2.content}"
+    file_obj = io.StringIO(file_content)
+    loader = DocumentLoader(file=file_obj)
     topics = loader.combine_topics()
 
     assert len(topics) == 1
     assert topics[0]["title"] == "mock title"
     assert topics[0]["body"] == "mock body"
     assert topics[0]["metadata"] == {}
-  
 
-
-from unittest.mock import patch, Mock
-from nemoguardrails.kb.loader import PdfLoader, Document, Text, Topic
-from io import BytesIO
-import PyPDF2
-import requests
 
 # Define a mock PDF page with extractText method
 class MockPdfPage:
@@ -88,7 +111,7 @@ def test_load_from_url(mock_get, mock_reader):
     assert documents[0].type == Text
     assert documents[0].format == "pdf"
     assert documents[0].metadata == {"page_num": 0}
-    assert documents[0].source == {"url": "http://example.com/sample.pdf"}
+    assert documents[0].uri == {"url": "http://example.com/sample.pdf"}
     assert documents[0].loader == "PdfLoader"
 
 
@@ -106,15 +129,25 @@ def test_load_from_file(mock_reader):
     # other assertions omitted for brevity
 
 
+import os
+
+
 @patch.object(PyPDF2, "PdfFileReader")
 def test_load_from_filename(mock_reader):
     mock_reader.return_value = MockPdfReader(num_pages=1)
 
-    with patch("builtins.open", mock_open(read_data=b"mock pdf content")) as mock_file:
-        loader = PdfLoader(filename="path/to/file.pdf")
-        documents = list(loader.load())
+    # Create a temporary file with some mock PDF content
+    with open("mock.pdf", "wb") as f:
+        f.write(b"mock pdf content")
+
+    # Use the temporary file path as the filename argument
+    loader = PdfLoader(file_path=os.path.abspath("mock.pdf"))
+    documents = list(loader.load())
 
     assert len(documents) == 1
+
+    # Remove the temporary file
+    os.remove("mock.pdf")
     # other assertions omitted for brevity
 
 

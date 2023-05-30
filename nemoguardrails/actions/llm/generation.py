@@ -39,7 +39,8 @@ from nemoguardrails.actions.llm.utils import (
     strip_quotes,
 )
 from nemoguardrails.kb.basic import BasicEmbeddingsIndex
-from nemoguardrails.kb.loader import DocumentLoader
+
+# from nemoguardrails.kb.loader.loader import DocumentLoader
 from nemoguardrails.kb.index import IndexItem
 from nemoguardrails.kb.kb import KnowledgeBase
 from nemoguardrails.llm.prompts.prompts import Step, get_prompt
@@ -157,7 +158,7 @@ class LLMGenerationActions:
         for file_url in self.config.docs:
             loader = DocumentLoader(file_path=file_url)
             documents.extend(loader.aggregate_topics())
-        
+
         self.kb = KnowledgeBase(documents=documents)
         self.kb.init()
         self.kb.build()

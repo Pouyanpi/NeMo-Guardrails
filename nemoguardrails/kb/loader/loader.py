@@ -1,58 +1,80 @@
-from typing import ( 
-    Any, 
-    Callable, 
-    Iterable, 
-    List,
-    Optional,   
-)
+# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 from abc import ABC, abstractmethod
+from io import BytesIO
+from typing import IO, Any, Callable, Iterable, List, Optional
 
+import PyPDF2
+import requests
 
+from .partition_factory import PartitionFactory
 from .typing import (
     Document,
-    Topic,
     Element,
+    FigureCaption,
+    ListItem,
+    NarrativeText,
+    Text,
     Title,
-    Text, 
-    ListItem, 
-    FigureCaption, 
-    NarrativeText
+    Topic,
 )
-from . import PartitionFactory
-
-# TODO: move Document and Topic to a separate file
-
 
 
 class BaseDocumentLoader(ABC):
-    """Base class for document loaders."""
+    """Base class for document loaders.
 
-    def __init__(self, 
-                 file_path: Optional[str] = None, 
-                 file: Optional[IO] = None , 
-                 text: Optional[str] = None, 
-                 url: Optional[str] = None, 
-                 **kwargs: Any):
-        """Initialize a DocumentLoader."""
-        
+    Documnet loaders are used to load documents from a source.
+    The source can be a file_path, file, text, or url.
+
+    :param: file_path: The path to the file to load.
+    :param: file: A file-like object using "r" mode --> open(filename, "r").
+    :param: text: The string representation of the file to load.
+    :param: url: The URL of a webpage to parse. Only for URLs
+        that return an HTML document.
+    :param: kwargs: Additional keyword arguments to pass to the partition
+
+    """
+
+    def __init__(
+        self,
+        file_path: Optional[str] = None,
+        file: Optional[IO] = None,
+        text: Optional[str] = None,
+        url: Optional[str] = None,
+        **kwargs: Any,
+    ):
         # _source is a dictionary that contains the source of the document
         # The source can be a file_path, file, text, or url
 
-        self._source = {
+        source = {
             "filename": file_path,
             "file": file,
             "text": text,
             "url": url,
         }
-        
-        non_none_sources = _remove_none_values(self._source)
+
+        non_none_sources = _remove_none_values(source)
         if len(non_none_sources) != 1:
             raise ValueError(
-                "Exactly one of file_path, file, text, or url must be specified."\
+                "Exactly one of file_path, file, text, or url must be specified."
                 f"Received {non_none_sources}"
-            ) 
-
+            )
+        self._source = non_none_sources
+        print(self._source)
+        print("****|||||****" * 10)
         self._kwargs = kwargs
 
     @abstractmethod
@@ -65,25 +87,29 @@ class BaseDocumentLoader(ABC):
         """Combine multiple documents into topics."""
         pass
 
-    @abstractmethod
-    def combine_topics_by_size(self, topics, topic_size: int) -> Iterable[Topic]:
+    def _combine_topics_by_size(self, topics, topic_size: int) -> Iterable[Topic]:
         """Combine topics to meet a minimum size."""
         pass
 
 
-
 class DocumentLoader(BaseDocumentLoader):
-    """Abstract class for loaders.
-    
+    """A builder class for loading documents from a source.
+
+    It loads documents of different types from a source.
+    The source can be a file_path, file, text, or url.
+    It currently supports the following document types:
+    `text`, `html`, `markdown`, `pdf`, `doc`, and `docx`.
+
     :param: file_path: The path to the file to load.
     :param: file: A file-like object using "r" mode --> open(filename, "r").
     :param: text: The string representation of the file to load.
-    :param: url: The URL of a webpage to parse. Only for URLs that return an HTML document.
+    :param: url: The URL of a webpage to parse. Only for URLs that
+        return an HTML document.
     :param: partition_handler: A partition handler to use for the loader.
-    :param: kwargs: Additional keyword arguments to pass to the partition 
+    :param: kwargs: Additional keyword arguments to pass to the partition
         handler see  [unstructured.partion](https://github.com/Unstructured-IO/unstructured/tree/main/unstructured/partition).
 
-    
+
     Example:
         >>> from nemoguardrails.kb.loader import DocumentLoader
         >>> loader = DocumentLoader(file_path="path/to/file.md")
@@ -101,12 +127,18 @@ class DocumentLoader(BaseDocumentLoader):
         ...     documents = loader.load()
         ...     # process the documents for each file here
     """
-    def __init__(self, partition_handler: Optional[Callable] = None , **kwargs: Any):
-        """Initialize a DocumentLoader."""
 
-        super().__init__(**kwargs)
-        
-        self._kwargs = kwargs
+    def __init__(
+        self,
+        file_path: Optional[str] = None,
+        file: Optional[IO] = None,
+        text: Optional[str] = None,
+        url: Optional[str] = None,
+        partition_handler: Optional[Callable] = None,
+        **kwargs: Any,
+    ):
+        super().__init__(file_path=file_path, file=file, text=text, url=url, **kwargs)
+
         self._partition_handler = partition_handler
 
     @property
@@ -115,27 +147,31 @@ class DocumentLoader(BaseDocumentLoader):
 
         if self._partition_handler is None:
             self._partition_handler = self._get_partition_handler()
-        
-        return self._partition_handler(**self._kwargs)
+
+        print(self._kwargs)
+        # return self._partition_handler(**self._kwargs)
+        return self._partition_handler
 
     def _get_partition_handler(self):
         """Get the partition handler for the loader."""
-        #NOTE: PartitionFactory currently only supports file_path
-        #TODO: Add support for file, text, and url
-        return PartitionFactory.get(self.file_path)
-    
+        # NOTE: PartitionFactory currently only supports file_path
+        # TODO: Add support for file, text, and url
+
+        source_value = next(iter(self._source.values()))
+        return PartitionFactory.get(source_value)
+
     @property
     def _elements(self) -> List[Element]:
         """Get the elements from the partition handler."""
         return self.partition_handler(**self._source, **self._kwargs)
-    
+
     def load(self) -> Iterable[Document]:
         """Load documents from a source."""
 
         for element in self._elements:
             yield Document(
                 content=element.text,
-                type=type(element)
+                type=type(element),
                 format=element.metadata.filetype,
                 metadata=element.metadata.to_dict(),
                 source=_remove_none_values(self._source),
@@ -145,19 +181,23 @@ class DocumentLoader(BaseDocumentLoader):
     def combine_topics(self, topic_size: Optional[int] = None) -> List[Topic]:
         """Combine multiple documents into topics.
 
-        This method aggregates the body of multiple documents into topics, using the title of each document 
-        as the title of the corresponding topic. The resulting topics are represented 
-        as dictionaries with keys for `title`, `body`, and `metadata`.
-        
-        It's important to note that each file can contain multiple elements, which can correspond to multiple documents. 
-        One of these elements could be a Title. The text elements that follow the Title until the next Title is encountered 
-        are considered to be the body of the current topic, with the Title serving as the title of the topic.
-        
+        This method aggregates the body of multiple documents into topics,
+        using the title of each document as the title of the corresponding topic.
+        The resulting topics are represented as dictionaries
+        with keys for `title`, `body`, and `metadata`.
+
+        It's important to note that each file can contain multiple elements,
+        which can correspond to multiple documents.
+        One of these elements could be a Title.
+        The text elements that follow the Title until the next Title is encountered
+        are considered to be the body of the current topic,
+        with the Title serving as the title of the topic.
+
         Returns:
             A list of dictionaries, each representing a topic.
         """
-        
-        #TODO: is topics a good name for this?
+
+        # TODO: is topics a good name for this?
 
         topics = []
         topic_schema = {
@@ -165,46 +205,50 @@ class DocumentLoader(BaseDocumentLoader):
             "body": "",
             "metadata": {},
         }
+        topic = Topic(title="", body="")
         for doc in self.load():
-            topic = Topic(title="", body="")
-            
-            if isinstance(doc.type, Title):
-                topic.title = doc.content
+            if doc.type == Title:
+                topic.title += doc.content
                 continue
 
-            elif isinstance(doc.type, (Text, ListItem, FigureCaption, NarrativeText)):
+            elif doc.type in (Text, ListItem, FigureCaption, NarrativeText):
                 # bodies.append(doc.content)
                 topic.body += doc.content
                 topic.metadata = doc.metadata
-            
+
             # topic has values other than topic_schema 's default values
-            if topic.to_dc != topic_schema:
-                topics.append(topic.to_dict())
+            if topic.dict() != topic_schema:
+                topics.append(topic.dict())
 
         if topic_size:
             topics = self._combine_topics_by_size(topics, topic_size)
 
         return topics
 
-    def _combine_topics_by_size(self, topics: List[Topic], topic_size: int) -> List[Topic]:
+    def _combine_topics_by_size(
+        self, topics: List[Topic], topic_size: int
+    ) -> List[Topic]:
         """Combine topics to meet a minimum size.
 
-        If the body of a topic is less than the specified size, it is combined with the body 
-        of the next topic until the combined body size is at least the specified size.
-        The titles of the combined topics are concatenated to form the title of the new topic.
+        If the body of a topic is less than the specified size,
+        it is combined with the body of the next topic until the combined
+        body size is at least the specified size. The titles of the combined
+        topics are concatenated to form the title of the new topic.
 
         :param topics: A list of dictionaries, each representing a topic.
         :param topic_size: The size of the topic body.
         :return: A list of dictionaries, each representing a topic.
 
         """
-        
+
         if not isinstance(topic_size, int):
             raise TypeError(f"topic_size must be an integer but receieved{topic_size}")
-        
+
         if topic_size < 1:
-            raise ValueError(f"topic_size must be greater than 0 but received {topic_size}")
-        
+            raise ValueError(
+                f"topic_size must be greater than 0 but received {topic_size}"
+            )
+
         new_topics = []
         current_topic = None
         current_topic_size = 0
@@ -234,35 +278,40 @@ class DocumentLoader(BaseDocumentLoader):
         return new_topics
 
 
-
 class PdfLoader(BaseDocumentLoader):
     """Load documents from a PDF file."""
 
-    def __init__(self, **kwargs: Any):
-        super().__init__(**kwargs)
-
+    def __init__(
+        self,
+        file_path: Optional[str] = None,
+        file: Optional[IO] = None,
+        text: Optional[str] = None,
+        url: Optional[str] = None,
+        partition_handler: Optional[Callable] = None,
+        **kwargs: Any,
+    ):
+        super().__init__(file_path=file_path, file=file, text=text, url=url, **kwargs)
 
     def load(self) -> Iterable[Document]:
         """Load documents from a PDF file."""
 
-        
-        if self._source['text']:
-            pdf_file_obj = BytesIO(self._source['text'])
+        if "text" in self._source:
+            pdf_file_obj = BytesIO(self._source["text"])
 
-        elif self._source['file']:
-            pdf_file_obj = BytesIO(self._source['file'].read())
+        elif "file" in self._source:
+            pdf_file_obj = BytesIO(self._source["file"].read())
 
-        elif self._source['url']:
-            pdf_file_obj = BytesIO(requests.get(self._source['url']).content)
+        elif "url" in self._source:
+            pdf_file_obj = BytesIO(requests.get(self._source["url"]).content)
 
-        elif self._source['filename']:
-            pdf_file_obj = open(self._source['filename'], 'rb')
+        elif "filename" in self._source:
+            pdf_file_obj = open(self._source["filename"], "rb")
 
         else:
             raise ValueError(f"Invalid source: {self._source}")
-        
+
         pdf_reader = PyPDF2.PdfFileReader(pdf_file_obj)
-        
+
         for page_num, page in enumerate(pdf_reader.pages):
             page_text = page.extractText()
             yield Document(
@@ -270,22 +319,19 @@ class PdfLoader(BaseDocumentLoader):
                 type=Text,
                 format="pdf",
                 metadata={"page_num": page_num},
-                source=_remove_none_values(self._source),
+                uri=_remove_none_values(self._source),
                 loader=self.__class__.__name__,
             )
-        
+            print(Document)
+
     def combine_topics(self, topic_size: Optional[int] = None) -> List[Topic]:
         """Combine multiple documents into topics.
-        
+
         Returns:
             A list of dictionaries, each representing a topic.
         """
         topics = []
-        topic_schema = {
-            "title": "",
-            "body": "",
-            "metadata": {},
-        }
+
         for doc in self.load():
             topics.append(
                 Topic(
@@ -297,6 +343,7 @@ class PdfLoader(BaseDocumentLoader):
 
         return topics
 
+
 class MarkdownLoader(BaseDocumentLoader):
     """Load documents from a Markdown file."""
 
@@ -307,108 +354,6 @@ class MarkdownLoader(BaseDocumentLoader):
         """Combine multiple documents into topics."""
 
 
-"""
-class MarkdownSplitter(BaseSplitter):
-    def split(
-        self, content: str, max_chunk_size: int = 400
-    ) -> List[Dict[str, str]]:
-
-
-        chunks = []
-        lines = content.strip().split("\n")
-
-        # Meta information for the whole document
-        meta = {}
-
-        # If there's a code block at the beginning, with meta data, we parse that first.
-
-        if lines[0].startswith("```"):
-            meta_yaml = ""
-            lines = lines[1:]
-
-            while not lines[0].startswith("```"):
-                meta_yaml += lines[0] + "\n"
-                lines = lines[1:]
-
-            lines = lines[1:]
-            meta.update(yaml.safe_load(meta_yaml))
-
-        # Every section and subsection title will be part of the title of the chunk.
-        chunk_title_parts = []
-
-        # The data for the current chunk.
-        chunk_body_lines = []
-
-        chunk_size = 0
-
-        def _record_chunk():
-            nonlocal chunk_body_lines, chunk_size
-
-            body = "\n".join(chunk_body_lines).strip()
-            # Skip saving if body is empty
-
-            if body:
-                chunks.append(
-                    {
-                        "title": " - ".join(chunk_title_parts),
-                        "body": body,
-                        # We also include the document level meta information
-                        **meta,
-                    }
-                )
-
-            chunk_body_lines = []
-            chunk_size = 0
-
-        i = 0
-
-        while i < len(lines):
-            line = lines[i]
-
-            if line.startswith("#"):
-                # If we have a chunk up to this point, we need to record it
-
-                if chunk_body_lines:
-                    _record_chunk()
-
-                # Update the title parts with the new section/subsection
-
-                level = 0
-
-                while len(line) > 0 and line[0] == "#":
-                    level += 1
-
-                    line = line[1:]
-
-                # Remove all title parts greater than the current level
-
-                chunk_title_parts[level - 1 :] = []
-
-                chunk_title_parts.append(line.strip())
-
-            elif line.strip() == "":
-                chunk_body_lines.append("")
-
-                # If the chunk is over the desired size, we reset it
-
-                if chunk_size > max_chunk_size:
-                    _record_chunk()
-
-            else:
-                chunk_body_lines.append(line)
-
-                chunk_size += len(line)
-
-            i += 1
-
-        if chunk_body_lines:
-            _record_chunk()
-
-        return chunks
-
-"""
-
-
 def _remove_none_values(d: dict) -> dict:
-    """Return a new dictionary with only the non-None values."""
-    return {k: v for k, v in d.items() if v is not None}
+    """Return a new dictionary with only the non-None and non-empty string values."""
+    return {k: v for k, v in d.items() if v not in (None, "")}
