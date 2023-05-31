@@ -92,9 +92,9 @@ def test_combine_topics(mock_load):
     topics = loader.combine_topics()
 
     assert len(topics) == 1
-    assert topics[0]["title"] == "mock title"
-    assert topics[0]["body"] == "mock body"
-    assert topics[0]["metadata"] == {}
+    assert topics[0].title == "mock title"
+    assert topics[0].body == "mock body"
+    assert topics[0].metadata == {}
 
 
 # Define a mock PDF page with extractText method

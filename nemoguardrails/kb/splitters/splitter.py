@@ -14,7 +14,7 @@
 # limitations under the License.
 
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Dict, List, Type
+from typing import Any, ClassVar, Dict, List, Optional, Type
 
 from pydantic import BaseModel
 
@@ -72,12 +72,14 @@ class Splitter:
 
     """
 
-    def __init__(self, name: str = None, **kwargs) -> None:
+    def __init__(self, name: str = None, **splitter_kwargs) -> None:
         self._name = name
         self._splitter_registry = SplitterRegistry()
-        self._kwargs = kwargs
+        self._kwargs = splitter_kwargs
 
-    def split(self, text: str, splitter_name: str = None) -> list[str]:
+        self._splitter = self._get_splitter(self._name)
+
+    def split(self, text: str) -> list[str]:
         """
         Split a text into chunks.
 
@@ -86,12 +88,8 @@ class Splitter:
         :return: The list of chunks.
         :rtype: list[str]
         """
-        if splitter_name is None:
-            splitter_name = self._name
 
-        splitter = self._get_splitter(splitter_name)
-
-        return splitter.split_text(text)
+        return self._splitter.split_text(text)
 
     def split_topics(self, topics: List[Topic]):
         chunks = []
@@ -107,7 +105,7 @@ class Splitter:
                     metadata=topic.metadata,
                 )
 
-                chunks.append(chunked_topic.to_dict())
+                chunks.append(chunked_topic.dict())
         return chunks
 
     def _get_splitter(self, splitter_name: str = "character_lc") -> Type[BaseSplitter]:
@@ -121,6 +119,16 @@ class Splitter:
         splitter_class = self._splitter_registry.get(splitter_name)
 
         return splitter_class(**self._kwargs)
+
+    def __call__(
+        self, text: Optional[str] = None, topics: Optional[List[Topic]] = None
+    ):
+        if text is not None:
+            return self.split(text=text)
+        elif topics is not None:
+            return self.split_topics(topics=topics)
+        else:
+            raise ValueError("Either text or topics must be provided.")
 
 
 class CharacterSplitter(BaseSplitter):

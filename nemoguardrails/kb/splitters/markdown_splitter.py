@@ -17,11 +17,13 @@ from typing import Dict, List
 
 import yaml
 
-from .document_splitter import BaseSplitter
+from .splitter import BaseSplitter
 
 
 class MarkdownSplitter(BaseSplitter):
-    def split(self, content: str, max_chunk_size: int = 400) -> List[Dict[str, str]]:
+    def split_text(
+        self, content: str, max_chunk_size: int = 400
+    ) -> List[Dict[str, str]]:
         """Splits a markdown content into topic chunks."""
 
         chunks = []

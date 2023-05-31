@@ -22,7 +22,7 @@ from .splitter import BaseSplitter
 
 
 class PdfSplitter(BaseSplitter):
-    def split(
+    def split_text(
         self, content: str, max_chunk_size: int = 400
     ) -> List[Dict[str, str]]:
         # Read the PDF file

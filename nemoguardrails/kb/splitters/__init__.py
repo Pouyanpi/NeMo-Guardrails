@@ -26,9 +26,8 @@ from langchain.text_splitter import (  # NLTKTextSplitter,; SpacyTextSplitter,
 )
 
 text_splitter_kwargs = {
-    "max_chunk_size": 400,
-    "overlap_size": 0,
-    "length_function": "len",
+    "chunk_size": 4,
+    "chunk_overlap": 0,
 }
 
 character_text_splitter_kwargs = {"separator": "\n\n"}
@@ -47,7 +46,7 @@ markdown_text_splitter_kwargs = {"separator": "\n\n"}
 # }
 
 
-# CharacterTextSplitter = partial(CharacterTextSplitter, **character_text_splitter_kwargs)
+# CharacterTextSplitter = partial(CharacterTextSplitter, **text_splitter_kwargs)
 # LatexTextSplitter = partial(LatexTextSplitter, **latex_text_splitter_kwargs)
 # MarkdownTextSplitter = partial(MarkdownTextSplitter, **markdown_text_splitter_kwargs)
 # # NLTKTextSplitter = partial(NLTKTextSplitter, **nltk_text_splitter_kwargs)
@@ -67,3 +66,7 @@ SPLITTERS = {
     "python_code_lc": PythonCodeTextSplitter,
     "token_lc": TokenTextSplitter,
 }
+
+
+from .registered import RegisteredSplitter, SplitterRegistry
+from .splitter import BaseSplitter, Splitter, Topic

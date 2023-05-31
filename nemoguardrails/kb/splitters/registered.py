@@ -13,14 +13,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import contextlib
+import inspect
 from abc import ABC, abstractmethod
-from typing import Any, Iterator, List
+from typing import Any, ClassVar, Iterator, List
+
+from nemoguardrails.kb import utils
 
 from . import SPLITTERS
 
 _SPLITTER_MODULE_SUFFIX = "_splitter"
 _SPLITTER_REGISTRY = SPLITTERS
 _ABSTRACT_SPLITTER_REGISTRY = {}
+
+_skip_registration = False
 
 
 class RegisteredSplitter(ABC):
@@ -53,7 +59,7 @@ class RegisteredSplitter(ABC):
                         f'package name, but there is no package in "{cls.__module__}".'
                     )
             else:
-                cls.name = camelcase_to_snakecase(cls.__name__)
+                cls.name = utils.camelcase_to_snakecase(cls.__name__)
 
         is_abstract = inspect.isabstract(cls)
 
@@ -77,14 +83,27 @@ class RegisteredSplitter(ABC):
             _SPLITTER_REGISTRY[cls.name] = cls
 
 
+def refresh_splitters(func):
+    def wrapper(self, *args, **kwargs):
+        self._refresh()
+        return func(self, *args, **kwargs)
+
+    return wrapper
+
+
 class SplitterRegistry:
     def __init__(self) -> None:
         self.splitters = _SPLITTER_REGISTRY
         # self.validate_splitters()
 
+    def _refresh(self):
+        self.splitters = _SPLITTER_REGISTRY
+
+    @refresh_splitters
     def __get__(self, class_name: str):
         return self.get(class_name)
 
+    @refresh_splitters
     def get(self, class_name):
         """
         Get a splitter by name.
@@ -92,11 +111,15 @@ class SplitterRegistry:
         :param class_name: The name of the splitter.
         :raises KeyError: If the splitter name does not exist in the registry.
         """
+        if class_name is None:
+            raise ValueError("class_name cannot be None")
+
         if class_name not in self.splitters:
             raise KeyError(f"{class_name} does not exist in the registry")
 
         return self.splitters.get(class_name)
 
+    @refresh_splitters
     def validate_splitters(self) -> None:
         """
         Validate that all splitters have a 'split' method.
@@ -109,6 +132,7 @@ class SplitterRegistry:
                     f"{splitter_name} and thus {splitter} does not have a 'split_text' method"
                 )
 
+    @refresh_splitters
     def list(self) -> List[str]:
         """
         List all splitters in the registry.
@@ -117,18 +141,23 @@ class SplitterRegistry:
         """
         return list(self.splitters.keys())
 
+    @refresh_splitters
     def __repr__(self) -> str:
         return f"SplitterRegistry(splitters={self.splitters})"
 
+    @refresh_splitters
     def __len__(self) -> int:
         return len(self.splitters)
 
+    @refresh_splitters
     def __iter__(self) -> Iterator[str]:
         return iter(self.splitters)
 
+    @refresh_splitters
     def __contains__(self, splitter_name: str) -> bool:
         return splitter_name in self.splitters
 
+    @refresh_splitters
     def __getitem__(self, splitter_name: str) -> Any:
         return self.get(splitter_name)
 
