@@ -14,8 +14,9 @@
 # limitations under the License.
 
 import io
+import os
 import tempfile
-from unittest.mock import Mock, PropertyMock, mock_open, patch
+from unittest.mock import Mock, PropertyMock, patch
 
 import PyPDF2
 import requests
@@ -24,7 +25,7 @@ from nemoguardrails.kb.loader import DocumentLoader
 
 from .loader import PdfLoader
 from .partition_factory import partition_pdf
-from .typing import Document, Element, Text, Title, Topic
+from .typing import Document, ElementMetadata, FigureCaption, Text, Title
 
 
 @patch("nemoguardrails.kb.loader.PartitionFactory.get")
@@ -45,26 +46,37 @@ def test_get_partition_handler(mock_get):
     assert handler == partition_pdf
 
 
-# @patch.object(DocumentLoader, "_elements", new_callable=PropertyMock)
-# def test_load(mock_elements):
-#     # Assume Element.text, Element.metadata.filetype and Element.metadata.to_dict
-#     # return some mock values
+@patch.object(DocumentLoader, "_elements", new_callable=PropertyMock)
+def test_load(mock_elements):
+    # Assume Element.text, Element.metadata.filetype and Element.metadata.to_dict
+    # return some mock values
 
+    metadata = ElementMetadata(filename="fake-file.txt")
+    elements = [
+        Title(text="a title", metadata=metadata, element_id="0"),
+        FigureCaption(text="a caption", metadata=metadata, element_id="1"),
+        Text(text="first text", metadata=metadata, element_id="2"),
+        Text(text="second text", metadata=metadata, element_id="3"),
+    ]
 
-#     element = Element(text="mock text", metadata=Mock(filetype="mock filetype",
-#                                                       to_dict=lambda: "mock metadata"))
-#     mock_elements.return_value = [element]
+    metadata.filetype = "txt"
 
-#     loader = DocumentLoader(file_path="path/to/file")
-#     documents = list(loader.load())
+    mock_elements.return_value = elements
 
-#     assert len(documents) == 1
-#     assert documents[0].content == "mock text"
-#     assert documents[0].type is type(element)
-#     assert documents[0].format == "mock filetype"
-#     assert documents[0].metadata == "mock metadata"
-#     assert documents[0].file_path == "path/to/file"
-#     assert documents[0].loader == "DocumentLoader"
+    temp_file = tempfile.NamedTemporaryFile(
+        prefix="fake-file", suffix=".txt", delete=True
+    )
+    filename = temp_file.name
+    loader = DocumentLoader(file_path=filename)
+
+    documents = list(loader.load())
+
+    assert len(documents) == 4
+    assert documents[0].content == "a title"
+    assert documents[0].type is type(elements[0])
+    assert documents[0].metadata == metadata.to_dict()
+    assert documents[0].uri == {"filename": filename}
+    assert documents[0].loader == "DocumentLoader"
 
 
 @patch.object(DocumentLoader, "load")
@@ -127,9 +139,6 @@ def test_load_from_file(mock_reader):
 
     assert len(documents) == 1
     # other assertions omitted for brevity
-
-
-import os
 
 
 @patch.object(PyPDF2, "PdfFileReader")

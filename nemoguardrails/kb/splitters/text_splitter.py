@@ -15,13 +15,11 @@
 
 from typing import Dict, List
 
-from .document_splitter import DocumentSplitter
+from .document_splitter import BaseSplitter
 
 
 class TextSplitter(BaseSplitter):
-    def split(
-        self, content: str, max_chunk_size: int = 400
-    ) -> List[Dict[str, str]]:
+    def split(self, content: str, max_chunk_size: int = 400) -> List[Dict[str, str]]:
         chunks = []
 
         for i in range(0, len(content), max_chunk_size):
@@ -29,22 +27,9 @@ class TextSplitter(BaseSplitter):
 
             chunks.append(
                 {
-                    "title": "Text Chunk",
+                    "title": f"Text Chunk {i}",
                     "body": chunk_text,
                 }
             )
 
         return chunks
-
-
-class TextParser(BaseSplitter):
-    def __init__(self, splitter_name='character'):
-
-        super().__init__()
-
-        def split(content: str):
-            Splitter(splitter_name)
-            return Splitter.create_documents(content)
-
-
-        self._parsers = [TxtParser()]

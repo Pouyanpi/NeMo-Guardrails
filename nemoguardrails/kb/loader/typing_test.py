@@ -23,7 +23,7 @@ def test_document_init():
         type="text",
         format="txt",
         metadata={"author": "John Doe"},
-        file_path="/path/to/file",
+        uri={"filename": "/path/to/file"},
         loader="DocumentLoader",
     )
 
@@ -31,7 +31,7 @@ def test_document_init():
     assert document.type == "text"
     assert document.format == "txt"
     assert document.metadata == {"author": "John Doe"}
-    assert document.file_path == "/path/to/file"
+    assert document.uri == {"filename": "/path/to/file"}
     assert document.loader == "DocumentLoader"
 
 

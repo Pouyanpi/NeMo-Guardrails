@@ -17,10 +17,10 @@ from typing import Dict, List
 
 from bs4 import BeautifulSoup
 
-from .document_splitterererer import DocumentSplitter
+from .document_splitterererer import BaseSplitter
 
 
-class HtmlSplitter(DocumentSplitter):
+class HtmlSplitter(BaseSplitter):
     """A parser for HTML documents.
 
     This parser uses BeautifulSoup to parse HTML documents.
@@ -45,9 +45,7 @@ class HtmlSplitter(DocumentSplitter):
 
     """
 
-    def split(
-        self, content: str, max_chunk_size: int = 400
-    ) -> List[Dict[str, str]]:
+    def split(self, content: str, max_chunk_size: int = 400) -> List[Dict[str, str]]:
         soup = BeautifulSoup(content, "html.parser")
         chunks = []
         for tag in soup.find_all(True):  # find_all(True) will match any tag

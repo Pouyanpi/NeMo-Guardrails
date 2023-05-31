@@ -14,26 +14,16 @@
 # limitations under the License.
 
 
-from langchain.text_splitter import (
+from functools import partial
+
+from langchain.text_splitter import (  # NLTKTextSplitter,; SpacyTextSplitter,
     CharacterTextSplitter,
     LatexTextSplitter,
     MarkdownTextSplitter,
-    # NLTKTextSplitter,
-    # SpacyTextSplitter,
     PythonCodeTextSplitter,
-    TokenTextSplitter,
     TextSplitter,
-    # SentencePieceTextSplitter,
+    TokenTextSplitter,
 )
-
-from .document_splitter import DocumentSplitter
-from .html_parser import HtmlParser
-from .markdown_parser import MarkdownParser
-from .pdf_parser import PdfParser
-from .text_parser import TxtParser
-from .splitters.splitter import Splitter
-
-from functools import partial
 
 text_splitter_kwargs = {
     "max_chunk_size": 400,
@@ -41,17 +31,11 @@ text_splitter_kwargs = {
     "length_function": "len",
 }
 
-character_text_splitter_kwargs = {
-    "separator": "\n\n"
-}
+character_text_splitter_kwargs = {"separator": "\n\n"}
 
-latex_text_splitter_kwargs = {
-    "separator": "\n\n"
-}
+latex_text_splitter_kwargs = {"separator": "\n\n"}
 
-markdown_text_splitter_kwargs = {
-    "separator": "\n\n"
-}
+markdown_text_splitter_kwargs = {"separator": "\n\n"}
 
 # nltk_text_splitter_kwargs = {
 #      "separator": "\n\n"
@@ -63,38 +47,23 @@ markdown_text_splitter_kwargs = {
 # }
 
 
-
-
-CharacterTextSplitter = partial(CharacterTextSplitter, **character_text_splitter_kwargs)
-LatexTextSplitter = partial(LatexTextSplitter, **latex_text_splitter_kwargs)
-MarkdownTextSplitter = partial(MarkdownTextSplitter, **markdown_text_splitter_kwargs)
-# NLTKTextSplitter = partial(NLTKTextSplitter, **nltk_text_splitter_kwargs)
-# SpacyTextSplitter = partial(SpacyTextSplitter, **spacy_text_splitter_kwargs)
-PythonCodeTextSplitter = partial(PythonCodeTextSplitter, **python_code_text_splitter_kwargs)
-TokenTextSplitter = partial(TokenTextSplitter, **token_text_splitter_kwargs)
-# SentencePieceTextSplitter = partial(SentencePieceTextSplitter, **sentencepiece_text_splitter_kwargs)
-
+# CharacterTextSplitter = partial(CharacterTextSplitter, **character_text_splitter_kwargs)
+# LatexTextSplitter = partial(LatexTextSplitter, **latex_text_splitter_kwargs)
+# MarkdownTextSplitter = partial(MarkdownTextSplitter, **markdown_text_splitter_kwargs)
+# # NLTKTextSplitter = partial(NLTKTextSplitter, **nltk_text_splitter_kwargs)
+# # SpacyTextSplitter = partial(SpacyTextSplitter, **spacy_text_splitter_kwargs)
+# PythonCodeTextSplitter = partial(PythonCodeTextSplitter, **python_code_text_splitter_kwargs)
+# TokenTextSplitter = partial(TokenTextSplitter, **token_text_splitter_kwargs)
+# # SentencePieceTextSplitter = partial(SentencePieceTextSplitter, **sentencepiece_text_splitter_kwargs)
 
 
 SPLITTERS = {
     "character_lc": CharacterTextSplitter,
     "latex_lc": LatexTextSplitter,
-    "markdown_lc": MarkdownTextSplitter,\
+    "markdown_lc": MarkdownTextSplitter,
     "text_lc": TextSplitter,
-    "nltk_lc": NLTKTextSplitter,
-    "spacy_lc": SpacyTextSplitter,
+    # "nltk_lc": NLTKTextSplitter,
+    # "spacy_lc": SpacyTextSplitter,
     "python_code_lc": PythonCodeTextSplitter,
     "token_lc": TokenTextSplitter,
 }
-
-
-
-splitters = {
-    "markdown": MarkdownParser,
-    "html": HtmlParser,
-    "txt": TxtParser,
-    "pdf": PdfParser,
-}
-
-
-SplitterType = Type[TextSplitter]

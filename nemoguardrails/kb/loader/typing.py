@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from unstructured.documents.elements import (
     Address,
     Element,
+    ElementMetadata,
     FigureCaption,
     Image,
     ListItem,
@@ -35,7 +36,7 @@ class Document(BaseModel):
     content: str
     type: Union[str, Type[Element]]
     format: str
-    metadata: Dict[str, Any] = {}
+    metadata: Optional[Dict[str, Any]] = None
     uri: Optional[Dict[Any, Any]] = None
     loader: Optional[str] = None
 
