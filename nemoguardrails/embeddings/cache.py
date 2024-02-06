@@ -27,6 +27,52 @@ from typing import List
 log = logging.getLogger(__name__)
 
 
+# we can enforce the subclasses to have a name attribute using metaclass
+
+# import inspect
+# from abc import ABCMeta
+
+# class KeyGeneratorMeta(ABCMeta):
+#     """Metaclass for KeyGenerator."""
+
+#     def __init__(cls, name, bases, attrs):
+#         super().__init__(name, bases, attrs)
+#         if not inspect.isabstract(cls):  # Check if it's a concrete class
+#             if not hasattr(cls, 'name'):
+#                 raise TypeError("Subclasses of KeyGenerator must define a 'name' class variable")
+#             if 'name' in attrs:
+#                 # Check that the name is unique among all subclasses of KeyGenerator
+#                 for other in KeyGenerator.__subclasses__():
+#                     if other is not cls and other.name == attrs['name']:
+#                         raise ValueError(f"Duplicate KeyGenerator name: {attrs['name']}")
+
+
+# class KeyGenerator(ABC, metaclass=KeyGeneratorMeta):
+#     """Abstract class for key generators."""
+
+#     @abstractmethod
+#     def generate_key(self, text: str) -> str:
+#         pass
+
+
+# class KeyGenerator(ABC):
+#     """Abstract class for key generators."""
+
+#     @abstractmethod
+#     def generate_key(self, text: str) -> str:
+#         pass
+
+#     @classmethod
+#     def from_name(cls, name):
+#         for subclass in cls.__subclasses__():
+#             # Use the 'name' attribute if it's defined, otherwise use the class name
+#             subclass_name = getattr(subclass, 'name', subclass.__name__.replace('KeyGenerator', '').lower())
+#             if subclass_name == name:
+#                 return subclass
+#         raise ValueError(f"Unknown key generator: {name}")
+
+
+
 class KeyGenerator(ABC):
     """Abstract class for key generators."""
 
