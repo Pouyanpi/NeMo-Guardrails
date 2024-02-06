@@ -18,28 +18,28 @@ import asyncio
 import importlib.util
 import logging
 import os
+import threading
 import time
-from typing import Any, List, Optional, Type, Union
+from typing import Any, AsyncIterator, List, Optional, Tuple, Type, Union
 
 from langchain.llms.base import BaseLLM
 
-from nemoguardrails.actions.fact_checking import check_facts
-from nemoguardrails.actions.hallucination import check_hallucination
-from nemoguardrails.actions.jailbreak_check import check_jailbreak
 from nemoguardrails.actions.llm.generation import LLMGenerationActions
 from nemoguardrails.actions.llm.utils import get_colang_history
-from nemoguardrails.actions.math import wolfram_alpha_request
-from nemoguardrails.actions.output_moderation import output_moderation
-from nemoguardrails.actions.retrieve_relevant_chunks import retrieve_relevant_chunks
+from nemoguardrails.context import explain_info_var, streaming_handler_var
 from nemoguardrails.embeddings.index import EmbeddingsIndex
+from nemoguardrails.flows.flows import compute_context
 from nemoguardrails.flows.runtime import Runtime
 from nemoguardrails.kb.kb import KnowledgeBase
 from nemoguardrails.language.parser import parse_colang_file
 from nemoguardrails.llm.providers import get_llm_provider, get_llm_provider_names
+from nemoguardrails.logging.explain import ExplainInfo
 from nemoguardrails.logging.stats import llm_stats
+from nemoguardrails.logging.verbose import set_verbose
 from nemoguardrails.patch_asyncio import check_sync_call_from_async_loop
 from nemoguardrails.rails.llm.config import EmbeddingSearchProvider, RailsConfig
 from nemoguardrails.rails.llm.utils import get_history_cache_key
+from nemoguardrails.streaming import StreamingHandler
 
 log = logging.getLogger(__name__)
 
@@ -61,30 +61,79 @@ class LLMRails:
         self.llm = llm
         self.verbose = verbose
 
+        if self.verbose:
+            set_verbose(True)
+
         # We allow the user to register additional embedding search providers, so we keep
         # an index of them.
         self.embedding_search_providers = {}
 
-        # The default embeddings model is using SentenceTransformers
+        # The default embeddings model is using FastEmbed
         self.default_embedding_model = "all-MiniLM-L6-v2"
-        self.default_embedding_engine = "SentenceTransformers"
+        self.default_embedding_engine = "FastEmbed"
 
         # We keep a cache of the events history associated with a sequence of user messages.
         # TODO: when we update the interface to allow to return a "state object", this
         #   should be removed
         self.events_history_cache = {}
 
-        # We also load the default flows from the `default_flows.yml` file in the current folder.
+        # Weather the main LLM supports streaming
+        self.main_llm_supports_streaming = False
+
+        # We also load the default flows from the `llm_flows.co` file in the current folder.
         current_folder = os.path.dirname(__file__)
-        default_flows_path = os.path.join(current_folder, "llm_flows.co")
+        default_flows_file = "llm_flows.co"
+        default_flows_path = os.path.join(current_folder, default_flows_file)
         with open(default_flows_path, "r") as f:
             default_flows_content = f.read()
-            default_flows = parse_colang_file("llm_flows.co", default_flows_content)[
-                "flows"
-            ]
+            default_flows = parse_colang_file(
+                default_flows_file, default_flows_content
+            )["flows"]
+
+        # We mark all the default flows as system flows.
+        for flow_config in default_flows:
+            flow_config["is_system_flow"] = True
 
         # We add the default flows to the config.
         self.config.flows.extend(default_flows)
+
+        # We also need to load the content from the components library.
+        library_path = os.path.join(os.path.dirname(__file__), "../../library")
+        for root, dirs, files in os.walk(library_path):
+            for file in files:
+                # Extract the full path for the file
+                full_path = os.path.join(root, file)
+                if file.endswith(".co"):
+                    with open(full_path, "r", encoding="utf-8") as f:
+                        content = parse_colang_file(file, content=f.read())
+
+                        # We mark all the flows coming from the guardrails library as system flows.
+                        for flow_config in content["flows"]:
+                            flow_config["is_system_flow"] = True
+
+                        # We load all the flows
+                        self.config.flows.extend(content["flows"])
+
+                        # And all the messages as well, if they have not been overwritten
+                        for message_id, utterances in content.get(
+                            "bot_messages", {}
+                        ).items():
+                            if message_id not in self.config.bot_messages:
+                                self.config.bot_messages[message_id] = utterances
+
+        # Last but not least, we mark all the flows that are used in any of the rails
+        # as system flows (so they don't end up in the prompt).
+        rail_flow_ids = (
+            config.rails.input.flows
+            + config.rails.output.flows
+            + config.rails.retrieval.flows
+        )
+        for flow_config in self.config.flows:
+            if flow_config.get("id") in rail_flow_ids:
+                flow_config["is_system_flow"] = True
+
+                # We also mark them as subflows by default, to simplify the syntax
+                flow_config["is_subflow"] = True
 
         # We check if the configuration has a config.py module associated with it.
         config_module = None
@@ -105,26 +154,15 @@ class LLMRails:
         if config_module is not None and hasattr(config_module, "init"):
             config_module.init(self)
 
-        # Register any default actions that have not yet been registered in the custom
-        # init function from config.py.
-        default_actions = {
-            "wolfram alpha request": wolfram_alpha_request,
-            "check_facts": check_facts,
-            "check_jailbreak": check_jailbreak,
-            "output_moderation": output_moderation,
-            "check_hallucination": check_hallucination,
-            "retrieve_relevant_chunks": retrieve_relevant_chunks,
-        }
-
-        for action_name, action_fn in default_actions.items():
-            self.runtime.register_action(action_fn, action_name, override=False)
-
         # If we have a customized embedding model, we'll use it.
         for model in self.config.models:
             if model.type == "embeddings":
                 self.default_embedding_model = model.model
                 self.default_embedding_engine = model.engine
                 break
+
+        # We run some additional checks on the config
+        self._validate_config()
 
         # Next, we initialize the LLM engines (main engine and action engines if specified).
         self._init_llms()
@@ -142,10 +180,59 @@ class LLMRails:
         self.runtime.register_actions(self.llm_generation_actions, override=False)
 
         # Next, we initialize the Knowledge Base
-        asyncio.run(self._init_kb())
+        # There are still some edge cases not covered by nest_asyncio.
+        # Using a separate thread always for now.
+        if True or check_sync_call_from_async_loop():
+            t = threading.Thread(target=asyncio.run, args=(self._init_kb(),))
+            t.start()
+            t.join()
+        else:
+            asyncio.run(self._init_kb())
 
         # We also register the kb as a parameter that can be passed to actions.
         self.runtime.register_action_param("kb", self.kb)
+
+        # Reference to the general ExplainInfo object.
+        self.explain_info = None
+
+    def update_llm(self, llm):
+        """Replace the main LLM with the provided one.
+
+        Arguments:
+            llm: The new LLM that should be used.
+        """
+        self.llm = llm
+        self.llm_generation_actions.llm = llm
+        self.runtime.register_action_param("llm", llm)
+
+    def _validate_config(self):
+        """Runs additional validation checks on the config."""
+        existing_flows_names = set([flow.get("id") for flow in self.config.flows])
+
+        for flow_name in self.config.rails.input.flows:
+            if flow_name not in existing_flows_names:
+                raise ValueError(
+                    f"The provided input rail flow `{flow_name}` does not exist"
+                )
+
+        for flow_name in self.config.rails.output.flows:
+            if flow_name not in existing_flows_names:
+                raise ValueError(
+                    f"The provided output rail flow `{flow_name}` does not exist"
+                )
+
+        for flow_name in self.config.rails.retrieval.flows:
+            if flow_name not in existing_flows_names:
+                raise ValueError(
+                    f"The provided retrieval rail flow `{flow_name}` does not exist"
+                )
+
+        # If both passthrough mode and single call mode are specified, we raise an exception.
+        if self.config.passthrough and self.config.rails.dialog.single_call.enabled:
+            raise ValueError(
+                f"The passthrough mode and the single call dialog rails mode can't be used at the same time. "
+                f"The single call mode needs to use an altered prompt when prompting the LLM. "
+            )
 
     async def _init_kb(self):
         """Initializes the knowledge base."""
@@ -174,19 +261,22 @@ class LLMRails:
         is to allow for flexibility in using specialized LLM engines for specific actions.
         """
 
-        # If we already have a pre-configured one, we do nothing.
+        # If we already have a pre-configured one,
+        # we just need to register the LLM as an action param.
         if self.llm is not None:
+            self.runtime.register_action_param("llm", self.llm)
             return
-
-        # TODO: Currently we assume the first model is the main one. Add proper support
-        #  to search for the main model config.
 
         for llm_config in self.config.models:
             if llm_config.type == "embeddings":
                 pass
             else:
                 if llm_config.engine not in get_llm_provider_names():
-                    raise Exception(f"Unknown LLM engine: {llm_config.engine}")
+                    msg = f"Unknown LLM engine: {llm_config.engine}."
+                    if llm_config.engine == "openai":
+                        msg += " Please install langchain-openai using `pip install langchain-openai`."
+
+                    raise Exception(msg)
 
                 provider_cls = get_llm_provider(llm_config)
                 # We need to compute the kwargs for initializing the LLM
@@ -202,12 +292,22 @@ class LLMRails:
                         "gooseai",
                         "nlpcloud",
                         "petals",
+                        "trt_llm",
                     ]:
                         kwargs["model_name"] = llm_config.model
                     else:
                         # The `__fields__` attribute is computed dynamically by pydantic.
                         if "model" in provider_cls.__fields__:
                             kwargs["model"] = llm_config.model
+
+                if self.config.streaming:
+                    if "streaming" in provider_cls.__fields__:
+                        kwargs["streaming"] = True
+                        self.main_llm_supports_streaming = True
+                    else:
+                        log.warning(
+                            f"The provider {provider_cls.__name__} does not support streaming."
+                        )
 
                 if llm_config.type == "main" or len(self.config.models) == 1:
                     self.llm = provider_cls(**kwargs)
@@ -276,7 +376,8 @@ class LLMRails:
 
         # For the rest of the messages, we transform them directly into events.
         # TODO: Move this to separate function once more types of messages are supported.
-        for msg in messages[p:]:
+        for idx in range(p, len(messages)):
+            msg = messages[idx]
             if msg["role"] == "user":
                 events.append(
                     {
@@ -284,6 +385,16 @@ class LLMRails:
                         "final_transcript": msg["content"],
                     }
                 )
+
+                # If it's not the last message, we also need to add the `UserMessage` event
+                if idx != len(messages) - 1:
+                    events.append(
+                        {
+                            "type": "UserMessage",
+                            "text": msg["content"],
+                        }
+                    )
+
             elif msg["role"] == "assistant":
                 events.append(
                     {"type": "StartUtteranceBotAction", "script": msg["content"]}
@@ -296,8 +407,12 @@ class LLMRails:
         return events
 
     async def generate_async(
-        self, prompt: Optional[str] = None, messages: Optional[List[dict]] = None
-    ) -> Union[str, dict]:
+        self,
+        prompt: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+        streaming_handler: Optional[StreamingHandler] = None,
+        return_context: bool = False,
+    ) -> Union[str, dict, Tuple[dict, dict]]:
         """Generate a completion or a next message.
 
         The format for messages is the following:
@@ -315,11 +430,28 @@ class LLMRails:
         Args:
             prompt: The prompt to be used for completion.
             messages: The history of messages to be used to generate the next message.
+            streaming_handler: If specified, and the config supports streaming, the
+              provided handler will be used for streaming.
+            return_context: Whether to return the context at the end of the run.
 
         Returns:
             The completion (when a prompt is provided) or the next message.
 
         System messages are not yet supported."""
+        if streaming_handler:
+            streaming_handler_var.set(streaming_handler)
+
+        # Initialize the object with additional explanation information.
+        # We allow this to also be set externally. This is useful when multiple parallel
+        # requests are made.
+        explain_info = explain_info_var.get()
+        if explain_info is None:
+            explain_info = ExplainInfo()
+            explain_info_var.set(explain_info)
+
+            # We also keep a general reference to this object
+            self.explain_info = explain_info
+
         if prompt is not None:
             # Currently, we transform the prompt request into a single turn conversation
             new_message = await self.generate_async(
@@ -360,27 +492,63 @@ class LLMRails:
 
         # If logging is enabled, we log the conversation
         # TODO: add support for logging flag
+        explain_info.colang_history = get_colang_history(events)
         if self.verbose:
-            history = get_colang_history(events)
-            log.info(f"Conversation history so far: \n{history}")
+            log.info(f"Conversation history so far: \n{explain_info.colang_history}")
 
         log.info("--- :: Total processing took %.2f seconds." % (time.time() - t0))
         log.info("--- :: Stats: %s" % llm_stats)
 
-        return new_message
+        # If there is a streaming handler, we make sure we close it now
+        streaming_handler = streaming_handler_var.get()
+        if streaming_handler:
+            # print("Closing the stream handler explicitly")
+            await streaming_handler.push_chunk(None)
+
+        if return_context:
+            # If we need to return the context as well,
+            context = compute_context(events)
+            return new_message, context
+        else:
+            return new_message
+
+    def stream_async(
+        self,
+        prompt: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+    ) -> AsyncIterator[str]:
+        """Simplified interface for getting directly the streamed tokens from the LLM."""
+        streaming_handler = StreamingHandler()
+
+        asyncio.create_task(
+            self.generate_async(
+                prompt=prompt,
+                messages=messages,
+                streaming_handler=streaming_handler,
+            )
+        )
+
+        return streaming_handler
 
     def generate(
-        self, prompt: Optional[str] = None, messages: Optional[List[dict]] = None
+        self,
+        prompt: Optional[str] = None,
+        messages: Optional[List[dict]] = None,
+        return_context: bool = False,
     ):
         """Synchronous version of generate_async."""
 
         if check_sync_call_from_async_loop():
             raise RuntimeError(
                 "You are using the sync `generate` inside async code. "
-                "You should replace with `await generate_async(...)."
+                "You should replace with `await generate_async(...)` or use `nest_asyncio.apply()`."
             )
 
-        return asyncio.run(self.generate_async(prompt=prompt, messages=messages))
+        return asyncio.run(
+            self.generate_async(
+                prompt=prompt, messages=messages, return_context=return_context
+            )
+        )
 
     async def generate_events_async(self, events: List[dict]) -> List[dict]:
         """Generate the next events based on the provided history.
@@ -424,7 +592,7 @@ class LLMRails:
         if check_sync_call_from_async_loop():
             raise RuntimeError(
                 "You are using the sync `generate_events` inside async code. "
-                "You should replace with `await generate_events_async(...)."
+                "You should replace with `await generate_events_async(...)` or use `nest_asyncio.apply()`."
             )
 
         return asyncio.run(self.generate_events_async(events=events))
@@ -464,3 +632,7 @@ class LLMRails:
         """
 
         self.embedding_search_providers[name] = cls
+
+    def explain(self) -> ExplainInfo:
+        """Helper function to return the latest ExplainInfo object."""
+        return self.explain_info

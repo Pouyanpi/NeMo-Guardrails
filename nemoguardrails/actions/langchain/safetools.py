@@ -18,20 +18,18 @@
 The same validation logic can be applied to others as well.
 """
 
-from langchain import (
+from langchain.utilities.zapier import ZapierNLAWrapper
+from langchain_community.utilities import (
+    ApifyWrapper,
+    BingSearchAPIWrapper,
     GoogleSearchAPIWrapper,
     GoogleSerperAPIWrapper,
+    OpenWeatherMapAPIWrapper,
     SearxSearchWrapper,
     SerpAPIWrapper,
     WikipediaAPIWrapper,
     WolframAlphaAPIWrapper,
 )
-from langchain.utilities import (
-    ApifyWrapper,
-    BingSearchAPIWrapper,
-    OpenWeatherMapAPIWrapper,
-)
-from langchain.utilities.zapier import ZapierNLAWrapper
 
 from nemoguardrails.actions.validation import validate_input, validate_response
 
