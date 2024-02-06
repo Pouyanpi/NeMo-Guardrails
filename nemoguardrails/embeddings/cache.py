@@ -22,6 +22,8 @@ from functools import singledispatchmethod
 from pathlib import Path
 from typing import List
 
+
+
 log = logging.getLogger(__name__)
 
 
@@ -29,21 +31,32 @@ class KeyGenerator(ABC):
     """Abstract class for key generators."""
 
     @abstractmethod
-    def generate_key(self, text):
+    def generate_key(self, text: str) -> str:
         pass
+
+    @classmethod
+    def from_name(cls, name):
+        for subclass in cls.__subclasses__():
+            if subclass.name == name:
+                return subclass
+        raise ValueError(f"Unknown key generator: {name}")
 
 
 class HashKeyGenerator(KeyGenerator):
     """Hash-based key generator."""
 
-    def generate_key(self, text):
-        return hash(text)
+    name = "hash"
+
+    def generate_key(self, text: str) -> str:
+        return str(hash(text))
 
 
 class MD5KeyGenerator(KeyGenerator):
     """MD5-based key generator."""
 
-    def generate_key(self, text):
+    name = "md5"
+
+    def generate_key(self, text: str) -> str:
         return hashlib.md5(text.encode("utf-8")).hexdigest()
 
 
@@ -65,6 +78,13 @@ class CacheStore(ABC):
         """Clear the cache."""
         pass
 
+    @classmethod
+    def from_name(cls, name):
+        for subclass in cls.__subclasses__():
+            if subclass.name == name:
+                return subclass
+        raise ValueError(f"Unknown cache store: {name}")
+
 
 class InMemoryCacheStore(CacheStore):
     """In-memory cache store.
@@ -77,6 +97,8 @@ class InMemoryCacheStore(CacheStore):
         >>> print(cache_store.get('key'))  # Outputs: 'value'
         value
     """
+
+    name = "in_memory"
 
     def __init__(self):
         self._cache = {}
@@ -105,6 +127,8 @@ class FilesystemCacheStore(CacheStore):
         >>> print(cache_store.get('key'))
         value
     """
+
+    name = "filesystem"
 
     def __init__(self, cache_dir: str = None):
         self._cache_dir = Path(cache_dir or "./cache")
@@ -146,6 +170,8 @@ class RedisCacheStore(CacheStore):
         value
     """
 
+    name = "redis"
+
     def __init__(self, host: str = "localhost", port: int = 6379, db: int = 0):
         import redis
 
@@ -161,23 +187,34 @@ class RedisCacheStore(CacheStore):
         self._redis.flushall()
 
 
+# from typing import TypedDict
+# class CacheConfigDict(TypedDict):
+#     key_generator: str
+#     store: str
+#     store_config: dict
+    
+
 class CacheEmbeddings:
     def __init__(
-        self, key_generator: KeyGenerator = None, cache_store: CacheStore = None
+        self, key_generator: KeyGenerator = None, cache_store: CacheStore = None, store_config: dict = None
     ):
         self._key_generator = key_generator
         self._cache_store = cache_store
+        self._store_config = store_config
 
     @classmethod
     def from_dict(cls, d):
-        key_generator = d.get("key_generator", MD5KeyGenerator())
-        cache_store = d.get("cache_store", FilesystemCacheStore())
+
+        key_generator = KeyGenerator.from_name(d.get("key_generator"))()
+        store_config = d.get("store_config")
+        cache_store = CacheStore.from_name(d.get("store"))(**store_config)
+        
         return cls(key_generator=key_generator, cache_store=cache_store)
 
     @classmethod
     def from_config(cls, config):
         # config is of type EmbeddingSearchProvider
-        return cls.from_dict(config.parameters)
+        return cls.from_dict(config.dict())
 
     @singledispatchmethod
     def get(self, texts):

@@ -338,8 +338,7 @@ class LLMRails:
                 embedding_engine=esp_config.parameters.get(
                     "embedding_engine", self.default_embedding_engine
                 ),
-                use_cache = esp_config.parameters.get("use_cache"),
-                cache_embeddings = CacheEmbeddings.from_dict(esp_config.parameters),
+                cache_embeddings = CacheEmbeddings.from_dict(esp_config.cache),
             )
         else:
             if esp_config.name not in self.embedding_search_providers:
