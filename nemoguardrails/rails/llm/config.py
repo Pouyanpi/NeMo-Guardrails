@@ -172,6 +172,31 @@ class EmbeddingsCacheConfig(BaseModel):
     )
 
 
+class EmbeddingsCacheConfig(BaseModel):
+    """Configuration for the caching embeddings."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether caching of the embeddings should be enabled or not.",
+    )
+    key_generator: str = Field(
+        default="md5",
+        description="The method to use for generating the cache keys.",
+    )
+    store: str = Field(
+        default="filesystem",
+        description="What type of store to use for the cached embeddings.",
+    )
+    store_config: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Any additional configuration options required for the store. "
+        "For example, path for `filesystem` or `host`/`port`/`db` for redis.",
+    )
+
+    def to_dict(self):
+        return self.dict()
+
+
 class EmbeddingSearchProvider(BaseModel):
     """Configuration of a embedding search provider."""
 

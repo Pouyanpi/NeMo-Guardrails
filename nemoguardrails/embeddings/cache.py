@@ -12,7 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import functools
 import hashlib
 import json
@@ -22,8 +21,14 @@ from functools import singledispatchmethod
 from pathlib import Path
 from typing import List
 
+<<<<<<< HEAD
 
 
+=======
+from nemoguardrails.rails.llm.config import EmbeddingsCacheConfig
+
+logging.basicConfig(level=logging.INFO)
+>>>>>>> 113f73a (Temporary to reset and move to feature branch)
 log = logging.getLogger(__name__)
 
 
@@ -72,7 +77,10 @@ log = logging.getLogger(__name__)
 #         raise ValueError(f"Unknown key generator: {name}")
 
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 113f73a (Temporary to reset and move to feature branch)
 class KeyGenerator(ABC):
     """Abstract class for key generators."""
 
@@ -85,7 +93,11 @@ class KeyGenerator(ABC):
         for subclass in cls.__subclasses__():
             if subclass.name == name:
                 return subclass
-        raise ValueError(f"Unknown key generator: {name}")
+        raise ValueError(
+            f"Unknown {cls.__name__}: {name}. Available {cls.__name__}s are: "
+            f"{', '.join([subclass.name for subclass in cls.__subclasses__()])}"
+            ". Make sure to import the derived class before using it."
+        )
 
 
 class HashKeyGenerator(KeyGenerator):
@@ -129,7 +141,15 @@ class CacheStore(ABC):
         for subclass in cls.__subclasses__():
             if subclass.name == name:
                 return subclass
+<<<<<<< HEAD
         raise ValueError(f"Unknown cache store: {name}")
+=======
+        raise ValueError(
+            f"Unknown {cls.__name__}: {name}. Available {cls.__name__}s are: "
+            f"{', '.join([subclass.name for subclass in cls.__subclasses__()])}"
+            ". Make sure to import the derived class before using it."
+        )
+>>>>>>> 113f73a (Temporary to reset and move to feature branch)
 
 
 class InMemoryCacheStore(CacheStore):
@@ -233,34 +253,36 @@ class RedisCacheStore(CacheStore):
         self._redis.flushall()
 
 
-# from typing import TypedDict
-# class CacheConfigDict(TypedDict):
-#     key_generator: str
-#     store: str
-#     store_config: dict
-    
-
-class CacheEmbeddings:
+class EmbeddingsCache:
     def __init__(
-        self, key_generator: KeyGenerator = None, cache_store: CacheStore = None, store_config: dict = None
+        self,
+        key_generator: KeyGenerator = None,
+        cache_store: CacheStore = None,
+        store_config: dict = None,
     ):
         self._key_generator = key_generator
         self._cache_store = cache_store
-        self._store_config = store_config
+        self._store_config = store_config or {}
 
     @classmethod
-    def from_dict(cls, d):
-
+    def from_dict(cls, d: dict[str, str]):
         key_generator = KeyGenerator.from_name(d.get("key_generator"))()
         store_config = d.get("store_config")
         cache_store = CacheStore.from_name(d.get("store"))(**store_config)
-        
+
         return cls(key_generator=key_generator, cache_store=cache_store)
 
     @classmethod
-    def from_config(cls, config):
+    def from_config(cls, config: EmbeddingsCacheConfig):
         # config is of type EmbeddingSearchProvider
-        return cls.from_dict(config.dict())
+        return cls.from_dict(config.to_dict())
+
+    def get_config(self):
+        return EmbeddingsCacheConfig(
+            key_generator=self._key_generator.name,
+            store=self._cache_store.name,
+            store_config=self._store_config,
+        )
 
     @singledispatchmethod
     def get(self, texts):
@@ -269,7 +291,7 @@ class CacheEmbeddings:
     @get.register
     def _(self, text: str):
         key = self._key_generator.generate_key(text)
-        log.info(f"Fetching key {key} for text '{text[:10]}...' from cache")
+        log.info(f"Fetching key {key} for text '{text[:20]}...' from cache")
 
         result = self._cache_store.get(key)
 
@@ -309,58 +331,53 @@ class CacheEmbeddings:
 
 
 def cache_embeddings(func):
-    """
-    Decorator to cache the embeddings.
+    """Decorator to cache the embeddings.
 
     This decorator caches the embeddings in the cache store.
-    It uses the key generator to generate the key for the cache.
+    It uses the `cache_config` attribute of the class to configure the cache.
 
-    If the class does not have a `key_generator` attribute, it will use the `MD5KeyGenerator`.
-    If the class does not have a `cache_store` attribute, it will use the `FilesystemCacheStore`.
-    If the class does not have a `use_cache` attribute, it defaults to True.
-    This decorator can be applied to any function that accepts a list of strings and returns a list of lists of floats.
+    If the class does not have a `cache_config` attribute, it will use the `EmbeddingsCacheConfig` by default.
+    This decorator can be applied to the `_get_embeddings` method of a subclass of `EmbeddingsIndex` that accepts a list of strings and returns a list of lists of floats.
 
     Args:
-        func (Callable[[List[str]], List[List[float]]]): The function to decorate.
+        func (Callable[[Any, List[str]], Awaitable[List[List[float]]]]): The method to decorate. The first argument should be `self`.
 
     Returns:
-        Callable[[List[str]], List[List[float]]]: The decorated function.
+        Callable[[Any, List[str]], Awaitable[List[List[float]]]]: The decorated method.
 
     Example:
-        @cache_embeddings
-        def get_embeddings(texts: List[str]) -> List[List[float]]:
-            # implementation here
-            pass
+        class MyClass:
+            @property
+            def cache_config(self):
+                return EmbeddingsCacheConfig()
+            @cache_embeddings
+            async def get_embeddings(self, texts: List[str]) -> List[List[float]]:
+                # implementation here
+                pass
     """
 
     @functools.wraps(func)
-    def wrapper_decorator(self, texts):
+    async def wrapper_decorator(self, texts):
         results = []
 
-        if not (hasattr(self, "cache_embeddings") and self.cache_embeddings):
-            self.cache_embeddings = CacheEmbeddings(
-                key_generator=MD5KeyGenerator(), cache_store=FilesystemCacheStore()
-            )
+        embeddings_cache = EmbeddingsCache.from_config(self.cache_config)
 
-        if not hasattr(self, "use_cache"):
-            self.use_cache = True
-
-        if not self.use_cache:
-            # if `use_cache` is False, then compute embeddings for the whole input
-            return func(self, texts)
+        if not self.cache_config.enabled:
+            # if cache is not enabled compute embeddings for the whole input
+            return await func(self, texts)
 
         cached_texts = {}
         uncached_texts = []
 
-        cached_texts = self.cache_embeddings.get(texts)
+        cached_texts = embeddings_cache.get(texts)
         uncached_texts = [text for text in texts if text not in cached_texts]
 
         # Only call func for uncached texts
         if uncached_texts:
-            uncached_results = func(self, uncached_texts)
-            self.cache_embeddings.set(uncached_texts, uncached_results)
+            uncached_results = await func(self, uncached_texts)
+            embeddings_cache.set(uncached_texts, uncached_results)
 
-        cached_texts.update(self.cache_embeddings.get(uncached_texts))
+        cached_texts.update(embeddings_cache.get(uncached_texts))
         # Reorder results to match the order of the input texts,
         results = [cached_texts.get(text) for text in texts]
         return results
