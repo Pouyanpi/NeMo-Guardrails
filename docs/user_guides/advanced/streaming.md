@@ -68,7 +68,7 @@ result = await app.generate_async(
 print(result)
 ```
 
-For the complete working example, check out this [demo script](../../../examples/scripts/demo_streaming.py).
+For the complete working example, check out this [demo script](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop/examples/scripts/demo_streaming.py).
 
 ### Server API
 
@@ -85,4 +85,33 @@ POST /v1/chat/completions
     }],
     "stream": true
 }
+```
+
+### Streaming for LLMs deployed using HuggingFacePipeline
+
+We also support streaming for LLMs deployed using `HuggingFacePipeline`.
+One example is provided in the [HF Pipeline Dolly](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop/examples/configs/llm/hf_pipeline_dolly/README.md) configuration.
+
+To use streaming for HF Pipeline LLMs, you first need to set the streaming flag in your `config.yml`.
+
+```yaml
+streaming: True
+```
+
+Then you need to create an `nemoguardrails.llm.providers.huggingface.AsyncTextIteratorStreamer` streamer object,
+add it to the `kwargs` of the pipeline and to the `model_kwargs` of the `HuggingFacePipelineCompatible` object.
+
+```python
+from nemoguardrails.llm.providers.huggingface import AsyncTextIteratorStreamer
+
+# instantiate tokenizer object required by LLM
+streamer = AsyncTextIteratorStreamer(tokenizer, skip_prompt=True)
+params = {"temperature": 0.01, "max_new_tokens": 100, "streamer": streamer}
+
+pipe = pipeline(
+    # all other parameters
+    **params,
+)
+
+llm = HuggingFacePipelineCompatible(pipeline=pipe, model_kwargs=params)
 ```

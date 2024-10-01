@@ -22,3 +22,13 @@ explain_info_var = contextvars.ContextVar("explain_info", default=None)
 
 # The current LLM call.
 llm_call_info_var = contextvars.ContextVar("llm_call_info", default=None)
+
+# All the generation options applicable to the current context.
+generation_options_var = contextvars.ContextVar("generation_options", default=None)
+
+# The stats about the LLM calls.
+llm_stats_var = contextvars.ContextVar("llm_stats", default=None)
+
+# The raw LLM request that comes from the user.
+# This is used in passthrough mode.
+raw_llm_request = contextvars.ContextVar("raw_llm_request", default=None)

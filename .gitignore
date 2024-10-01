@@ -12,7 +12,6 @@ coverage.xml
 .eggs
 mellon.egg-info
 scratch.py
-.vscode
 *.egg-info
 firebase.json
 build
@@ -26,3 +25,11 @@ original_dataset
 eval_outputs
 /**/chitchat/user.co
 /**/banking/user.co
+.mypy_cache
+.python-version
+local_cache
+# Ignore example configs created in user guides
+docs/user_guides/llm/vertexai/config
+docs/**/config
+# vscode local history extension
+.history

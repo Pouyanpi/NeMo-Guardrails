@@ -9,7 +9,7 @@ The Guardrails Server loads a predefined set of guardrails configurations at sta
 To launch the server:
 
 ```
-> nemoguardrails server [--config PATH/TO/CONFIGS] [--port PORT] [--prefix PREFIX] [--disable-chat-ui] [--auto-reload]
+> nemoguardrails server [--config PATH/TO/CONFIGS] [--port PORT] [--prefix PREFIX] [--disable-chat-ui] [--auto-reload] [--default-config-id DEFAULT_CONFIG_ID]
 ```
 
 If no `--config` option is specified, the server will try to load the configurations from the `config` folder in the current directory. If no configurations are found, it will load all the example guardrails configurations.
@@ -28,6 +28,8 @@ If a `--prefix` option is specified, the root path for the guardrails server wil
 │       ├── ...
 │   ...
 ```
+
+**Note**: If the server is pointed to a folder with a single configuration, then only that configuration will be available.
 
 If the `--auto-reload` option is specified, the server will monitor any changes to the files inside the folder holding the configurations and reload them automatically when they change. This allows you to iterate faster on your configurations, and even regenerate messages mid-conversation, after changes have been made. **IMPORTANT**: this option should only be used in development environments.
 
@@ -84,7 +86,45 @@ Sample response:
 }]
 ```
 
+The completion endpoint also supports combining multiple configurations in a single request. To do this, you can use the `config_ids` field instead of `config_id`:
+
+```
+POST /v1/chat/completions
+```
+```json
+{
+    "config_ids": ["config_1", "config_2"],
+    "messages": [{
+      "role":"user",
+      "content":"Hello! What can you do for me?"
+    }]
+}
+```
+
+The configurations will be combined in the order they are specified in the `config_ids` list. If there are any conflicts between the configurations, the last configuration in the list will take precedence. The rails will be combined in the order they are specified in the `config_ids` list. The model type and engine across the configurations must be the same.
+
+#### Default Configuration
+
+The NeMo Guardrails server supports having a default guardrail configuration which can be set using the `--default-config-id` flag.
+This configuration is used when no `config_id` is provided in the request.
+
+```
+POST /v1/chat/completions
+```
+```json
+{
+    "messages": [{
+      "role":"user",
+      "content":"Hello! What can you do for me?"
+    }]
+}
+
+```
+
+
 ### Threads
+
+
 
 The Guardrails Server has basic support for storing the conversation threads. This is useful when you can only send the latest user message(s) for a conversation rather than the entire history (e.g., from a third-party integration hook).
 
@@ -92,7 +132,7 @@ The Guardrails Server has basic support for storing the conversation threads. Th
 
 To use server-side threads, you have to register a datastore. To do this, you must create a `config.py` file in the root of the configurations folder (i.e., the folder containing all the guardrails configurations the server must load). Inside `config.py` use the `register_datastore` function to register the datastore you want to use.
 
-Out-of-the-box, NeMo Guardrails has support for `MemoryStore` (useful for quick testing) and `RedisStore`. If you want to use a different backend, you can implement the [`DataStore`](../../nemoguardrails/server/datastore/datastore.py) interface and register a different instance in `config.py`.
+Out-of-the-box, NeMo Guardrails has support for `MemoryStore` (useful for quick testing) and `RedisStore`. If you want to use a different backend, you can implement the [`DataStore`](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop/nemoguardrails/server/datastore/datastore.py) interface and register a different instance in `config.py`.
 
 > NOTE: to use `RedisStore` you must install `aioredis >= 2.0.1`.
 
@@ -114,7 +154,7 @@ POST /v1/chat/completions
 
 > NOTE: for security reasons, the `thread_id` must have a minimum length of 16 characters.
 
-As an example, check out this [configuration](../../examples/configs/threads).
+As an example, check out this [configuration](https://github.com/NVIDIA/NeMo-Guardrails/tree/develop/examples/configs/threads/README.md).
 
 
 #### Limitations
@@ -147,7 +187,7 @@ The OpenAPI specification for the actions server is available at `http://localho
 
 #### `/v1/actions/list`
 
-To list the [available actions](./python-api.md#actions) for the server, use the `/v1/actions/list` endpoint.
+To list the [available actions](python-api.md#actions) for the server, use the `/v1/actions/list` endpoint.
 
 ```
 GET /v1/actions/list

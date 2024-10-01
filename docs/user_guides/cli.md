@@ -5,11 +5,12 @@
 ## Guardrails CLI
 For testing purposes, the Guardrails toolkit provides a command line chat that can be used to interact with the LLM.
 ```
-> nemoguardrails chat --config examples/ [--verbose]
+> nemoguardrails chat --config examples/ [--verbose] [--verbose-llm-calls]
 ```
-#### Options
+## Options
 - `--config`: The configuration that should be used. Can be a folder or a .co/.yml file.
-- `--verbose`: In verbose mode, debugging information is also shown. This includes the entire prompt that is sent to the bot, the flow that is executed, the generated canonical form and the response that is received.
+- `--verbose`: In verbose mode, detailed debugging information is also shown.
+- `--verbose-llm-calls`: In verbose LLM calls mode, the debugging information includes the entire prompt that is sent to the LLM and the completion.
 
 
 7. You should now be able to invoke the `nemoguardrails` CLI.
@@ -54,13 +55,32 @@ For testing purposes, the Guardrails toolkit provides a command line chat that c
 
   Starts an interactive chat session.
 
- Options:
-  --config TEXT             Path to a directory containing configuration files
-                            to use. Can also point to a single configuration
-                            file.  [default: config]
-  --verbose / --no-verbose  If the chat should be verbose and output the
-                            prompts  [default: no-verbose]
-  --help                    Show this message and exit.
+  --config                                       TEXT  Path to a directory containing configuration
+                                                       files to use. Can also point to a single
+                                                       configuration file.
+                                                       [default: config]
+  --verbose             --no-verbose                   If the chat should be verbose and output
+                                                       detailed logging information.
+                                                       [default: no-verbose]
+  --verbose-no-llm      --no-verbose-no-llm            If the chat should be verbose and exclude the
+                                                       prompts and responses for the LLM calls.
+                                                       [default: no-verbose-no-llm]
+  --verbose-simplify    --no-verbose-simplify          Simplify further the verbose output.
+                                                       [default: no-verbose-simplify]
+  --debug-level                                  TEXT  Enable debug mode which prints rich
+                                                       information about the flows execution.
+                                                       Available levels: WARNING, INFO, DEBUG
+  --streaming           --no-streaming                 If the chat should use the streaming mode, if
+                                                       possible.
+                                                       [default: no-streaming]
+  --server-url                                   TEXT  If specified, the chat CLI will interact with
+                                                       a server, rather than load the config. In this
+                                                       case, the --config-id must also be specified.
+                                                       [default: None]
+  --config-id                                    TEXT  The config_id to be used when interacting with
+                                                       the server.
+                                                       [default: None]
+  --help                                               Show this message and exit.
  ```
 
  ```bash

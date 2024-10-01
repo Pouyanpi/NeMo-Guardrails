@@ -20,10 +20,16 @@ from typing import Any, List, Optional, Union
 from jinja2 import Environment, meta
 
 from nemoguardrails.llm.filters import (
+    co_v2,
     colang,
+    colang_without_identifiers,
     first_turns,
+    indent,
     last_turns,
     remove_text_messages,
+    to_chat_messages,
+    to_intent_messages,
+    to_intent_messages_2,
     to_messages,
     to_messages_nemollm,
     user_assistant_sequence,
@@ -53,14 +59,20 @@ class LLMTaskManager:
 
         # Register the default filters.
         self.env.filters["colang"] = colang
+        self.env.filters["co_v2"] = co_v2
+        self.env.filters["colang_without_identifiers"] = colang_without_identifiers
         self.env.filters["remove_text_messages"] = remove_text_messages
         self.env.filters["first_turns"] = first_turns
         self.env.filters["last_turns"] = last_turns
+        self.env.filters["indent"] = indent
         self.env.filters["user_assistant_sequence"] = user_assistant_sequence
         self.env.filters[
             "user_assistant_sequence_nemollm"
         ] = user_assistant_sequence_nemollm
         self.env.filters["to_messages"] = to_messages
+        self.env.filters["to_intent_messages"] = to_intent_messages
+        self.env.filters["to_intent_messages_2"] = to_intent_messages_2
+        self.env.filters["to_chat_messages"] = to_chat_messages
         self.env.filters["to_messages_nemollm"] = to_messages_nemollm
         self.env.filters["verbose_v1"] = verbose_v1
 
@@ -193,14 +205,21 @@ class LLMTaskManager:
         task: Union[str, Task],
         context: Optional[dict] = None,
         events: Optional[List[dict]] = None,
+        force_string_to_message: Optional[bool] = False,
     ) -> Union[str, List[dict]]:
         """Render the prompt for a specific task.
 
         :param task: The name of the task.
         :param context: The context for rendering the prompt
         :param events: The history of events so far.
+        :param force_string_to_message: Force the string message to a user message.
+        This should be used for chat models that receive a single message in the task prompt.
 
         :return: A string, for completion models, or an array of messages for chat models.
+
+        Note that even chat models can have task prompts defined using a string and not an array of messages.
+        In this case, the chat model will through an error. If you want to solve this problem, use the
+        force_string_to_message parameter to force the string message to a user message.
         """
         prompt = get_prompt(self.config, task)
         if prompt.content:
@@ -217,6 +236,16 @@ class LLMTaskManager:
                 task_prompt = self._render_string(
                     prompt.content, context=context, events=events
                 )
+
+            # Check if the output should be a user message, for chat models
+            if force_string_to_message:
+                return [
+                    {
+                        "type": "user",
+                        "content": task_prompt,
+                    }
+                ]
+
             return task_prompt
         else:
             task_messages = self._render_messages(
@@ -254,6 +283,11 @@ class LLMTaskManager:
             return output_parser(output)
         else:
             return output
+
+    def get_stop_tokens(self, task: Union[str, Task]) -> List[str]:
+        """Return the stop sequence for the given task."""
+        prompt = get_prompt(self.config, task)
+        return prompt.stop
 
     def register_filter(self, filter_fn: callable, name: Optional[str] = None):
         """Register a custom filter for the rails configuration."""

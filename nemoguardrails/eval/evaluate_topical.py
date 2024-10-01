@@ -18,7 +18,7 @@ import json
 import os
 import random
 import textwrap
-from typing import Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -50,6 +50,41 @@ def cosine_similarity(v1, v2):
     return np.dot(np_v1, np_v2) / (np.linalg.norm(np_v1) * np.linalg.norm(np_v2))
 
 
+def _split_test_set_from_config(
+    config: RailsConfig,
+    test_set_percentage: float,
+    test_set: Dict[str, List],
+    max_samples_per_intent: int,
+    random_seed: Optional[int] = None,
+):
+    """Extracts a test set of user messages from a config.
+
+    Args:
+        config: The config from which the test set will be extracted.
+        test_set_percentage: The percentage used for the test set.
+        test_set: A dictionary where the test set will be added.
+        max_samples_per_intent: A limit on the number of samples per intent to be enforced.
+    """
+    if config.user_messages and test_set_percentage > 0:
+        for intent, samples in config.user_messages.items():
+            # We need at least 2 samples to create a test split
+            if len(samples) > 1:
+                if random_seed:
+                    random.Random(random_seed).shuffle(samples)
+                else:
+                    random.shuffle(samples)
+
+                num_test_elements = int(len(samples) * test_set_percentage)
+                test_set[intent] = samples[:num_test_elements]
+                config.user_messages[intent] = samples[num_test_elements:]
+
+                # Limit the number of samples per intent if specified
+                if 0 < max_samples_per_intent < len(config.user_messages[intent]):
+                    config.user_messages[intent] = config.user_messages[intent][
+                        :max_samples_per_intent
+                    ]
+
+
 class TopicalRailsEvaluation:
     """Helper class for running the topical rails evaluation for a Guardrails app.
     It contains all the configuration parameters required to run the evaluation."""
@@ -58,6 +93,9 @@ class TopicalRailsEvaluation:
         self.test_set = {}
         rails_config = RailsConfig.from_path(
             config_path=self.config_path,
+        )
+        _split_test_set_from_config(
+            rails_config,
             test_set_percentage=self.test_set_percentage,
             max_samples_per_intent=self.max_samples_per_intent,
             test_set=self.test_set,
@@ -236,6 +274,7 @@ class TopicalRailsEvaluation:
         num_bot_intent_errors = 0
         num_bot_utterance_errors = 0
         topical_predictions = []
+        num_user_intent_errors_from_empty_intent = 0
 
         for intent, samples in self.test_set.items():
             for sample in samples:
@@ -250,13 +289,22 @@ class TopicalRailsEvaluation:
                     history_events
                 )
 
-                generated_user_intent = get_last_user_intent_event(new_events)["intent"]
-                prediction["generated_user_intent"] = generated_user_intent
-                wrong_intent = False
-                if generated_user_intent != intent:
+                generated_user_intent = None
+                last_user_intent_event = get_last_user_intent_event(new_events)
+                if last_user_intent_event is not None:
+                    generated_user_intent = last_user_intent_event["intent"]
+                    prediction["generated_user_intent"] = generated_user_intent
+                    wrong_intent = False
+                if generated_user_intent is None:
+                    num_user_intent_errors_from_empty_intent += 1
+                    print("Error!: Generated empty user intent")
+                if generated_user_intent is None or generated_user_intent != intent:
                     wrong_intent = True
                     # Employ semantic similarity if needed
-                    if self.similarity_threshold > 0:
+                    if (
+                        generated_user_intent is not None
+                        and self.similarity_threshold > 0
+                    ):
                         sim_user_intent = self._get_most_similar_intent(
                             generated_user_intent
                         )

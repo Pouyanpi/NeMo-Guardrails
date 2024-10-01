@@ -12,7 +12,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from __future__ import annotations
+
 import asyncio
+import json
+import sys
 from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 from langchain.callbacks.manager import (
@@ -22,6 +26,13 @@ from langchain.callbacks.manager import (
 from langchain.llms.base import LLM
 
 from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.colang import parse_colang_file
+from nemoguardrails.colang.v2_x.runtime.flows import State
+from nemoguardrails.colang.v2_x.runtime.runtime import (
+    create_flow_configs_from_flow_list,
+)
+from nemoguardrails.colang.v2_x.runtime.statemachine import initialize_state
+from nemoguardrails.utils import EnhancedJsonEncoder, new_event_dict
 
 
 class FakeLLM(LLM):
@@ -43,7 +54,12 @@ class FakeLLM(LLM):
         run_manager: Optional[CallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
-        """First try to lookup in queries, else return 'foo' or 'bar'."""
+        if self.i >= len(self.responses):
+            raise RuntimeError(
+                f"No responses available for query number {self.i + 1} in FakeLLM. "
+                "Most likely, too many LLM calls are made or additional responses need to be provided."
+            )
+
         response = self.responses[self.i]
         self.i += 1
         return response
@@ -55,7 +71,12 @@ class FakeLLM(LLM):
         run_manager: Optional[AsyncCallbackManagerForLLMRun] = None,
         **kwargs: Any,
     ) -> str:
-        """First try to lookup in queries, else return 'foo' or 'bar'."""
+        if self.i >= len(self.responses):
+            raise RuntimeError(
+                f"No responses available for query number {self.i + 1} in FakeLLM. "
+                "Most likely, too many LLM calls are made or additional responses need to be provided."
+            )
+
         response = self.responses[self.i]
         self.i += 1
 
@@ -119,19 +140,80 @@ class TestChat:
         )
         self.config = config
         self.app = LLMRails(config, llm=self.llm)
+
+        # Track the conversation for v1.0
         self.history = []
         self.streaming = streaming
 
+        # Track the conversation for v2.x
+        self.input_events = []
+        self.state = None
+
+        # For 2.x, we start the main flow when initializing by providing a empty state
+        if self.config.colang_version == "2.x":
+            self.app.runtime.disable_async_execution = True
+            _, self.state = self.app.process_events(
+                [],
+                self.state,
+            )
+
     def user(self, msg: str):
-        self.history.append({"role": "user", "content": msg})
+        if self.config.colang_version == "1.0":
+            self.history.append({"role": "user", "content": msg})
+        elif self.config.colang_version == "2.x":
+            self.input_events.append(
+                {
+                    "type": "UtteranceUserActionFinished",
+                    "final_transcript": msg,
+                }
+            )
+        else:
+            raise Exception(f"Invalid colang version: {self.config.colang_version}")
 
     def bot(self, msg: str):
-        result = self.app.generate(messages=self.history)
-        assert result, "Did not receive any result"
-        assert (
-            result["content"] == msg
-        ), f"Expected `{msg}` and received `{result['content']}`"
-        self.history.append(result)
+        if self.config.colang_version == "1.0":
+            result = self.app.generate(messages=self.history)
+            assert result, "Did not receive any result"
+            assert (
+                result["content"] == msg
+            ), f"Expected `{msg}` and received `{result['content']}`"
+            self.history.append(result)
+
+        elif self.config.colang_version == "2.x":
+            output_msgs = []
+            while self.input_events:
+                output_events, output_state = self.app.process_events(
+                    self.input_events, self.state
+                )
+
+                # We detect any "StartUtteranceBotAction" events, show the message, and
+                # generate the corresponding Finished events as new input events.
+                self.input_events = []
+                for event in output_events:
+                    if event["type"] == "StartUtteranceBotAction":
+                        output_msgs.append(event["script"])
+
+                        self.input_events.append(
+                            new_event_dict(
+                                "UtteranceBotActionStarted",
+                                action_uid=event["action_uid"],
+                            )
+                        )
+                        self.input_events.append(
+                            new_event_dict(
+                                "UtteranceBotActionFinished",
+                                action_uid=event["action_uid"],
+                                is_success=True,
+                                final_script=event["script"],
+                            )
+                        )
+
+                self.state = output_state
+
+            output_msg = "\n".join(output_msgs)
+            assert output_msg == msg, f"Expected `{msg}` and received `{output_msg}`"
+        else:
+            raise Exception(f"Invalid colang version: {self.config.colang_version}")
 
     async def bot_async(self, msg: str):
         result = await self.app.generate_async(messages=self.history)
@@ -206,3 +288,38 @@ def any_event_conforms(
 ) -> bool:
     """Returns true iff one of the events in the list conform to the event_subset provided."""
     return any([event_conforms(event_subset, e) for e in event_list])
+
+
+def is_data_in_events(
+    events: List[Dict[str, Any]], event_data: List[Dict[str, Any]]
+) -> bool:
+    """Returns 'True' if provided data is contained in event."""
+    if len(events) != len(event_data):
+        return False
+
+    for event, data in zip(events, event_data):
+        if not (
+            all(key in event for key in data)
+            and all(data[key] == event[key] for key in data)
+        ):
+            return False
+    return True
+
+
+def _init_state(colang_content) -> State:
+    config = create_flow_configs_from_flow_list(
+        parse_colang_file(
+            filename="",
+            content=colang_content,
+            include_source_mapping=True,
+            version="2.x",
+        )["flows"]
+    )
+
+    json.dump(config, sys.stdout, indent=4, cls=EnhancedJsonEncoder)
+    state = State(flow_states=[], flow_configs=config)
+    initialize_state(state)
+    print("---------------------------------")
+    json.dump(state.flow_configs, sys.stdout, indent=4, cls=EnhancedJsonEncoder)
+
+    return state

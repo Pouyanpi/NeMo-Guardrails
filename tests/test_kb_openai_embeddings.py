@@ -18,7 +18,7 @@ import os
 import pytest
 
 from nemoguardrails import LLMRails, RailsConfig
-from nemoguardrails.embeddings.basic import FastEmbedEmbeddingModel
+from nemoguardrails.embeddings.providers.fastembed import FastEmbedEmbeddingModel
 
 CONFIGS_FOLDER = os.path.join(os.path.dirname(__file__), ".", "test_configs")
 

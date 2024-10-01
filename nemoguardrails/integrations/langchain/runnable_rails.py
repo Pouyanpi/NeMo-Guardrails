@@ -26,6 +26,7 @@ from langchain_core.runnables.utils import Input, Output
 from langchain_core.tools import Tool
 
 from nemoguardrails import LLMRails, RailsConfig
+from nemoguardrails.rails.llm.options import GenerationOptions
 
 
 class RunnableRails(Runnable[Input, Output]):
@@ -38,17 +39,19 @@ class RunnableRails(Runnable[Input, Output]):
         runnable: Optional[Runnable] = None,
         input_key: str = "input",
         output_key: str = "output",
+        verbose: bool = False,
     ) -> None:
         self.llm = llm
         self.passthrough = passthrough
         self.passthrough_runnable = runnable
         self.passthrough_user_input_key = input_key
         self.passthrough_bot_output_key = output_key
+        self.verbose = verbose
 
         # We override the config passthrough.
         config.passthrough = passthrough
 
-        self.rails = LLMRails(config=config, llm=llm)
+        self.rails = LLMRails(config=config, llm=llm, verbose=verbose)
 
         if tools:
             # When tools are used, we disable the passthrough mode.
@@ -180,9 +183,17 @@ class RunnableRails(Runnable[Input, Output]):
     ) -> Output:
         """Invoke this runnable synchronously."""
         input_messages = self._transform_input_to_rails_format(input)
-        result, context = self.rails.generate(
-            messages=input_messages, return_context=True
+        res = self.rails.generate(
+            messages=input_messages, options=GenerationOptions(output_vars=True)
         )
+        context = res.output_data
+        result = res.response
+
+        # If more than one message is returned, we only take the first one.
+        # This can happen for advanced use cases, e.g., when the LLM could predict
+        # multiple function calls at the same time. We'll deal with these later.
+        if isinstance(result, list):
+            result = result[0]
 
         if self.passthrough and self.passthrough_runnable:
             passthrough_output = context.get("passthrough_output")
@@ -209,7 +220,10 @@ class RunnableRails(Runnable[Input, Output]):
             if isinstance(input, ChatPromptValue):
                 return AIMessage(content=result["content"])
             elif isinstance(input, StringPromptValue):
-                return result["content"]
+                if isinstance(result, dict):
+                    return result["content"]
+                else:
+                    return result
             elif isinstance(input, dict):
                 user_input = input["input"]
                 if isinstance(user_input, str):
