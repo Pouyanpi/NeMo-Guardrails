@@ -1,27 +1,29 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-[project]
+[tool.poetry]
 name = "nemoguardrails"
 description = "NeMo Guardrails is an open-source toolkit for easily adding programmable guardrails to LLM-based conversational systems."
-authors = [
-  { name = "NVIDIA", email = "nemoguardrails@nvidia.com"}
-]
-license = { file = "LICENSE.md" }
+authors = ["NVIDIA <nemoguardrails@nvidia.com>"]
+license = "LICENSE.md"
 readme = "README.md"
-dynamic = ["version"]
+homepage = "https://github.com/NVIDIA/nemo-guardrails"
+documentation = "https://docs.nvidia.com/nemo/guardrails/"
+repository = "https://github.com/NVIDIA/NeMo-Guardrails"
+version = "0.10.1"
+packages = [{ include = "nemoguardrails" }]
+
+
+include = [
+  "chat-ui/**/*",
+  "examples/**/*",
+  "eval/data/**/*",
+  "**/*.yml",
+  "**/*.co",
+  "**/*.txt",
+  "**/*.json",
+  "**/*.lark",
+  { path = "LICENSE.md" },
+  { path = "LICENSE-Apache-2.0.txt" },
+  { path = "LICENCES-3rd-party.txt" },
+]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
@@ -31,99 +33,72 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
 ]
-requires-python = ">=3.9"
 
-dependencies = [
-  "aiohttp>=3.9.2",
-  "annoy>=1.17.3",
-  "fastapi>=0.103.0",
-  "fastembed>=0.2.2",
-  "httpx>=0.24.1",
-  "jinja2>=3.1.4",
-  # The 0.1.9 has a bug related to SparkLLM which breaks everything.
-  "langchain>=0.2.14,<0.4.0,!=0.1.9",
-  "langchain-core>=0.2.14,<0.4.0,!=0.1.26",
-  "langchain-community>=0.0.16,<0.4.0",
-  "lark~=1.1.7",
-  "nest-asyncio>=1.5.6",
-  "prompt-toolkit>=3.0",
-  "pydantic>=1.10",
-  "pyyaml>=6.0",
-  "rich>=13.5.2",
-  "simpleeval>=0.9.13",
-  "starlette>=0.27.0",
-  "typer>=0.7.0",
-  "uvicorn>=0.23",
-  "watchdog>=3.0.0",
-]
-
-[project.optional-dependencies]
-eval = [
-  "tqdm~=4.65",
-  "numpy~=1.24",
-  "streamlit>=1.37.0"
-]
-openai = [
-  "langchain-openai>=0.0.5"
-]
-sdd = [
-  "presidio-analyzer>=2.2",
-  "presidio-anonymizer>=2.2",
-  "spacy>=3.7.2",
-]
-gcp = ["google-cloud-language>=2.14.0"]
-all = [
-  "nemoguardrails[eval,sdd,openai,gcp]",
-]
-dev = [
-  "black==23.3.0",
-  "aioresponses>=0.7.6",
-  "mypy>=1.1.1",
-  "pre-commit>=3.1.1",
-  "pylint>=2.17.0",
-  "pytest>=7.2.2",
-  "pytest-asyncio>=0.21.0",
-  "pytest-cov>=4.1.0",
-  "pytest-httpx>=0.22.0",
-  "streamlit>=1.37.0"
-]
-
-[project.urls]
-homepage = "https://github.com/NVIDIA/nemo-guardrails"
-documentation = "https://github.com/NVIDIA/nemo-guardrails/tree/develop/docs"
-repository = "https://github.com/NVIDIA/nemo-guardrails"
-issues = "https://github.com/NVIDIA/nemo-guardrails/issues"
-changelog = "https://github.com/NVIDIA/NeMo-Guardrails/blob/develop/CHANGELOG.md"
-
-[project.scripts]
+[tool.poetry.scripts]
 nemoguardrails = "nemoguardrails.__main__:app"
 
-[tool.setuptools]
-license-files = [
-  "LICENSE.md",
-  "LICENSE-Apache-2.0.txt",
-  "LICENCES-3rd-party.txt"
-]
+[tool.poetry.dependencies]
+python = ">=3.9,<3.9.7 || >3.9.7,<3.12"
+aiohttp = "^3.9.2"
+annoy = "^1.17.3"
+fastapi = ">=0.103.0,"
+fastembed = ">=0.2.2"
+httpx = "^0.24.1"
+jinja2 = "^3.1.4"
+langchain = ">=0.2.14,<0.4.0"
+langchain-core = ">=0.2.14,<0.4.0"
+langchain-community = ">=0.0.16,<0.4.0"
+lark = "~1.1.7"
+nest-asyncio = ">=1.5.6,"
+prompt-toolkit = "^3.0"
+pydantic = ">=1.10"
+pyyaml = "^6.0"
+rich = "^13.5.2"
+simpleeval = ">=0.9.13,"
+starlette = ">=0.27.0"
+typer = ">=0.8"
+uvicorn = ">=0.23"
+watchdog = ">=3.0.0,"
+google-cloud-language = ">=2.14.0"
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["nemoguardrails*"]
-exclude = ["chat-ui*", "examples*"]
+# tracing
+opentelemetry-api = ">=1.27.0,<2.0.0"
+opentelemetry-sdk = ">=1.27.0,<2.0.0"
+aiofiles = ">=24.1.0"
 
-[tool.setuptools.package-data]
-nemoguardrails = [
-  "chat-ui/**/*",
-  "examples/**/*",
-  "**/*.yml",
-  "**/*.co",
-  "**/*.txt",
-  "**/*.json",
-  "**/*.lark",
-  "eval/data/**/*",
-]
+# openai
+langchain-openai = ">=0.0.5"
 
-[tool.setuptools.dynamic]
-version = { attr = "nemoguardrails.__version__" }
+# eval
+numpy = ">=1.24,<2.0"
+tqdm = ">=4.65,<5.0"
+streamlit = "^1.37.0" # TODO: fix this
+
+# sdd
+presidio-analyzer = ">=2.2"
+presidio-anonymizer = ">=2.2"
+spacy = ">=3.7.2"
+
+[tool.poetry.dev-dependencies]
+black = "23.3.0"
+aioresponses = ">=0.7.6"
+mypy = ">=1.1.1"
+pre-commit = ">=3.1.1"
+pylint = ">=2.17.0"
+pytest = ">=7.2.2"
+pytest-asyncio = ">=0.21.0"
+pytest-cov = ">=4.1.0"
+pytest-httpx = ">=0.22.0"
+streamlit = ">=1.37.0"
+tox = "^4.23.2"
+
+[tool.poetry.extras]
+sdd = ["presidio-analyzer", "presidio-anonymizer", "spacy"]
+eval = ["tqdm", "numpy", "streamlit"]
+openai = ["langchain-openai"]
+gcp = ["google-cloud-language"]
+trace = ["opentelemetry-api", "opentelemetry-sdk", "aiofiles"]
+
 
 [tool.pytest.ini_options]
 addopts = "-p no:warnings"
@@ -136,5 +111,5 @@ log-level = "DEBUG"
 log_cli = "False"
 
 [build-system]
-requires = ["setuptools>=64"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
