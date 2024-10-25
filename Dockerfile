@@ -16,16 +16,19 @@
 
 FROM python:3.10
 
-# Install git
-RUN apt-get update && apt-get install -y git
+# Install git and gcc/g++ for annoy
+RUN apt-get update && apt-get install -y git gcc g++
 
-# Install gcc/g++ for annoy
-RUN apt-get install -y gcc g++
+# Install Poetry
+RUN pip install --no-cache-dir poetry
 
-# Copy and install NeMo Guardrails
+# Copy project files
 WORKDIR /nemoguardrails
+COPY pyproject.toml poetry.lock /nemoguardrails/
+RUN poetry config virtualenvs.create false && poetry install --all-extras --no-interaction --no-ansi
+
+# Copy the rest of the project files
 COPY . /nemoguardrails
-RUN pip install --no-cache-dir -e .[all]
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
