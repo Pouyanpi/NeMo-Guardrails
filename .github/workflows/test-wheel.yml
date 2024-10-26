@@ -1,0 +1,71 @@
+name: Test Python Wheel
+
+on:
+  push:
+    tags:
+      - "v*" # Triggered by version tags to match the build-wheel trigger
+
+jobs:
+  test-wheel:
+    needs: build-wheel # Ensures build-wheel job completes successfully
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11"]
+
+    steps:
+      # Call reusable `_test.yml` workflow for setup and dependency installation
+      - name: Run reusable test workflow
+        uses: ./.github/workflows/_test.yml
+        with:
+          os: ubuntu-latest
+          python-version: ${{ matrix.python-version }}
+
+      # Extract the version tag from the release
+      - name: Extract Version Tag
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
+      # Download the built wheel artifact from the `build-wheel` job
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: nemoguardrails-${{ env.VERSION }}.whl
+
+      # Install the downloaded wheel
+      - name: Install Wheel
+        run: |
+          pip install nemoguardrails-${{ env.VERSION }}-py3-none-any.whl
+          pip install nemoguardrails-${{ env.VERSION }}-py3-none-any.whl[dev]
+
+      # Run additional tests as needed
+      - name: Run Tests
+        run: make test
+
+      # Start the server and test its functionality
+      - name: Start server in the background
+        run: |
+          nemoguardrails server &
+          echo "SERVER_PID=$!" >> $GITHUB_ENV
+
+      - name: Wait for server to be up
+        run: |
+          echo "Waiting for server to start..."
+          while ! curl --output /dev/null --silent --head --fail http://localhost:8000; do
+            printf '.'
+            sleep 1
+          done
+          echo "Server is up!"
+
+      - name: Check server status
+        run: |
+          RESPONSE_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/v1/rails/configs)
+          if [ "$RESPONSE_CODE" -ne 200 ]; then
+            echo "Server responded with code $RESPONSE_CODE."
+            exit 1
+          fi
+
+      # Stop the server if tests succeed
+      - name: Stop server
+        if: ${{ success() }}
+        run: |
+          kill $SERVER_PID
