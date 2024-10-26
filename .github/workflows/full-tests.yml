@@ -1,0 +1,24 @@
+name: Full Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "pyproject.toml"
+  release:
+    types:
+      - created
+
+jobs:
+  call-tests:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+      fail-fast: false
+
+    uses: ./.github/workflows/_test.yml
+    with:
+      os: ${{ matrix.os }}
+      python-version: ${{ matrix.python-version }}
