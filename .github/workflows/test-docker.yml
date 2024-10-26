@@ -1,9 +1,12 @@
 name: Test Docker Image
 
+# TODO: set docker auth
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+# on:
+#   push:
+#     tags:
+#       - "v*"
 
 env:
   IMAGE: nemoguardrails
@@ -14,6 +17,7 @@ jobs:
   docker:
     runs-on: ubuntu-latest
     steps:
+      #
       # Checkout the code
       - name: Checkout
         uses: actions/checkout@v4

@@ -4,7 +4,12 @@ on:
   workflow_call:
     inputs:
       os:
-        description: "Operating system for the runner"
+        description: "Operating system name"
+        required: true
+        default: Ubuntu
+        type: string
+      image:
+        description: "Runner image"
         required: true
         default: ubuntu-latest
         type: string
@@ -14,12 +19,16 @@ on:
         default: "3.10"
         type: string
 
+defaults:
+  run:
+    shell: bash
 env:
   POETRY_VERSION: 1.8.2
 
 jobs:
   tests:
-    runs-on: ${{ inputs.os }}
+    name: ${{ inputs.os }} / Python ${{ inputs.python-version }}
+    runs-on: ${{ inputs.image }}
 
     steps:
       - uses: actions/checkout@v4
@@ -33,23 +42,23 @@ jobs:
         id: full-python-version
         run: echo "version=$(python -c "import sys; print('-'.join(str(v) for v in sys.version_info))")" >> $GITHUB_OUTPUT
 
-      - name: Bootstrap poetry
+      - name: Bootstrap poetry (Linux and macOS)
         run: |
           curl -sSL https://install.python-poetry.org | POETRY_VERSION=${{ env.POETRY_VERSION }} python -
 
       - name: Update PATH (Linux and macOS)
-        if: ${{ inputs.os != 'windows-latest' }}
+        if: runner.os != 'Windows'
         run: echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Update PATH for Windows
-        if: ${{ inputs.os == 'windows-latest' }}
+        if: runner.os == 'Windows'
         run: echo "$APPDATA\\Python\\Scripts" >> $GITHUB_PATH
 
       - name: Configure poetry
         run: poetry config virtualenvs.in-project true
 
       - name: Set up cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         id: cache
         with:
           path: .venv
@@ -59,11 +68,14 @@ jobs:
         if: steps.cache.outputs.cache-hit == 'true'
         run: timeout 10s poetry run pip --version || rm -rf .venv
 
-      - name: Install dependencies
-        run: poetry install --with github-actions
+      - name: Check Poetry .lock
+        run: poetry check --lock
 
-      - name: Run mypy
-        run: poetry run mypy
+      - name: Install dependencies
+        run: poetry install --with dev
+
+      - name: Run pre-commit hooks
+        run: poetry run make pre_commit
 
       - name: Run pytest
         run: poetry run pytest -v

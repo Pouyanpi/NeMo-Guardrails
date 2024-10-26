@@ -1,15 +1,23 @@
 name: PR Tests
-env:
-  PYTHON_VERSION: 3.11
 
+# we don't ignore mds to run pre-commits
 on:
-  pull_request:
+  push:
     paths-ignore:
-      - "**/*.md"
+      - ".github/workflows/**"
 
 jobs:
   call-tests:
+    strategy:
+      matrix:
+        os: [Ubuntu]
+        python-version: ["3.9", "3.10", "3.11"]
+        include:
+          - os: Ubuntu
+            image: ubuntu-latest
+      fail-fast: false
     uses: ./.github/workflows/_test.yml
     with:
-      os: ubuntu-latest
-      python-version: "3.10"
+      os: ${{ matrix.os }}
+      image: ${{ matrix.image }}
+      python-version: ${{ matrix.python-version }}
