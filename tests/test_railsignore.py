@@ -15,6 +15,7 @@
 
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -26,13 +27,28 @@ from nemoguardrails.utils import get_railsignore_patterns, is_ignored_by_railsig
 CONFIGS_FOLDER = os.path.join(os.path.dirname(__file__), ".", "test_configs")
 
 
+def cleanup_railsignore(railsignore_path):
+    """Helper for clearing a railsignore file."""
+    try:
+        with open(railsignore_path, "w") as f:
+            pass
+    except OSError as e:
+        print(f"Error: Unable to create {railsignore_path}. {e}")
+    else:
+        print(f"Successfully cleaned up .railsignore: {railsignore_path}")
+
+
 @pytest.fixture(scope="function")
 def cleanup():
+    # Get the system's temporary directory
+    temp_dir = Path(tempfile.gettempdir())
+    # Create a path for the .railsignore file in the temp directory
+    railsignore_path = temp_dir / ".railsignore"
+
     # Mock the path to the .railsignore file
     with patch(
         "nemoguardrails.utils.get_railsignore_path"
     ) as mock_get_railsignore_path:
-        railsignore_path = Path("/tmp/.railsignore")
         mock_get_railsignore_path.return_value = railsignore_path
 
         # Ensure the mock file exists
@@ -118,17 +134,6 @@ def test_is_ignored_by_railsignore(cleanup):
     assert is_ignored_by_railsignore("ignored_module.py", ignored_files)
     assert is_ignored_by_railsignore("ignored_colang.co", ignored_files)
     assert not is_ignored_by_railsignore("not_ignored.py", ignored_files)
-
-
-def cleanup_railsignore(railsignore_path):
-    """Helper for clearing a railsignore file."""
-    try:
-        with open(railsignore_path, "w") as f:
-            pass
-    except OSError as e:
-        print(f"Error: Unable to create {railsignore_path}. {e}")
-    else:
-        print(f"Successfully cleaned up .railsignore: {railsignore_path}")
 
 
 def append_railsignore(railsignore_path: str, file_name: str) -> None:
