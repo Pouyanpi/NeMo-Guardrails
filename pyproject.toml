@@ -150,7 +150,7 @@ log-level = "DEBUG"
 # There are some race conditions with how the logging streams are closed in the teardown
 # phase, which will cause tests to fail or "magically" ignored.
 log_cli = "False"
-
 [build-system]
-requires = ["poetry-core"]
+
+requires = ["poetry-core >=1.0.0"]
 build-backend = "poetry.core.masonry.api"
