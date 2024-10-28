@@ -20,8 +20,11 @@ FROM python:3.10
 # Install git and gcc/g++ for annoy
 RUN apt-get update && apt-get install -y git gcc g++
 
+# Set POETRY_VERSION environment variable
+ENV POETRY_VERSION=1.8.2
+
 # Install Poetry
-RUN pip install --no-cache-dir poetry
+RUN pip install --no-cache-dir poetry==$POETRY_VERSION
 
 # Copy project files
 WORKDIR /nemoguardrails
