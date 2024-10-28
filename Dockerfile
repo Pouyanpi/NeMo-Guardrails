@@ -1,3 +1,4 @@
+
 # syntax=docker/dockerfile:experimental
 
 # Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
@@ -43,8 +44,8 @@ WORKDIR /nemoguardrails
 # Download the `all-MiniLM-L6-v2` model
 RUN python -c "from fastembed.embedding import FlagEmbedding; FlagEmbedding('sentence-transformers/all-MiniLM-L6-v2');"
 
-# Run this so that everything is initialized
-RUN nemoguardrails --help
+# Ensure the entry point is installed as a script
+RUN poetry install --all-extras --no-interaction --no-ansi
 
-ENTRYPOINT ["/usr/local/bin/nemoguardrails"]
+ENTRYPOINT ["poetry", "run", "nemoguardrails"]
 CMD ["server", "--verbose", "--config=/config"]
