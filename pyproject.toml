@@ -20,10 +20,11 @@ include = [
   "**/*.txt",
   "**/*.json",
   "**/*.lark",
-  { path = "LICENSE.md" },
-  { path = "LICENSE-Apache-2.0.txt" },
-  { path = "LICENCES-3rd-party.txt" },
+  "LICENSE.md",
+  "LICENSE-Apache-2.0.txt",
+  "LICENCES-3rd-party.txt",
 ]
+
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
