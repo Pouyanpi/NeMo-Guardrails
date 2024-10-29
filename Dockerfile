@@ -1,3 +1,4 @@
+
 # syntax=docker/dockerfile:experimental
 
 # Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
@@ -16,16 +17,22 @@
 
 FROM python:3.10
 
-# Install git
-RUN apt-get update && apt-get install -y git
+# Install git and gcc/g++ for annoy
+RUN apt-get update && apt-get install -y git gcc g++
 
-# Install gcc/g++ for annoy
-RUN apt-get install -y gcc g++
+# Set POETRY_VERSION environment variable
+ENV POETRY_VERSION=1.8.2
 
-# Copy and install NeMo Guardrails
+# Install Poetry
+RUN pip install --no-cache-dir poetry==$POETRY_VERSION
+
+# Copy project files
 WORKDIR /nemoguardrails
+COPY pyproject.toml poetry.lock /nemoguardrails/
+RUN poetry config virtualenvs.create false && poetry install --all-extras --no-interaction --no-ansi
+
+# Copy the rest of the project files
 COPY . /nemoguardrails
-RUN pip install --no-cache-dir -e .[all]
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
@@ -40,8 +47,8 @@ WORKDIR /nemoguardrails
 # Download the `all-MiniLM-L6-v2` model
 RUN python -c "from fastembed.embedding import FlagEmbedding; FlagEmbedding('sentence-transformers/all-MiniLM-L6-v2');"
 
-# Run this so that everything is initialized
-RUN nemoguardrails --help
+# Ensure the entry point is installed as a script
+RUN poetry install --all-extras --no-interaction --no-ansi
 
-ENTRYPOINT ["/usr/local/bin/nemoguardrails"]
+ENTRYPOINT ["poetry", "run", "nemoguardrails"]
 CMD ["server", "--verbose", "--config=/config"]
