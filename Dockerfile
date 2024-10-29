@@ -29,10 +29,10 @@ RUN pip install --no-cache-dir poetry==$POETRY_VERSION
 # Copy project files
 WORKDIR /nemoguardrails
 COPY pyproject.toml poetry.lock /nemoguardrails/
-RUN poetry config virtualenvs.create false && poetry install --all-extras --no-interaction --no-ansi
-
 # Copy the rest of the project files
 COPY . /nemoguardrails
+RUN poetry config virtualenvs.create false && poetry install --all-extras --no-interaction --no-ansi
+
 
 # Make port 8000 available to the world outside this container
 EXPOSE 8000
