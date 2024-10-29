@@ -180,7 +180,7 @@ async def test_cache_embeddings():
         )
 
 
-class TestClass:
+class StubCacheEmbedding:
     def __init__(self, cache_config):
         self._cache_config = cache_config
 
@@ -203,7 +203,7 @@ async def test_cache_dir_created():
             store_config={"cache_dir": os.path.join(temp_dir, "exist")},
         )
 
-        test_class = TestClass(cache_config)
+        test_class = StubCacheEmbedding(cache_config)
 
         await test_class.get_embeddings(["test"])
 
@@ -221,7 +221,7 @@ async def test_cache_dir_not_created():
             store_config={"cache_dir": os.path.join(temp_dir, "exist")},
         )
 
-        test_class = TestClass(cache_config)
+        test_class = StubCacheEmbedding(cache_config)
 
         test_class.cache_config.store_config["cache_dir"] = os.path.join(
             temp_dir, "nonexistent"
