@@ -64,8 +64,10 @@ build:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - sed -i '/^CMD/d' Dockerfile
+    - sed -i '/^ENTRYPOINT/d' Dockerfile
   script:
-    - docker build --entrypoint "" --cmd "" -t $IMAGE_TAG .
+    - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
   only:
     - tags
