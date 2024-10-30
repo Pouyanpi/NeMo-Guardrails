@@ -8,6 +8,7 @@
 stages:
   - tests
   - build
+  - docker-test
 sast:
   stage: tests
 include:
@@ -52,7 +53,7 @@ python3.10:
 python3.11:
   <<: *test
   image: python:3.11
-
+#
 # Build job
 build:
   stage: build
@@ -69,6 +70,22 @@ build:
   script:
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
+  only:
+    - tags
+  tags:
+    - gitlab-runner-bignlp-api
+
+# Docker test job
+docker-test:
+  stage: docker-test
+  image: docker:19.03.12
+  services:
+    - docker:19.03.12-dind
+  before_script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+  script:
+    - docker pull $IMAGE_TAG
+    - docker run --rm $IMAGE_TAG pytest
   only:
     - tags
   tags:
