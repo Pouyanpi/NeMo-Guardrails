@@ -8,6 +8,7 @@
 stages:
   - tests
   - build
+  - docker-test
 sast:
   stage: tests
 include:
@@ -69,6 +70,20 @@ build:
   script:
     - docker build -t $IMAGE_TAG .
     - docker push $IMAGE_TAG
+  only:
+    - tags
+  tags:
+    - gitlab-runner-bignlp-api
+
+# Docker test job
+docker-test:
+  stage: docker-test
+  image: docker:19.03.12
+  services:
+    - docker:19.03.12-dind
+  script:
+    - docker pull $IMAGE_TAG
+    - docker run --rm $IMAGE_TAG pytest
   only:
     - tags
   tags:
