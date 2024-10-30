@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y git gcc g++
 # Set POETRY_VERSION environment variable
 ENV POETRY_VERSION=1.8.2
 
+ENV ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"
+
 # Install Poetry
 RUN pip install --no-cache-dir poetry==$POETRY_VERSION
 
@@ -47,6 +49,7 @@ WORKDIR /nemoguardrails
 # Download the `all-MiniLM-L6-v2` model
 RUN python -c "from fastembed.embedding import FlagEmbedding; FlagEmbedding('sentence-transformers/all-MiniLM-L6-v2');"
 
+RUN nemoguardrails --help
 # Ensure the entry point is installed as a script
 RUN poetry install --all-extras --no-interaction --no-ansi
 
