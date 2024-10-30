@@ -23,7 +23,9 @@ RUN apt-get update && apt-get install -y git gcc g++
 # Set POETRY_VERSION environment variable
 ENV POETRY_VERSION=1.8.2
 
-ENV ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+  export ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"; \
+  fi
 
 # Install Poetry
 RUN pip install --no-cache-dir poetry==$POETRY_VERSION
