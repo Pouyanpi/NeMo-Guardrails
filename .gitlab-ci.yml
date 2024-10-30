@@ -26,33 +26,33 @@ cache:
 
 # Jobs templates
 
-.install-deps-template: &install-deps
-  before_script:
-    - pip install poetry
-    - poetry --version
-    - poetry config virtualenvs.in-project true
-    - poetry install --with dev,sdd,eval
+# .install-deps-template: &install-deps
+#   before_script:
+#     - pip install poetry
+#     - poetry --version
+#     - poetry config virtualenvs.in-project true
+#     - poetry install --with dev,sdd,eval
+#
+# .test-template: &test
+#   <<: *install-deps
+#   stage: tests
+#   coverage: /(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/
+#   script: make test
+#
+# # Tests jobs
 
-.test-template: &test
-  <<: *install-deps
-  stage: tests
-  coverage: /(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/
-  script: make test
-
-# Tests jobs
-
-python3.9:
-  <<: *test
-  image: python:3.9
-
-python3.10:
-  <<: *test
-  image: python:3.10
-
-python3.11:
-  <<: *test
-  image: python:3.11
-
+# python3.9:
+#   <<: *test
+#   image: python:3.9
+#
+# python3.10:
+#   <<: *test
+#   image: python:3.10
+#
+# python3.11:
+#   <<: *test
+#   image: python:3.11
+#
 # Build job
 build:
   stage: build
