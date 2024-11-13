@@ -1,6 +1,6 @@
 name: PR Tests
 
-# we don't ignore mds to run pre-commits
+# we don't ignore markdkowns to run pre-commits
 on:
   push:
     paths-ignore:

@@ -7,6 +7,8 @@ on:
   push:
     tags:
       - "v*"
+  schedule:
+    - cron: "0 23 * * *" # 11:00 PM UTC, daily
 
 jobs:
   build-wheel:
