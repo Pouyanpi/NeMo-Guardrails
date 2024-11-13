@@ -8,13 +8,6 @@ on:
     tags:
       - "v*"
 
-# on:
-#   push:
-#     branches: ["feature/poetry"]
-#   pull_request:
-#     branches: ["feature/poetry"]
-#   workflow_dispatch:
-
 jobs:
   build-wheel:
     runs-on: ubuntu-latest
