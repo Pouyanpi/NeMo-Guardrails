@@ -32,7 +32,7 @@ cache:
     - pip install poetry
     - poetry --version
     - poetry config virtualenvs.in-project true
-    - poetry install --with dev,sdd,eval
+    - poetry install --extras all --with dev
 
 .test-template: &test
   <<: *install-deps
@@ -83,7 +83,7 @@ docker-test:
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
   script:
     - docker pull $IMAGE_TAG
-    - docker run --rm $IMAGE_TAG pytest
+    - docker run --rm $IMAGE_TAG pytest || (docker rmi $IMAGE_TAG && exit 1)
   only:
     - tags
   tags:
