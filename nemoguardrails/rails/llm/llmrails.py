@@ -37,7 +37,7 @@ from nemoguardrails.actions.llm.utils import (
 from nemoguardrails.actions.output_mapping import is_output_blocked
 from nemoguardrails.actions.v2_x.generation import LLMGenerationActionsV2dotx
 from nemoguardrails.colang import parse_colang_file
-from nemoguardrails.colang.v1_0.runtime.flows import compute_context
+from nemoguardrails.colang.v1_0.runtime.flows import _normalize_flow_id, compute_context
 from nemoguardrails.colang.v1_0.runtime.runtime import Runtime, RuntimeV1_0
 from nemoguardrails.colang.v2_x.runtime.flows import Action, State
 from nemoguardrails.colang.v2_x.runtime.runtime import RuntimeV2_x
@@ -66,7 +66,7 @@ from nemoguardrails.logging.stats import LLMStats
 from nemoguardrails.logging.verbose import set_verbose
 from nemoguardrails.patch_asyncio import check_sync_call_from_async_loop
 from nemoguardrails.rails.llm.buffer import get_buffer_strategy
-from nemoguardrails.rails.llm.config import EmbeddingSearchProvider, Model, RailsConfig
+from nemoguardrails.rails.llm.config import EmbeddingSearchProvider, RailsConfig
 from nemoguardrails.rails.llm.options import (
     GenerationLog,
     GenerationOptions,
@@ -301,20 +301,14 @@ class LLMRails:
 
         for flow_name in self.config.rails.input.flows:
             # content safety check input/output flows are special as they have parameters
-            if flow_name.startswith("content safety check") or flow_name.startswith(
-                "topic safety check"
-            ):
-                continue
+            flow_name = _normalize_flow_id(flow_name)
             if flow_name not in existing_flows_names:
                 raise ValueError(
                     f"The provided input rail flow `{flow_name}` does not exist"
                 )
 
         for flow_name in self.config.rails.output.flows:
-            if flow_name.startswith("content safety check") or flow_name.startswith(
-                "topic safety check"
-            ):
-                continue
+            flow_name = _normalize_flow_id(flow_name)
             if flow_name not in existing_flows_names:
                 raise ValueError(
                     f"The provided output rail flow `{flow_name}` does not exist"
@@ -366,6 +360,11 @@ class LLMRails:
             api_key = os.environ.get(model_config.api_key_env_var)
             if api_key:
                 kwargs["api_key"] = api_key
+
+        # enable streaming token usage when streaming is enabled
+        # providers that don't support this parameter will simply ignore it
+        if self.config.streaming:
+            kwargs["stream_usage"] = True
 
         return kwargs
 
@@ -915,6 +914,16 @@ class LLMRails:
         if self.config.tracing.enabled:
             if options is None:
                 options = GenerationOptions()
+            else:
+                # create a copy of the options to avoid modifying the original
+                if isinstance(options, GenerationOptions):
+                    options = options.model_copy(deep=True)
+                else:
+                    # If options is a dict, convert it to GenerationOptions
+                    options = GenerationOptions(**options)
+
+            # enable log options
+            # it is aggressive, but these are required for tracing
             if (
                 not options.log.activated_rails
                 or not options.log.llm_calls
@@ -1048,25 +1057,60 @@ class LLMRails:
         options: Optional[Union[dict, GenerationOptions]] = None,
         state: Optional[Union[dict, State]] = None,
         include_generation_metadata: Optional[bool] = False,
+        generator: Optional[AsyncIterator[str]] = None,
     ) -> AsyncIterator[str]:
         """Simplified interface for getting directly the streamed tokens from the LLM."""
+
+        # if an external generator is provided, use it directly
+        if generator:
+            if self.config.rails.output.streaming.enabled:
+                return self._run_output_rails_in_streaming(
+                    streaming_handler=generator,
+                    messages=messages,
+                    prompt=prompt,
+                )
+            else:
+                return generator
+
         self.explain_info = self._ensure_explain_info()
 
         streaming_handler = StreamingHandler(
             include_generation_metadata=include_generation_metadata
         )
 
-        # todo use a context var for buffer strategy and return it here?
-        # then iterating over buffer strategy is nested loop?
-        asyncio.create_task(
-            self.generate_async(
-                prompt=prompt,
-                messages=messages,
-                streaming_handler=streaming_handler,
-                options=options,
-                state=state,
-            )
-        )
+        # Create a properly managed task with exception handling
+        async def _generation_task():
+            try:
+                await self.generate_async(
+                    prompt=prompt,
+                    messages=messages,
+                    streaming_handler=streaming_handler,
+                    options=options,
+                    state=state,
+                )
+            except Exception as e:
+                # If an exception occurs during generation, push it to the streaming handler as a json string
+                # This ensures the streaming pipeline is properly terminated
+                log.error(f"Error in generation task: {e}", exc_info=True)
+                error_message = str(e)
+                error_dict = extract_error_json(error_message)
+                error_payload = json.dumps(error_dict)
+                await streaming_handler.push_chunk(error_payload)
+                await streaming_handler.push_chunk(END_OF_STREAM)
+
+        task = asyncio.create_task(_generation_task())
+
+        # Store task reference to prevent garbage collection and ensure proper cleanup
+        if not hasattr(self, "_active_tasks"):
+            self._active_tasks = set()
+        self._active_tasks.add(task)
+
+        # Clean up task when it's done
+        def task_done_callback(task):
+            self._active_tasks.discard(task)
+
+        task.add_done_callback(task_done_callback)
+
         # when we have output rails we wrap the streaming handler
         # if len(self.config.rails.output.flows) > 0:
         #
@@ -1324,10 +1368,36 @@ class LLMRails:
                     return message
             return {}
 
+        def _prepare_context_for_parallel_rails(
+            chunk_str: str,
+            prompt: Optional[str] = None,
+            messages: Optional[List[dict]] = None,
+        ) -> dict:
+            """Prepare context for parallel rails execution."""
+            context_message = _get_last_context_message(messages)
+            user_message = prompt or _get_latest_user_message(messages)
+
+            context = {
+                "user_message": user_message,
+                "bot_message": chunk_str,
+            }
+
+            if context_message:
+                context.update(context_message["content"])
+
+            return context
+
+        def _create_events_for_chunk(chunk_str: str, context: dict) -> List[dict]:
+            """Create events for running output rails on a chunk."""
+            return [
+                {"type": "ContextUpdate", "data": context},
+                {"type": "BotMessage", "text": chunk_str},
+            ]
+
         def _prepare_params(
             flow_id: str,
             action_name: str,
-            chunk_str: str,
+            bot_response_chunk: str,
             prompt: Optional[str] = None,
             messages: Optional[List[dict]] = None,
             action_params: Dict[str, Any] = {},
@@ -1337,7 +1407,7 @@ class LLMRails:
 
             context = {
                 "user_message": user_message,
-                "bot_message": chunk_str,
+                "bot_message": bot_response_chunk,
             }
 
             if context_message:
@@ -1350,7 +1420,7 @@ class LLMRails:
             # to resolve replace placeholders in action_params
             for key, value in action_params.items():
                 if value == "$bot_message":
-                    action_params[key] = chunk_str
+                    action_params[key] = bot_response_chunk
                 elif value == "$user_message":
                     action_params[key] = user_message
 
@@ -1377,77 +1447,148 @@ class LLMRails:
             _get_action_details_from_flow_id, flows=self.config.flows
         )
 
-        async for chunk_list, chunk_str_rep in buffer_strategy(streaming_handler):
-            chunk_str = " ".join(chunk_list)
+        parallel_mode = getattr(self.config.rails.output, "parallel", False)
 
-            # Check if chunk_str_rep is a JSON string
-            # we yield a json error payload in generate_async when
-            # streaming has errors
-            try:
-                json.loads(chunk_str_rep)
-                yield chunk_str_rep
-                return
-            except json.JSONDecodeError:
-                pass
+        async for chunk_batch in buffer_strategy(streaming_handler):
+            user_output_chunks = chunk_batch.user_output_chunks
+            # format processing_context for output rails processing (needs full context)
+            bot_response_chunk = buffer_strategy.format_chunks(
+                chunk_batch.processing_context
+            )
+
+            # check if user_output_chunks is a list of individual chunks
+            # or if it's a JSON string, by convention this means an error occurred and the error dict is stored as a JSON
+            if not isinstance(user_output_chunks, list):
+                try:
+                    json.loads(user_output_chunks)
+                    yield user_output_chunks
+                    return
+                except (json.JSONDecodeError, TypeError):
+                    # if it's not JSON, treat it as empty list
+                    user_output_chunks = []
+
             if stream_first:
-                words = chunk_str_rep.split()
-                if words:
-                    yield words[0]
-                    for word in words[1:]:
-                        yield f" {word}"
+                # yield the individual chunks directly from the buffer strategy
+                for chunk in user_output_chunks:
+                    yield chunk
 
-            for flow_id in output_rails_flows_id:
-                action_name, action_params = get_action_details(flow_id)
+            if parallel_mode:
+                try:
+                    context = _prepare_context_for_parallel_rails(
+                        bot_response_chunk, prompt, messages
+                    )
+                    events = _create_events_for_chunk(bot_response_chunk, context)
 
-                params = _prepare_params(
-                    flow_id=flow_id,
-                    action_name=action_name,
-                    chunk_str=chunk_str,
-                    prompt=prompt,
-                    messages=messages,
-                    action_params=action_params,
-                )
+                    flows_with_params = {}
+                    for flow_id in output_rails_flows_id:
+                        action_name, action_params = get_action_details(flow_id)
+                        params = _prepare_params(
+                            flow_id=flow_id,
+                            action_name=action_name,
+                            bot_response_chunk=bot_response_chunk,
+                            prompt=prompt,
+                            messages=messages,
+                            action_params=action_params,
+                        )
+                        flows_with_params[flow_id] = {
+                            "action_name": action_name,
+                            "params": params,
+                        }
 
-                # Execute the action. (Your execute_action returns only the result.)
-                result = await self.runtime.action_dispatcher.execute_action(
-                    action_name, params
-                )
-                # Include explain info (whatever _update_explain_info does)
+                    result_tuple = await self.runtime.action_dispatcher.execute_action(
+                        "run_output_rails_in_parallel_streaming",
+                        {
+                            "flows_with_params": flows_with_params,
+                            "events": events,
+                        },
+                    )
+
+                    # ActionDispatcher.execute_action always returns (result, status)
+                    result, status = result_tuple
+
+                    if status != "success":
+                        log.error(
+                            f"Parallel rails execution failed with status: {status}"
+                        )
+                        # continue processing the chunk even if rails fail
+                        pass
+                    else:
+                        # if there are any stop events, content was blocked
+                        if result.events:
+                            # extract the blocked flow from the first stop event
+                            blocked_flow = result.events[0].get(
+                                "flow_id", "output rails"
+                            )
+
+                            reason = f"Blocked by {blocked_flow} rails."
+                            error_data = {
+                                "error": {
+                                    "message": reason,
+                                    "type": "guardrails_violation",
+                                    "param": blocked_flow,
+                                    "code": "content_blocked",
+                                }
+                            }
+                            yield json.dumps(error_data)
+                            return
+
+                except Exception as e:
+                    log.error(f"Error in parallel rail execution: {e}")
+                    # don't block the stream for rail execution errors
+                    # continue processing the chunk
+                    pass
+
+                # update explain info for parallel mode
                 self.explain_info = self._ensure_explain_info()
 
-                # Retrieve the action function from the dispatcher
-                action_func = self.runtime.action_dispatcher.get_action(action_name)
+            else:
+                for flow_id in output_rails_flows_id:
+                    action_name, action_params = get_action_details(flow_id)
 
-                # Use the mapping to decide if the result indicates blocked content.
-                if is_output_blocked(result, action_func):
-                    reason = f"Blocked by {flow_id} rails."
+                    params = _prepare_params(
+                        flow_id=flow_id,
+                        action_name=action_name,
+                        bot_response_chunk=bot_response_chunk,
+                        prompt=prompt,
+                        messages=messages,
+                        action_params=action_params,
+                    )
 
-                    # return the error as a plain JSON string (not in SSE format)
-                    # NOTE: When integrating with the OpenAI Python client, the server code should:
-                    # 1. detect this JSON error object in the stream
-                    # 2. terminate the stream
-                    # 3. format the error following OpenAI's SSE format
-                    # the OpenAI client will then properly raise an APIError with this error message
+                    result = await self.runtime.action_dispatcher.execute_action(
+                        action_name, params
+                    )
+                    self.explain_info = self._ensure_explain_info()
 
-                    error_data = {
-                        "error": {
-                            "message": reason,
-                            "type": "guardrails_violation",
-                            "param": flow_id,
-                            "code": "content_blocked",
+                    action_func = self.runtime.action_dispatcher.get_action(action_name)
+
+                    # Use the mapping to decide if the result indicates blocked content.
+                    if is_output_blocked(result, action_func):
+                        reason = f"Blocked by {flow_id} rails."
+
+                        # return the error as a plain JSON string (not in SSE format)
+                        # NOTE: When integrating with the OpenAI Python client, the server code should:
+                        # 1. detect this JSON error object in the stream
+                        # 2. terminate the stream
+                        # 3. format the error following OpenAI's SSE format
+                        # the OpenAI client will then properly raise an APIError with this error message
+
+                        error_data = {
+                            "error": {
+                                "message": reason,
+                                "type": "guardrails_violation",
+                                "param": flow_id,
+                                "code": "content_blocked",
+                            }
                         }
-                    }
 
-                    # return as plain JSON: the server should detect this JSON and convert it to an HTTP error
-                    yield json.dumps(error_data)
-                    return
+                        # return as plain JSON: the server should detect this JSON and convert it to an HTTP error
+                        yield json.dumps(error_data)
+                        return
 
             if not stream_first:
-                words = chunk_str_rep.split()
-                if words:
-                    yield words[0]
-                    for word in words[1:]:
-                        yield f" {word}"
+                # yield the individual chunks directly from the buffer strategy
+                for chunk in user_output_chunks:
+                    yield chunk
 
 
 def _get_action_details_from_flow_id(
