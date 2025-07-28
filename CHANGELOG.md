@@ -1,4 +1,22 @@
 # Changelog
+## [0.15.0-rc2] - 2025-07-25
+
+### 🚀 Features
+
+- Implement parallel streaming output rails execution ([#1263](https://github.com/NVIDIA/NeMo-Guardrails/issues/1263)) 
+- *(streaming)* Support external async token generators ([#1286](https://github.com/NVIDIA/NeMo-Guardrails/issues/1286)) 
+- Support parallel rails execution ([#1234](https://github.com/NVIDIA/NeMo-Guardrails/issues/1234)) 
+
+### 🐛 Bug Fixes
+
+- Remove stream_usage from text completion ([#1285](https://github.com/NVIDIA/NeMo-Guardrails/issues/1285)) 
+- *(tracing)* Prevent mutation of user options when tracing is enabled ([#1273](https://github.com/NVIDIA/NeMo-Guardrails/issues/1273)) 
+- *(rails)* Prevent LLM parameter contamination in concurrent parallel rails 
+
+### 📚 Documentation
+
+- Update guardrails-library.md to include Clavata as a third party API ([#1294](https://github.com/NVIDIA/NeMo-Guardrails/issues/1294)) 
+
 
 All notable changes to this project will be documented in this file.
 
