@@ -31,16 +31,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Fetch all tags
-        run: git fetch --tags
-
-      - name: Get latest tag
-        id: get_last_tag
-        run: |
-          # this will pick the most recent annotated or lightweight tag
-          LAST_TAG=$(git describe --tags --abbrev=0)
-          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -74,15 +64,28 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Generate changelog entry
-        id: changelog
+      # - name: Generate changelog entry
+      #   id: changelog
+      #   run: |
+      #     # Generate changelog for the new version
+      #     git cliff \
+      #       --latest \
+      #       --tag v${{ steps.version.outputs.version }} \
+      #       --strip all \
+      #       --prepend CHANGELOG.md
+      - name: Generate changelog block
         run: |
-          # Generate changelog for the new version
           git cliff \
-            --latest \
-            --tag v${{ steps.version.outputs.version }} \
+            --unreleased \
+            --tag     v${{ steps.version.outputs.version }} \
             --strip all \
-            --prepend CHANGELOG.md
+            > CHANGELOG.new.md
+
+      - name: Inject release block into CHANGELOG.md
+        run: |
+          # insert the new section right after the “# Changelog” line
+          sed -i '/^# Changelog$/r CHANGELOG.new.md' CHANGELOG.md
+          rm CHANGELOG.new.md
 
       - name: Update version with Poetry
         run: |
