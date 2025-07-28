@@ -30,7 +30,6 @@ jobs:
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Fetch all tags
         run: git fetch --tags
 
@@ -74,19 +73,21 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
-      - name: Generate changelog entry
+      - name: Generate changelog between last tag and HEAD
         id: changelog
         run: |
-          # Generate changelog for the new version
-          git cliff \
-            --unreleased \
-            --tag v${{ steps.version.outputs.version }} \
-            --strip all \
-            --prepend CHANGELOG.md
+          NEW_VERSION="${{ github.event.inputs.version }}"
+          git cliff "${{ steps.get_last_tag.outputs.last_tag }}..HEAD" \
+                   --strip all \
+                   --prepend CHANGELOG.md
+      - name: Stamp release header
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          DATE=$(date +%F)
+          sed -i "0,/## \[unreleased\]/{s/## \[unreleased\]/## [${VERSION}] - ${DATE}/}" CHANGELOG.md
 
       - name: Update version with Poetry
         run: |
-          # Use Poetry to update the version
           poetry version ${{ steps.version.outputs.version }}
 
       - name: Update version in README.md
