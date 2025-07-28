@@ -79,7 +79,7 @@ jobs:
         run: |
           # Generate changelog for the new version
           git cliff \
-            --unreleased \
+            --latest \
             --tag v${{ steps.version.outputs.version }} \
             --strip all \
             --prepend CHANGELOG.md
@@ -101,7 +101,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/release-${{ steps.version.outputs.version }}
           base: develop
-          title: "Release v${{ steps.version.outputs.version }}"
+          title: "chore: prepare for release v${{ steps.version.outputs.version }}"
           body: |
             ## 🚀 Release v${{ steps.version.outputs.version }}
 
@@ -110,7 +110,6 @@ jobs:
             ### Changes included:
             - ✅ Updated version to v${{ steps.version.outputs.version }}
             - ✅ Updated CHANGELOG.md with latest changes
-            - ✅ Updated poetry.lock file
             - ✅ Updated version references in README.md
 
             ---
