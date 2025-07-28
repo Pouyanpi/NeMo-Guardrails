@@ -9,6 +9,502 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 >
 > The changes related to the Colang language and runtime have moved to [CHANGELOG-Colang](./CHANGELOG-Colang.md) file.
 
+
+## [0.15.0] - 2025-07-28
+
+### 🚀 Features
+
+- *(docs)* Add 'Colang 2.0' section to index 
+- *(api)* Add path traversal prevention in _get_rails 
+- *(output_parsers)* Add is_content_safe function 
+- Add is_content_safe function to taskmanager and improve type annotations 
+- Add max_tokens field to TaskPrompt 
+- *(llmrails)* Add support for content safety check and register llms 
+- *(flows)* Add parameter support to subflows 
+- *(content_safety)* Add content safety check actions 
+- *(content_safety)* Implement content safety flows 
+- *(content_safety)* Add content safety config and prompts in examples 
+- *(self_check)* Enhance Module with Output Parsing Support 
+- *(llm)* Add has_output_parser method in LLMTaskManager 
+- *(llmrails)* Skip content safety check flows for output rails 
+- *(embeddings)* Add search threshold to BasicEmbeddingsIndex 
+- *(embeddings)* Add threshold parameter to search method 
+- *(config)* Add similarity threshold and fallback intent 
+- Patch ChatNVIDIA for different versions 
+- Import patched ChatNVIDIA in providers 
+- *(hallucination)* Warn and exit if 'n' param unsupported 
+- *(llmrails)* Add serialization support for LLMRails 
+- *(llmrails)* Update getstate and setstate methods 
+- *(config)* Add output parser check 
+- *(migration)* Add migration script for colang 2.0-alpha and refactor 
+- *(cli)* Add from_version argument 
+- *(migration)* Add support for CSL imports and remove obsolete files 
+- *(migration)* Implement migration script 
+- *(cli)* Add `convert` command to cli for colang 1.0 to 2.x translation 
+- *(utils)* Add camelcase_to_snakecase and snake_to_camelcase utis 
+- *(actions)* Add action name normalization and registration check 
+- *(colang)* Enable context_updates in colang 2.x 
+- *(colang_parser)* Refactor colang parsing and add version detection heuristic 
+- *(llmrails)* Add flow name validation for colang 2.x 
+- *(config)* Add support for deprecated 'rails' configuration in Colang 2.x 
+- *(migration)* Remove rails flows from config file after migration 
+- *(cli)* Refactor 'convert' command in CLI: Set 'use_active_decorator' default value to True and remove 'add_main' 
+- *(tests)* Skip failing test 
+- *(migration)* Refactor variable names and update syntax 
+- *(migration)* Update regex for action name extraction 
+- *(migration)* Support ellipsis variable assignment 
+- *(migration)* Update syntax conversion and config handling 
+- *(migration)* Comment out rails flows instead of removing 
+- *(migration)* Update regex and loop_id syntax 
+- *(migration)* Enhance migration script for colang version and rails 
+- *(guardrails.co)* Add global context vars in guardrails.co 
+- *(core.co)* Add refuse to respond bot flow which is common in library 
+- *(migration)* Add create event to send event conversion 
+- *(migration)* Add main flow inclusion option 
+- *(colang)* Add global variables for user and bot messages 
+- *(llm.co)* Add RetrieveRelevantChunksAction calls 
+- *(prompts)* Add relevant chunks to general.yml 
+- *(migration)* Add .config. prefix to 
+- *(chat)* Highlight and enrich exceptions in chat logs 
+- *(library)* Migrate cleanlab to colang 2 and add exception handling 
+- *(generation)* Add support for embeddings only with search threshold and fallback intent 
+- Add relevant chunks prompts for 'generate_flow_continuation' and 'generate_user_intent_and_bot_action_from_user_action' tasks 
+- *(migration)* Add sample conversation syntax conversion 
+- Add issue templates for bug reports and feature requests 
+- Railsignore added for config loading of LLMRails 
+- Railsignore - review changes 
+- Integrate .railsignore handling in config loading 
+- Railsignore - finalizing review changes 
+- Add is_colang_2 flag to retrieve_relevant_chunks to handle context updates properly 
+- Implement tracing module 
+- *(tracing)* Add JSON and OpenTelemetry adapters 
+- *(config)* Add tracing configuration support 
+- *(tracing)* Add TracingConfig support to Tracer 
+- *(tracing)* Add tracing support to LLMRails 
+- *(tests)* Add tests for tracing adapters 
+- Add async export method to Tracer class 
+- Implement LogAdapterRegistry for tracing adapters 
+- Register tracing adapters in __init__.py 
+- Add async support to tracing adapters 
+- Add async support and adapter factory to tracer 
+- *(tracing)* Integrate async tracing in LLMRails 
+- Add example configuration for tracing 
+- Add tracing dependencies to pyproject.toml 
+- *(config)* Set default values for LogAdapterConfig 
+- Add PassthroughLLMAction for raw LLM requests 
+- Add passthrough flow for raw LLM requests in passthrough module 
+- *(docker)* Add eval dependencies to Dockerfile 
+- *(docs)* Enhance tracing configuration guide 
+- *(tracing)* Add global otel exporter registration 
+- Migrate to Poetry for dependency management 
+- *(workflows)* Add lock closed threads workflow 
+- *(workflows)* Add test-published-dist workflow 
+- *(ci)* Update cron schedule to 11:00 PM UTC daily 
+- Update pii_fast guardrail name to pii 
+- Update changed autoalign guardrail task name 
+- Add new fact checker action flow 
+- Add in multi language support and rename factcheck example configs 
+- Add utility flow `wait until done` 
+- *(ci)* Add POETRY_VERSION variable and update cache ([#921](https://github.com/NVIDIA/NeMo-Guardrails/issues/921)) 
+- Add output rails support to activefence integration ([#940](https://github.com/NVIDIA/NeMo-Guardrails/issues/940)) 
+- Add pii masking capability to private ai integration ([#901](https://github.com/NVIDIA/NeMo-Guardrails/issues/901)) 
+- Add score threshold to AnalyzerEngine ([#845](https://github.com/NVIDIA/NeMo-Guardrails/issues/845)) 
+- *(ci)* Use ref name as dir for push build ([#958](https://github.com/NVIDIA/NeMo-Guardrails/issues/958)) 
+- Add embedding_params to BasicEmbeddingsIndex ([#898](https://github.com/NVIDIA/NeMo-Guardrails/issues/898)) 
+- *(community)* Add Prompt Security integration ([#920](https://github.com/NVIDIA/NeMo-Guardrails/issues/920)) 
+- *(ci)* Add upgrade-deps option to CI ([#977](https://github.com/NVIDIA/NeMo-Guardrails/issues/977)) 
+- Add SHA-256 hashing option ([#988](https://github.com/NVIDIA/NeMo-Guardrails/issues/988)) 
+- *(community)* Add Fiddler Guardrails integration ([#964](https://github.com/NVIDIA/NeMo-Guardrails/issues/964)) 
+- Add generation metadata to streaming chunks ([#1011](https://github.com/NVIDIA/NeMo-Guardrails/issues/1011)) 
+- Improve alpha to beta bot migration ([#878](https://github.com/NVIDIA/NeMo-Guardrails/issues/878)) 
+- Change fiddler guardrails api response definitions ([#1043](https://github.com/NVIDIA/NeMo-Guardrails/issues/1043)) 
+- Set default start and end reasoning tokens ([#1050](https://github.com/NVIDIA/NeMo-Guardrails/issues/1050)) 
+- Support multimodal input and output rails ([#1033](https://github.com/NVIDIA/NeMo-Guardrails/issues/1033)) 
+- Add support for NemoGuard JailbreakDetect NIM.  ([#1038](https://github.com/NVIDIA/NeMo-Guardrails/issues/1038)) 
+- Improve output rails error handling for SSE format ([#1058](https://github.com/NVIDIA/NeMo-Guardrails/issues/1058)) 
+- Change topic following prompt to allow chitchat ([#1097](https://github.com/NVIDIA/NeMo-Guardrails/issues/1097)) 
+- *(model)* Validate model name configuration ([#1084](https://github.com/NVIDIA/NeMo-Guardrails/issues/1084)) 
+- *(llm)* Add support for langchain partner and community chat models ([#1085](https://github.com/NVIDIA/NeMo-Guardrails/issues/1085)) 
+- *(cli)* Add fuzzy find provider capability to cli ([#1088](https://github.com/NVIDIA/NeMo-Guardrails/issues/1088)) 
+- Add code injection detection to guardrails library ([#1091](https://github.com/NVIDIA/NeMo-Guardrails/issues/1091)) 
+- *(tests)* Add tests for models and options and api ([#1111](https://github.com/NVIDIA/NeMo-Guardrails/issues/1111)) 
+- Add clavata community integration ([#1027](https://github.com/NVIDIA/NeMo-Guardrails/issues/1027)) 
+- Implement validation to forbid dialog rails with reasoning traces ([#1137](https://github.com/NVIDIA/NeMo-Guardrails/issues/1137)) 
+- Load yara lazily to avoid action dispatcher error ([#1162](https://github.com/NVIDIA/NeMo-Guardrails/issues/1162)) 
+- Add support for system messages to RunnableRails ([#1106](https://github.com/NVIDIA/NeMo-Guardrails/issues/1106)) 
+- Add api_key_env_var to Model, pass in kwargs to langchain initializer ([#1142](https://github.com/NVIDIA/NeMo-Guardrails/issues/1142)) 
+- Add inline YARA rules support ([#1164](https://github.com/NVIDIA/NeMo-Guardrails/issues/1164)) 
+- [**breaking**] Add support for preserving and optionally applying guardrails to reasoning traces ([#1145](https://github.com/NVIDIA/NeMo-Guardrails/issues/1145)) 
+- Prevent reasoning traces from contaminating LLM prompt history ([#1169](https://github.com/NVIDIA/NeMo-Guardrails/issues/1169)) 
+- Add RailException support and improve error handling ([#1178](https://github.com/NVIDIA/NeMo-Guardrails/issues/1178)) 
+- Add Nemotron model support with message-based prompts ([#1199](https://github.com/NVIDIA/NeMo-Guardrails/issues/1199)) 
+- *(jailbreak)* Add direct API key configuration support ([#1260](https://github.com/NVIDIA/NeMo-Guardrails/issues/1260)) 
+- *(tracing)* [**breaking**] Update tracing to use otel api ([#1269](https://github.com/NVIDIA/NeMo-Guardrails/issues/1269)) 
+- Implement parallel streaming output rails execution ([#1263](https://github.com/NVIDIA/NeMo-Guardrails/issues/1263)) 
+- *(streaming)* Support external async token generators ([#1286](https://github.com/NVIDIA/NeMo-Guardrails/issues/1286)) 
+- Support parallel rails execution ([#1234](https://github.com/NVIDIA/NeMo-Guardrails/issues/1234)) 
+
+### 🐛 Bug Fixes
+
+- Resolve issue of renaming from autoguard to autoalign 
+- *(api)* Remove unnecessary path check in _get_rails 
+- *(cli)* Expand user paths in server command 
+- *(hallucination-check)* Rename check_hallucination to self_check_hallucination 
+- Invert logic for output parser of self_check_facts 
+- *(embeddings)* Adjust threshold calculation in _filter_results to use similarity threshold 
+- Remove return in self_check_hallucinations allowing to support non openai models 
+- *(llm-generation)* Ensure event loop creation 
+- *(eval)* Separate streamlit-dependent utils 
+- *(fact_checking)* Rename task from fact_checking to self_check_facts 
+- *(config)* Revert passthrough to optional 
+- Remove ValidationInfo unused import 
+- *(llmrails)* Fix issue with empty content in parse_colang_file() function 
+- *(colang)* Fix indentation issue in _is_colang_v2 function 
+- *(migration)* Fix action_name migration 
+- *(migration)* Fix indentation issue 
+- Use active decorater for user flows 
+- *(library)* Fix format for colang 2 migration 
+- *(test_configs)* Correct missing quotation mark 
+- Change 'send event' to 'send' 
+- Remove print 
+- Move RetrieveRelevantChunksAction above GenerateFlowContinuationAction 
+- Add context.relevant_chunks to tasks in general.yml 
+- *(config)* Handle TaskPrompt object in check_output_parser_exists 
+- Updated the code to pass config and kwargs to passthrough_fn 
+- *(migration)* Update regex in convert_colang_1_syntax for multi-word actions 
+- *(flows)* Strip quotes from flow params 
+- *(actions)* Ensure correct model name in content safety checks 
+- *(migration)* Update regex pattern to remove the 'match' keyword. 
+- *(migration)* Delete repeated colang version append 
+- Rename back to CallActivefenceApiAction 
+- Update regex in convert_colang_1_syntax 
+- *(migration)* Replace hyphens and apostrophes in lines that start with 'bot' or 'user' 
+- *(cli.server)* Move import to function scope 
+- *(utils)* Correct FileNotFoundError message 
+- *(embeddings)* Change cache initialization order 
+- Fix bug when the search results is empty given the threshold 
+- Update type hints for compatibility with Python 3.8 
+- Constrain pytest-httpx version 
+- Add httpx_mock marker for multiple responses 
+- Update relevant_chunks retrieval logic 
+- Move relevant chunks before current conversations ([#772](https://github.com/NVIDIA/NeMo-Guardrails/issues/772)) 
+- Handle missing id and task attributes in logs 
+- *(adapter_factory)* Pop name from config before passing to class instance 
+- Change trace file extension to .jsonl 
+- Handle missing OpenTelemetryAdapter gracefully 
+- Reinitialize executor if shut down in OpenTelemetryAdapter 
+- Ensure correct response extraction in LLMRails to conform current api 
+- Resolve import path issue in config.py 
+- Download nltk's punkt_tab in align_score Dockerfile ([#841](https://github.com/NVIDIA/NeMo-Guardrails/issues/841)) 
+- *(pyproject.toml)* Remove eval from all dependencies 
+- *(dependencies)* Add pandas version constraint for eval 
+- *(docs)* Update pip install instructions note 
+- Handle multiple output parsers in generation 
+- *(docs)* Update CLI section headers from H4 to H3 
+- *(tests)* Mock PromptSession to prevent console error 
+- Apply review changes 
+- *(docs)* Update Garak GitHub links to NVIDIA repo 
+- Move an entry to colang 2 changelog 
+- Use temp directory for .railsignore in tests 
+- *(ci)* Remove image from registry if tests fail 
+- *(ci)* Remove Ubuntu from full-tests 
+- *(ci)* Add missing event types for PR trigger 
+- *(ci)* Disable full tests on workflow changes 
+- *(dependencies)* Change Python 3.9.7 exclusion format from supported versions 
+- *(dependencies)* Update tornado to 6.4.2 
+- *(dependencies)* Update aiohttp to version 3.11.9 
+- *(dependencies)* Update black in dev deps 
+- *(dependencies)* Update lock file 
+- *(ci)* Add POETRY_VERSION variable and update cache 
+- Apply pre-commit hooks 
+- *(docs)* Fix abdomination format and shorten title 
+- *(docs)* Fix typos with oauthtoken ([#957](https://github.com/NVIDIA/NeMo-Guardrails/issues/957)) 
+- Fix TypeError from attempting to unpack already-unpacked dictionary. ([#959](https://github.com/NVIDIA/NeMo-Guardrails/issues/959)) 
+- Handle non-relative file paths ([#897](https://github.com/NVIDIA/NeMo-Guardrails/issues/897)) 
+- *(ci)* Restore docs CI ([#975](https://github.com/NVIDIA/NeMo-Guardrails/issues/975)) 
+- *(docs)* Fix broken link in prompt security ([#978](https://github.com/NVIDIA/NeMo-Guardrails/issues/978)) 
+- Fix alignscore dependency resolution in Dockerfile ([#982](https://github.com/NVIDIA/NeMo-Guardrails/issues/982)) 
+- Resolve alignscore dependency resolution issue with torch ([#1002](https://github.com/NVIDIA/NeMo-Guardrails/issues/1002)) 
+- Update filename check to support any .co file ([#1003](https://github.com/NVIDIA/NeMo-Guardrails/issues/1003)) 
+- Set workdir to models and specify entrypoint explicitly. 
+- Ensure parse_task_output is called after all llm_call invocations ([#1047](https://github.com/NVIDIA/NeMo-Guardrails/issues/1047)) 
+- *(llmrails)* Handle exceptions in generate_events to propagate errors in streaming ([#1012](https://github.com/NVIDIA/NeMo-Guardrails/issues/1012)) 
+- Ensure output rails streaming is enabled explicitly ([#1045](https://github.com/NVIDIA/NeMo-Guardrails/issues/1045)) 
+- Improve multimodal prompt length calculation for base64 images ([#1053](https://github.com/NVIDIA/NeMo-Guardrails/issues/1053)) 
+- Correct task name for self_check_facts ([#1040](https://github.com/NVIDIA/NeMo-Guardrails/issues/1040)) 
+- Error in LLMRails with tracing enabled ([#1103](https://github.com/NVIDIA/NeMo-Guardrails/issues/1103)) 
+- Self check output colang 1 flow ([#1126](https://github.com/NVIDIA/NeMo-Guardrails/issues/1126)) 
+- Use ValueError in TaskPrompt to resolve TypeError raised by Pydantic ([#1132](https://github.com/NVIDIA/NeMo-Guardrails/issues/1132)) 
+- Codecov to root ([#1167](https://github.com/NVIDIA/NeMo-Guardrails/issues/1167)) 
+- *(config)* Correct dialog rails activation logic ([#1161](https://github.com/NVIDIA/NeMo-Guardrails/issues/1161)) 
+- Allow reasoning traces when embeddings_only is True ([#1170](https://github.com/NVIDIA/NeMo-Guardrails/issues/1170)) 
+- Prevent explain_info overwrite during stream_async ([#1194](https://github.com/NVIDIA/NeMo-Guardrails/issues/1194)) 
+- Colang 2 issues in community integrations ([#1140](https://github.com/NVIDIA/NeMo-Guardrails/issues/1140)) 
+- *(tests)* Ensure proper asyncio task cleanup in test_streaming_handler.py ([#1182](https://github.com/NVIDIA/NeMo-Guardrails/issues/1182)) 
+- *(deps)* Restrict pytest-asyncio to <1.0.0 ([#1215](https://github.com/NVIDIA/NeMo-Guardrails/issues/1215)) 
+- More heading levels so RNs resolve links ([#1228](https://github.com/NVIDIA/NeMo-Guardrails/issues/1228)) 
+- Lazy load jailbreak detection dependencies ([#1223](https://github.com/NVIDIA/NeMo-Guardrails/issues/1223)) 
+- Constructor LLM should not skip loading other config models ([#1221](https://github.com/NVIDIA/NeMo-Guardrails/issues/1221)) 
+- *(content_safety)* Replace try-except with iterable unpacking for policy violations ([#1207](https://github.com/NVIDIA/NeMo-Guardrails/issues/1207)) 
+- *(jailbreak)* Pin numpy==1.23.5 for scikit-learn compatibility ([#1249](https://github.com/NVIDIA/NeMo-Guardrails/issues/1249)) 
+- *(output_parsers)* Iterable unpacking compatibility in content safety parsers ([#1242](https://github.com/NVIDIA/NeMo-Guardrails/issues/1242)) 
+- Register main LLM as action parameter when initialized from config ([#1247](https://github.com/NVIDIA/NeMo-Guardrails/issues/1247)) 
+- Use API key environment variables during model initialization ([#1250](https://github.com/NVIDIA/NeMo-Guardrails/issues/1250)) 
+- *(streaming)* Streaming support detection for main LLM initialization ([#1258](https://github.com/NVIDIA/NeMo-Guardrails/issues/1258)) 
+- *(streaming)* Resolve word concatenation in streaming output rails ([#1259](https://github.com/NVIDIA/NeMo-Guardrails/issues/1259)) 
+- Enable token usage tracking for streaming LLM calls ([#1264](https://github.com/NVIDIA/NeMo-Guardrails/issues/1264)) 
+- Remove stream_usage from text completion ([#1285](https://github.com/NVIDIA/NeMo-Guardrails/issues/1285)) 
+- *(tracing)* Prevent mutation of user options when tracing is enabled ([#1273](https://github.com/NVIDIA/NeMo-Guardrails/issues/1273)) 
+
+### 💼 Other
+
+- Register the llm as an action param when the LLMRails app is created with a given llm attribute 
+- Allow calling a subflow whose name is in a variable e.g. `do $some_name`. 
+- If multiple flows end in a chain, now they are resumed correctly (A->B->C->D). 
+- Record correctly the subflow flag for a flow. 
+- Remove redundant explicit registration of default actions. 
+- Move the actions for the rails implementation in the `nemoguardrails.library` package. 
+- Documentation 
+- Add latency measurement script for different bot configurations 
+- `pre-commit run --all-files`. 
+- Images cleaning up. 
+- Fix consumption of entire processing time. 
+- Installation guide improvement. 
+- Getting started guide improvement. 
+- Integrated feedback from MR. 
+- Move pytest configs to pyproject.toml 
+- Move dependencies and package metadata to pyproject.toml 
+- Correct result appending in cache_embeddings decorator 
+- Adjust `SentenceTransformerEmbeddingModel.encode` to return list 
+- Improve exception handling in action_dispatcher.py 
+- Add tests for error handling in action registration 
+- Integerate Colang 2.0-beta and Colang 2.0-alpha works 
+- Modified regular expression in re.sub to preserve single quotes 
+- Process all outgoing events 
+- *(generation)* Improve readability of conditional branches 
+- Update pydantic.v1 import paths for compatibility 
+- Added correct python command version 
+- Updating CONTRIBUTING.md 
+- Updated documentation 
+- Fix incorrect folder name & pre-commit setup in CONTRIBUTING.md ([#800](https://github.com/NVIDIA/NeMo-Guardrails/issues/800)) 
+- Update version to 0.11.0 
+- Unit test update 
+- Fix flow refactor for unit test 
+- Fix unit test 
+- Unused import 
+- Use deepcopy to avoid repeated action side effect 
+- Remove jailbreak from example output config 
+- Switch to content moderation endpoint for factcheck 
+- Add factcheck doc 
+- Add backward incompatibility warning to doc 
+- Handle unescaped quotes in generate_value using safe_eval ([#946](https://github.com/NVIDIA/NeMo-Guardrails/issues/946)) 
+- *(logging)* Fix token stats usage in LLM call info. ([#953](https://github.com/NVIDIA/NeMo-Guardrails/issues/953)) 
+- Add unified output mapping for actions ([#965](https://github.com/NVIDIA/NeMo-Guardrails/issues/965)) 
+- Support Output Rails Streaming ([#966](https://github.com/NVIDIA/NeMo-Guardrails/issues/966)) 
+- Fix a bug with git to fetch models, use wget instead ([#981](https://github.com/NVIDIA/NeMo-Guardrails/issues/981)) 
+- Extend latest deps tests to use macOS and Windows ([#1014](https://github.com/NVIDIA/NeMo-Guardrails/issues/1014)) 
+- Support models with reasoning traces ([#996](https://github.com/NVIDIA/NeMo-Guardrails/issues/996)) 
+- Release v0.14.1 ([#1254](https://github.com/NVIDIA/NeMo-Guardrails/issues/1254)) 
+
+### 🚜 Refactor
+
+- *(docs)* Move 'colang' docs to 'colang_2' 
+- *(embeddings)* Revert search_threshold default to float("inf") and return immediately in _filter_results 
+- *(generation)* Update intent determination logic 
+- Revise warning message in hallucination rail 
+- *(prompts)* Remove fact_checking task from prompts 
+- Update RailsConfig fields in config.py 
+- Rename exception classes in cofiles 
+- Rename allow_exceptions to enable_rails_exceptions 
+- *(api)* Update Pydantic validators 
+- *(actions)* Remove deprecation warnings 
+- *(migration)* Rename functions and update string quotes 
+- *(migration)* Refactor file reading in conversion functions 
+- Patch ChatNVIDIA with decorator to support streaming 
+- Add version check for langchain_nvidia_ai_endpoints 
+- *(config)* Update model names in config.yml to be enclosed in double quotes 
+- *(library)* Add flow exception to standard library and provide fixes 
+- *(imports)* Update BaseLLM import paths 
+- Use SandboxedEnvironment for Jinja2 templates 
+- Improve performance of .railsignore handling 
+- Mock .railsignore path in tests and minor refactoring 
+- *(tracing)* Restructure adapters to avoid circular imports 
+- Rename JsonAdapter to FileSystemAdapter 
+- Rename AdapterConfig to LogAdapterConfig 
+- Simplify OpenTelemetryAdapter initialization and fix unexpected end 
+- Update OpenTelemetryAdapter unit tests 
+- Rename and update import paths in example bot 
+- *(config)* Remove OpenTelemetry from tracing config 
+- *(tracing)* Move log adapters initialization 
+- *(docs)* Change underscore to hyphens 
+- *(docs)* Update references to new file names where we use hyphens instead of underscore 
+- Rename test classes to supress pytest warning 
+- Consolidate dependencies in pyproject.toml 
+- Move startup and shutdown logic to lifespan in server  ([#999](https://github.com/NVIDIA/NeMo-Guardrails/issues/999)) 
+- *(llm)* Reorganize HuggingFace provider structure ([#1083](https://github.com/NVIDIA/NeMo-Guardrails/issues/1083)) 
+- *(providers)* Remove support for deprecated nemollm engine ([#1076](https://github.com/NVIDIA/NeMo-Guardrails/issues/1076)) 
+- *(llmrails)* [**breaking**] Remove deprecated return_context argument ([#1147](https://github.com/NVIDIA/NeMo-Guardrails/issues/1147)) 
+- *(config)* Rename `remove_thinking_traces` field to `remove_reasoning_traces` ([#1176](https://github.com/NVIDIA/NeMo-Guardrails/issues/1176)) 
+- *(config)* Update deprecated field handling  for remove_thinking_traces ([#1196](https://github.com/NVIDIA/NeMo-Guardrails/issues/1196)) 
+- *(streaming)* Introduce END_OF_STREAM sentinel and update handling ([#1185](https://github.com/NVIDIA/NeMo-Guardrails/issues/1185)) 
+
+### 📚 Documentation
+
+- Update CONTRIBUTING.md 
+- Updated yaml description 
+- Add support for default configuration 
+- Add ollama config 
+- Move Colang 2 documentation to GitHub 
+- Update relative links in documentation 
+- *(community)* Create community directory and move relevant files 
+- Add Content Safety section to Guardrails Library 
+- *(embeddings)* Update advanced user guide with search_threshold 
+- Add configuring llm per task section 
+- Update custom llm model section 
+- Add exception handling section to configuration guide 
+- *(migration)* Update docstrings 
+- *(migration)* Add migration_guide.md 
+- *(cli)* Update cli.md 
+- *(migration)* Enhance migration guide details 
+- *(migration)* Update return type in docstring of convert_co_file_syntax 
+- Move Cleanlab details to its own page at community 
+- Add cleanlab setup from library 
+- Add note for rails exception handling in Colang 2.x 
+- Add tracing configuration guide 
+- Update similarity threshold to 0.75 and note ([#770](https://github.com/NVIDIA/NeMo-Guardrails/issues/770)) 
+- *(installation)* Add notice for dependency resolution 
+- *(tracing)* Add Zipkin setup instructions 
+- *(installation)* Update optional dependencies install 
+- Update role from bot to assistant 
+- Update LLM support table to use Unicode symbols 
+- Update admonitions to use MyST syntax 
+- Remove duplicate GCP Text Moderation section 
+- Specify shell syntax for CLI example 
+- Update detailed logging example output 
+- Update migration guide with new options 
+- Update vulnerability scanning table to use unicode checkmarks 
+- Update code blocks to use sh syntax highlighting 
+- Add deprecation notice for Got It AI integration 
+- Fix format for deprecation notice for Got It AI integration 
+- Update deprecation notice format for Got It AI 
+- Update version to 0.11.0 
+- Update CONTRIBUTING.md for Poetry migration 
+- Fix style 
+- Output streaming ([#976](https://github.com/NVIDIA/NeMo-Guardrails/issues/976)) 
+- Restore deleted configuration files ([#963](https://github.com/NVIDIA/NeMo-Guardrails/issues/963)) 
+- Add content safety tutorial 
+- Revise reasoning model info ([#1062](https://github.com/NVIDIA/NeMo-Guardrails/issues/1062)) 
+- Consider new GS experience ([#1005](https://github.com/NVIDIA/NeMo-Guardrails/issues/1005)) 
+- Multimodal rails support ([#1061](https://github.com/NVIDIA/NeMo-Guardrails/issues/1061)) 
+- Updates for release ([#1071](https://github.com/NVIDIA/NeMo-Guardrails/issues/1071)) 
+- Remove markup from code block ([#1081](https://github.com/NVIDIA/NeMo-Guardrails/issues/1081)) 
+- Replace img tag with Markdown images ([#1087](https://github.com/NVIDIA/NeMo-Guardrails/issues/1087)) 
+- Remove NeMo Service (nemollm) documentation ([#1077](https://github.com/NVIDIA/NeMo-Guardrails/issues/1077)) 
+- Update cleanlab integration description ([#1080](https://github.com/NVIDIA/NeMo-Guardrails/issues/1080)) 
+- *(cli)* Add providers fuzzy search cli command ([#1089](https://github.com/NVIDIA/NeMo-Guardrails/issues/1089)) 
+- Clarify purpose of model parameters field in configuration guide ([#1181](https://github.com/NVIDIA/NeMo-Guardrails/issues/1181)) 
+- Output rails are supported with streaming ([#1007](https://github.com/NVIDIA/NeMo-Guardrails/issues/1007)) 
+- Add mention of Nemotron ([#1200](https://github.com/NVIDIA/NeMo-Guardrails/issues/1200)) 
+- Fix output rail doc ([#1159](https://github.com/NVIDIA/NeMo-Guardrails/issues/1159)) 
+- Revise GS example in getting started doc ([#1146](https://github.com/NVIDIA/NeMo-Guardrails/issues/1146)) 
+- Possible update to injection detection ([#1144](https://github.com/NVIDIA/NeMo-Guardrails/issues/1144)) 
+- Add release notes ([#1141](https://github.com/NVIDIA/NeMo-Guardrails/issues/1141)) 
+- Update docs version ([#1219](https://github.com/NVIDIA/NeMo-Guardrails/issues/1219)) 
+- Fix jailbreak detection build instructions ([#1248](https://github.com/NVIDIA/NeMo-Guardrails/issues/1248)) 
+- Change ABC bot link at docs ([#1261](https://github.com/NVIDIA/NeMo-Guardrails/issues/1261)) 
+- Release notes 0.14.1 ([#1272](https://github.com/NVIDIA/NeMo-Guardrails/issues/1272)) 
+- Update guardrails-library.md to include Clavata as a third party API ([#1294](https://github.com/NVIDIA/NeMo-Guardrails/issues/1294)) 
+
+### 🎨 Styling
+
+- Apply pre-commit hooks ([#1104](https://github.com/NVIDIA/NeMo-Guardrails/issues/1104)) 
+
+### 🧪 Testing
+
+- Add and fix tests for default_config_id 
+- Add test to check fall_back_intent 
+- *(fact_checking)* Add self_check_facts task prompts 
+- *(rails_config)* Add output parser existence check 
+- *(migration)* Add tests for colang 2alpha syntax conversion 
+- Add test for retrieve relevant chunk 
+- *(config)* Update test to use TaskPrompt instances 
+- *(embeddings)* Add cache directory tests 
+- Add tests for Colang 2.x 
+- *(embeddings_only)* Parametrize config fixtures to add test for bot colang 1 and 2 
+- Test examples exist in the prompts when fallback intent is None 
+- Add Colang 1 Syntax Conversion Tests 
+- Add test for relevant_chunk insertion without knowledge base 
+- *(tracing)* Add async tracing tests 
+- Skip test if aiofiles is not installed 
+- Add unit tests for PassthroughLLMAction 
+- Add test for flow context update as part of with statements 
+- *(streaming)* Add extensive tests for StreamingHandler to enhance coverage ([#1183](https://github.com/NVIDIA/NeMo-Guardrails/issues/1183)) 
+- Fix async test failures in cache embeddings and buffer strategy tests ([#1237](https://github.com/NVIDIA/NeMo-Guardrails/issues/1237)) 
+- *(content_safety)* Add tests for content safety actions ([#1240](https://github.com/NVIDIA/NeMo-Guardrails/issues/1240)) 
+
+### ⚙️ Miscellaneous Tasks
+
+- Upgrade langchain-core and jinja 
+- Update CHANGELOG for 0.10.0 
+- Bump version to 0.10.0 
+- Bump version to 0.10.1 
+- Bump version to 0.10.1 
+- Add pull request template for consistent PRs 
+- Update langchain version constraints 
+- Update pytest-httpx version constraint 
+- Drop support for Python 3.8 ([#803](https://github.com/NVIDIA/NeMo-Guardrails/issues/803)) 
+- Remove adapter_factory 
+- Update latest release version in README 
+- *(changelog)* Update changelog for v0.11.0 release 
+- Correct date and PR number in changelog 
+- Add tox configuration for multi-python testing 
+- Add Makefile for common development tasks 
+- Update .gitignore for better file management 
+- Update Dockerfile to use Poetry for dependencies 
+- Add Dockerfile for QA environment setup 
+- Update GitLab CI for multi-python and Docker support 
+- Remove redundant GitHub Actions workflows 
+- Add reusable GitHub Actions workflow for tests 
+- Add PR tests workflow for multi-python support 
+- Add full-tests workflow for multi-OS and Python 
+- Add build script for packaging with Poetry 
+- Add GitHub Actions workflow for building and testing wheel 
+- Add workflow to test Docker image (not working) 
+- Update issue templates with triage labels 
+- Add documentation issue template 
+- *(tox)* Add instructions for using pyenv with tox 
+- Pin fastembed to 4.0.0 
+- Remove as it is not verified and approved by NVIDIA 
+- Remove Ubuntu from full-tests workflow 
+- Remove deprecated Got It AI integration ([#927](https://github.com/NVIDIA/NeMo-Guardrails/issues/927)) 
+- *(workflows)* Update artifact handling in workflow 
+- Bump version to v0.11.1 
+- *(docs)* Update advanced user guides per v0.11.1 doc release ([#937](https://github.com/NVIDIA/NeMo-Guardrails/issues/937)) 
+- Add Dependabot updates for pip and GH actions ([#828](https://github.com/NVIDIA/NeMo-Guardrails/issues/828)) 
+- *(ci)* Remove docs CI to troubleshoot ([#973](https://github.com/NVIDIA/NeMo-Guardrails/issues/973)) 
+- *(docs)* Tolerate prompt in code blocks ([#1004](https://github.com/NVIDIA/NeMo-Guardrails/issues/1004)) 
+- Update YAML indent to use two spaces ([#1009](https://github.com/NVIDIA/NeMo-Guardrails/issues/1009)) 
+- Prepare v0.12.0 release ([#1017](https://github.com/NVIDIA/NeMo-Guardrails/issues/1017)) 
+- Add Python 3.12 support ([#984](https://github.com/NVIDIA/NeMo-Guardrails/issues/984)) 
+- Apply pre-commits to fix failing jobs ([#1063](https://github.com/NVIDIA/NeMo-Guardrails/issues/1063)) 
+- Prepare v0.13.0 ([#1066](https://github.com/NVIDIA/NeMo-Guardrails/issues/1066)) 
+- Dynamically set version using importlib.metadata ([#1072](https://github.com/NVIDIA/NeMo-Guardrails/issues/1072)) 
+- Add link to topic control config and prompts ([#1098](https://github.com/NVIDIA/NeMo-Guardrails/issues/1098)) 
+- Reorganize GitHub workflows for better test coverage ([#1079](https://github.com/NVIDIA/NeMo-Guardrails/issues/1079)) 
+- Add summary jobs for workflow branch protection ([#1120](https://github.com/NVIDIA/NeMo-Guardrails/issues/1120)) 
+- *(docs)* Add Adobe Analytics configuration ([#1138](https://github.com/NVIDIA/NeMo-Guardrails/issues/1138)) 
+- Fix and revert poetry lock to its stable state ([#1133](https://github.com/NVIDIA/NeMo-Guardrails/issues/1133)) 
+- Add Codecov integration to workflows ([#1143](https://github.com/NVIDIA/NeMo-Guardrails/issues/1143)) 
+- Add Python 3.12 and 3.13 test jobs to gitlab workflow ([#1171](https://github.com/NVIDIA/NeMo-Guardrails/issues/1171)) 
+- Identify OS packages to install in contribution guide([#1136](https://github.com/NVIDIA/NeMo-Guardrails/issues/1136)) 
+- Remove Got It AI from 3rd party ([#1213](https://github.com/NVIDIA/NeMo-Guardrails/issues/1213)) 
+- Release v0.14.0 ([#1211](https://github.com/NVIDIA/NeMo-Guardrails/issues/1211)) 
+- Update pre-commit-hooks to v5.0.0 ([#1238](https://github.com/NVIDIA/NeMo-Guardrails/issues/1238)) 
+- *(dependabot)* Remove dependabot configuration ([#1281](https://github.com/NVIDIA/NeMo-Guardrails/issues/1281)) 
+- Add default configuration for git-cliff 
+
+<!-- NeMo Guardrails Changelog -->
+
 ## [0.14.1] - 2025-07-02
 
 ### 🚀 Features
