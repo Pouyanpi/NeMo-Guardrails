@@ -108,37 +108,11 @@ jobs:
           sed -i "s/\[0\.[0-9]*\.[0-9]*\](https:\/\/github\.com\/NVIDIA\/NeMo-Guardrails\/tree\/v0\.[0-9]*\.[0-9]*)/[${{ steps.version.outputs.version }}](https:\/\/github.com\/NVIDIA\/NeMo-Guardrails\/tree\/v${{ steps.version.outputs.version }})/g" README.md
           sed -i "s/version: \[0\.[0-9]*\.[0-9]*\]/version: [${{ steps.version.outputs.version }}]/g" README.md
 
-      - name: Create release branch
-        run: |
-          BRANCH_NAME="chore/release-${{ steps.version.outputs.version }}"
-
-          # Check if branch already exists on remote
-          if git ls-remote --exit-code --heads origin $BRANCH_NAME; then
-            echo "Branch $BRANCH_NAME already exists on remote. Deleting it first..."
-            git push origin --delete $BRANCH_NAME || true
-          fi
-
-          # Create new branch
-          git checkout -b $BRANCH_NAME
-          echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
-
-      - name: Commit changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add CHANGELOG.md pyproject.toml poetry.lock README.md
-          git commit -m "chore(release): prepare for v${{ steps.version.outputs.version }}"
-
-      - name: Push release branch
-        run: |
-          git push origin ${{ env.branch_name }}
-
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          branch: ${{ env.branch_name }}
+          branch: chore/release-${{ steps.version.outputs.version }}
           base: develop
           title: "Release v${{ steps.version.outputs.version }}"
           body: |
@@ -158,6 +132,12 @@ jobs:
           labels: |
             release
             automated
+          add-paths: |
+            CHANGELOG.md
+            pyproject.toml
+            poetry.lock
+            README.md
+          commit-message: "chore(release): prepare for v${{ steps.version.outputs.version }}"
 
       - name: Clean up
         run: rm -f RELEASE_NOTES.md
