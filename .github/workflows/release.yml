@@ -81,11 +81,20 @@ jobs:
             --strip all \
             > CHANGELOG.new.md
 
-      - name: Inject release block into CHANGELOG.md
+      - name: Inject release block just above the previous entry
         run: |
-          # insert the new section right after the “# Changelog” line
-          sed -i '/^# Changelog$/r CHANGELOG.new.md' CHANGELOG.md
-          rm CHANGELOG.new.md
+          awk '
+            BEGIN { done = 0 }
+            # On the *first* version header, insert the new block
+            /^## \[/ && done == 0 {
+              system("cat CHANGELOG.new.md")
+              print ""      # blank line between blocks
+              done = 1
+            }
+            { print }
+          ' CHANGELOG.md > CHANGELOG.tmp \
+            && mv CHANGELOG.tmp CHANGELOG.md \
+            && rm CHANGELOG.new.md
 
       - name: Update version with Poetry
         run: |
