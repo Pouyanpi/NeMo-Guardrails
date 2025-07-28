@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 >
 > The changes related to the Colang language and runtime have moved to [CHANGELOG-Colang](./CHANGELOG-Colang.md) file.
 
+## [0.15.0] - 2025-07-28
+
+### ⚙️ Miscellaneous Tasks
+
+- Add default configuration for git-cliff 
+- Add release workflow 
+- Rename workflow to Prepare Release 
+
+
 ## [0.14.1] - 2025-07-02
 
 ### 🚀 Features
