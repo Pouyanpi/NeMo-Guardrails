@@ -9,6 +9,25 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 >
 > The changes related to the Colang language and runtime have moved to [CHANGELOG-Colang](./CHANGELOG-Colang.md) file.
 
+## [0.15.0-rc2] - 2025-07-25
+
+### 🚀 Features
+
+- Implement parallel streaming output rails execution ([#1263](https://github.com/NVIDIA/NeMo-Guardrails/issues/1263)) 
+- *(streaming)* Support external async token generators ([#1286](https://github.com/NVIDIA/NeMo-Guardrails/issues/1286)) 
+- Support parallel rails execution ([#1234](https://github.com/NVIDIA/NeMo-Guardrails/issues/1234)) 
+
+### 🐛 Bug Fixes
+
+- Remove stream_usage from text completion ([#1285](https://github.com/NVIDIA/NeMo-Guardrails/issues/1285)) 
+- *(tracing)* Prevent mutation of user options when tracing is enabled ([#1273](https://github.com/NVIDIA/NeMo-Guardrails/issues/1273)) 
+- *(rails)* Prevent LLM parameter contamination in concurrent parallel rails 
+
+### 📚 Documentation
+
+- Update guardrails-library.md to include Clavata as a third party API ([#1294](https://github.com/NVIDIA/NeMo-Guardrails/issues/1294)) 
+
+
 ## [0.14.1] - 2025-07-02
 
 ### 🚀 Features
