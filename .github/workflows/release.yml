@@ -31,6 +31,16 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Fetch all tags
+        run: git fetch --tags
+
+      - name: Get latest tag
+        id: get_last_tag
+        run: |
+          # this will pick the most recent annotated or lightweight tag
+          LAST_TAG=$(git describe --tags --abbrev=0)
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -68,8 +78,11 @@ jobs:
         id: changelog
         run: |
           # Generate changelog for the new version
-          # git cliff --tag v${{ steps.version.outputs.version }} --unreleased --strip header -o CHANGELOG_NEW.md
-          git cliff --tag v${{ steps.version.outputs.version }} -o CHANGELOG.md
+          git cliff \
+            --latest \
+            --tag v${{ steps.version.outputs.version }} \
+            --strip all \
+            --prepend CHANGELOG.md
 
       - name: Update version with Poetry
         run: |
