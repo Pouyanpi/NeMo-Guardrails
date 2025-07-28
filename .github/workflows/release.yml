@@ -76,7 +76,7 @@ jobs:
       - name: Generate changelog block
         run: |
           git cliff \
-            --unreleased \
+            --latest \
             --tag     v${{ steps.version.outputs.version }} \
             --strip all \
             > CHANGELOG.new.md
