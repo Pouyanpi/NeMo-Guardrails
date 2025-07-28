@@ -1,4 +1,11 @@
 # Changelog
+## [0.15.0] - 2025-07-28
+
+### ⚙️ Miscellaneous Tasks
+
+- Add default configuration for git-cliff 
+- Add release workflow 
+
 
 All notable changes to this project will be documented in this file.
 
