@@ -96,7 +96,9 @@ all = [
 ]
 
 [dependency-groups]
-lint = ["ruff==0.14.6"]
+# ruff is not pinned here: it is owned by the astral-sh/ruff-pre-commit hook
+# in .pre-commit-config.yaml, which provides its own pinned ruff binary. Keeping
+# a second pin here would only risk drifting from the pre-commit rev.
 typing = ["pyright>=1.1.405,<2.0.0"]
 test = [
   "pytest>=7.2.2,<9.0.0",
@@ -144,12 +146,17 @@ dev = [
   "pre-commit>=3.1.1",
   {include-group = "test"},
   {include-group = "test_integration"},
-  {include-group = "lint"},
   {include-group = "typing"},
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["nemoguardrails"]
+
+# Bundle the top-level examples/ into the package so runtime helpers
+# (e.g. nemoguardrails.utils.get_examples_data_path, used by the server) can
+# resolve them from the installed wheel without a build-time copy script.
+[tool.hatch.build.targets.wheel.force-include]
+"examples" = "nemoguardrails/examples"
 
 [tool.uv]
 package = true

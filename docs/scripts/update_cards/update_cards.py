@@ -540,7 +540,7 @@ def run_watch_mode(docs_dir: Path, verbose: bool = False):
     if not WATCHDOG_AVAILABLE:
         print("❌ Watch mode requires the 'watchdog' package.")
         print("   Install it with: pip install watchdog")
-        print("   Or: poetry add watchdog --group docs")
+        print("   Or: uv add watchdog --group docs")
         return 1
 
     print(f"👀 Watching for changes in: {docs_dir}")

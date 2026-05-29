@@ -126,7 +126,7 @@ def main():
         print(
             "\n\nError: sphinx-autobuild not found. "
             "Please install it with:\n"
-            "  poetry install --with docs\n"
+            "  uv sync --group docs\n"
             "or:\n"
             "  pip install sphinx-autobuild",
             file=sys.stderr,

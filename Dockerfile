@@ -1,5 +1,5 @@
 
-# syntax=docker/dockerfile:experimental
+# syntax=docker/dockerfile:1
 
 # Copyright (c) 2019, NVIDIA CORPORATION. All rights reserved.
 #
@@ -27,14 +27,19 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
   fi
 
 ENV UV_COMPILE_BYTECODE=1
+# Use copy mode so the BuildKit cache mount below works across the mount boundary
+ENV UV_LINK_MODE=copy
 
 WORKDIR /nemoguardrails
-# Install deps first (cached layer — only invalidated when pyproject.toml/uv.lock change)
+# Install deps first (cached layer — only invalidated when pyproject.toml/uv.lock change).
+# The cache mount persists uv's download/build cache across image builds.
 COPY pyproject.toml uv.lock /nemoguardrails/
-RUN uv sync --all-extras --group dev --locked --no-cache --no-install-project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --all-extras --group dev --locked --no-install-project
 # Copy source and install the project itself
 COPY . /nemoguardrails
-RUN uv sync --all-extras --group dev --locked --no-cache
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --all-extras --group dev --locked
 ENV PATH="/nemoguardrails/.venv/bin:$PATH"
 
 

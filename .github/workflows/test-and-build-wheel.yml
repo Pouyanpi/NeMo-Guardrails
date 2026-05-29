@@ -43,13 +43,9 @@ jobs:
           enable-caching: true
           cache-dependency-glob: "uv.lock"
 
-      - name: Make build script executable
-        run: chmod +x ./.github/scripts/build.sh
-
       - name: Build Distributions
         id: build
-        run: |
-          ./.github/scripts/build.sh
+        run: uv build
 
       - name: Determine Tag Name
         id: get-tag-name

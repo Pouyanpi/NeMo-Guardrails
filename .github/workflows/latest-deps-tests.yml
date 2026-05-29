@@ -6,10 +6,6 @@ on:
 
   workflow_dispatch:
 
-  pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - ".github/**"
 jobs:
   latest-deps-tests-matrix:
     strategy:
