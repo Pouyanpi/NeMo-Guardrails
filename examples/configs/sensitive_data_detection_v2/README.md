@@ -9,7 +9,7 @@ This example demonstrates how to detect and redact sensitive data using [Presidi
   You can install it with:
 
   ```bash
-  pip install presidio-analyzer presidio-anonymizer
+  uv run pip install presidio-analyzer presidio-anonymizer
   ```
 
   > **Note**
@@ -24,7 +24,7 @@ This example demonstrates how to detect and redact sensitive data using [Presidi
   You can download it with:
 
   ```bash
-  python -m spacy download en_core_web_lg
+  uv run python -m spacy download en_core_web_lg
   ```
 
 ## Running example
@@ -32,7 +32,7 @@ This example demonstrates how to detect and redact sensitive data using [Presidi
 To test this configuration, run the CLI chat from the `examples/configs/sensitive_data_detection_v2` directory:
 
 ```bash
-nemoguardrails chat --config=.
+uv run nemoguardrails chat --config=.
 ```
 
 ## Documentation
