@@ -26,13 +26,14 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
   export ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"; \
   fi
 
-# Install into system Python (equivalent to virtualenvs.create false)
 ENV UV_SYSTEM_PYTHON=1
+ENV UV_COMPILE_BYTECODE=1
 
-# Copy project files
 WORKDIR /nemoguardrails
+# Install deps first (cached layer — only invalidated when pyproject.toml/uv.lock change)
 COPY pyproject.toml uv.lock /nemoguardrails/
-# Copy the rest of the project files
+RUN uv sync --all-extras --group dev --locked --no-cache --no-install-project
+# Copy source and install the project itself
 COPY . /nemoguardrails
 RUN uv sync --all-extras --group dev --locked --no-cache
 
