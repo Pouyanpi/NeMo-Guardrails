@@ -128,7 +128,7 @@ test_integration = [
   "langchain-nvidia-ai-endpoints>=0.2.0",
 ]
 docs = [
-  "toml>=0.10.2,<1.0.0",
+  "tomli>=2.0.0 ; python_version < '3.11'",
   "sphinx-reredirects<0.2",
   "sphinx<=7.5",
   "myst-parser<=5",

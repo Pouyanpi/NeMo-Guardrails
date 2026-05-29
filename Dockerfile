@@ -26,7 +26,6 @@ RUN if [ "$(uname -m)" = "x86_64" ]; then \
   export ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"; \
   fi
 
-ENV UV_SYSTEM_PYTHON=1
 ENV UV_COMPILE_BYTECODE=1
 
 WORKDIR /nemoguardrails
@@ -36,6 +35,7 @@ RUN uv sync --all-extras --group dev --locked --no-cache --no-install-project
 # Copy source and install the project itself
 COPY . /nemoguardrails
 RUN uv sync --all-extras --group dev --locked --no-cache
+ENV PATH="/nemoguardrails/.venv/bin:$PATH"
 
 
 # Make port 8000 available to the world outside this container
