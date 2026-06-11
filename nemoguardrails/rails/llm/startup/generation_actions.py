@@ -15,41 +15,19 @@
 
 """LLM generation action registration."""
 
-from typing import Any, Protocol, Type
+from typing import Any, Type
 
 from nemoguardrails.actions.llm.generation import LLMGenerationActions
 from nemoguardrails.actions.v2_x.generation import LLMGenerationActionsV2dotx
+from nemoguardrails.rails.llm.types import GenerationActionRails
 
 __all__ = [
     "GenerationActionRails",
-    "GenerationActionRuntime",
     "LLMGenerationActions",
     "LLMGenerationActionsV2dotx",
     "generation_actions_class_for_colang_version",
     "register_llm_generation_actions",
 ]
-
-
-class GenerationActionRuntime(Protocol):
-    @property
-    def llm_task_manager(self) -> Any: ...
-
-    def register_actions(self, actions_obj: Any, /, override: bool = True) -> None: ...
-
-
-class GenerationActionRails(Protocol):
-    _llm_generation_actions: Any
-
-    @property
-    def config(self) -> Any: ...
-
-    @property
-    def llm(self) -> Any: ...
-
-    @property
-    def runtime(self) -> GenerationActionRuntime: ...
-
-    def _get_embeddings_search_provider_instance(self, esp_config: Any = None) -> Any: ...
 
 
 def generation_actions_class_for_colang_version(colang_version: str) -> Type[Any]:

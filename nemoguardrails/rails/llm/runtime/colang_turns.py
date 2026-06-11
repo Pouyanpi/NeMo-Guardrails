@@ -19,13 +19,14 @@ import asyncio
 import json
 import logging
 import time
-from typing import Any, List, Optional, Protocol, Tuple, Union, cast
+from typing import Any, List, Optional, Tuple, Union, cast
 
 from nemoguardrails.actions.llm.utils import get_colang_history
 from nemoguardrails.colang.v2_x.runtime.flows import State
 from nemoguardrails.colang.v2_x.runtime.runtime import RuntimeV2_x
 from nemoguardrails.context import llm_stats_var, streaming_handler_var
 from nemoguardrails.logging.stats import LLMStats
+from nemoguardrails.rails.llm.types import ColangTurnRails
 from nemoguardrails.streaming import END_OF_STREAM
 from nemoguardrails.utils import extract_error_json
 
@@ -40,17 +41,6 @@ __all__ = [
     "process_events_semaphore",
     "run_colang_turn",
 ]
-
-
-class ColangTurnRails(Protocol):
-    @property
-    def config(self) -> Any: ...
-
-    @property
-    def runtime(self) -> Any: ...
-
-    @property
-    def verbose(self) -> bool: ...
 
 
 async def run_colang_turn(

@@ -19,14 +19,14 @@ import asyncio
 import json
 import logging
 import warnings
-from typing import Any, AsyncIterator, Optional, Protocol, Union, cast
+from typing import Any, AsyncIterator, Optional, Union, cast
 
 from nemoguardrails.exceptions import StreamingNotSupportedError
 from nemoguardrails.rails.llm.options import GenerationOptions
 from nemoguardrails.rails.llm.streaming.streaming_output_rails import (
-    StreamingOutputRails,
     run_output_rails_in_streaming,
 )
+from nemoguardrails.rails.llm.types import GenerationStreamRails
 from nemoguardrails.streaming import END_OF_STREAM, StreamingHandler
 from nemoguardrails.utils import extract_error_json
 
@@ -37,18 +37,6 @@ __all__ = [
     "generation_token_stream",
     "validate_streaming_with_output_rails",
 ]
-
-
-class GenerationStreamRails(StreamingOutputRails, Protocol):
-    async def generate_async(
-        self,
-        *,
-        prompt: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
-        options: Optional[Union[dict, GenerationOptions]] = None,
-        state: Optional[Any] = None,
-        streaming_handler: Optional[StreamingHandler] = None,
-    ) -> object: ...
 
 
 def validate_streaming_with_output_rails(config: Any) -> None:

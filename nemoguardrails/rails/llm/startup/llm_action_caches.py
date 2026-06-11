@@ -16,30 +16,19 @@
 """LLM action model caches."""
 
 import logging
-from typing import Dict, Protocol
+from typing import Dict
 
 from nemoguardrails.llm.cache import CacheInterface, LFUCache
 from nemoguardrails.rails.llm.config import Model, RailsConfig
+from nemoguardrails.rails.llm.types import LLMActionCacheRails
 
-log = logging.getLogger("nemoguardrails.rails.llm.llmrails")
+log = logging.getLogger(__name__)
 
 __all__ = [
     "build_llm_action_cache",
     "build_llm_action_caches",
     "initialize_llm_action_caches",
 ]
-
-
-class LLMActionCacheRuntime(Protocol):
-    def register_action_param(self, name: str, value: object) -> None: ...
-
-
-class LLMActionCacheRails(Protocol):
-    @property
-    def config(self) -> RailsConfig: ...
-
-    @property
-    def runtime(self) -> LLMActionCacheRuntime: ...
 
 
 def build_llm_action_cache(model: Model) -> LFUCache:

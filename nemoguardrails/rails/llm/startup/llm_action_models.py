@@ -17,39 +17,24 @@
 
 import logging
 import os
-from typing import Any, Callable, Dict, Protocol
+from typing import Any, Callable, Dict
 
 from nemoguardrails.exceptions import InvalidModelConfigurationError
 from nemoguardrails.llm.models.initializer import ModelInitializationError
+from nemoguardrails.rails.llm.types import LLMActionRails
 from nemoguardrails.types import LLMModel
 
-log = logging.getLogger("nemoguardrails.rails.llm.llmrails")
+log = logging.getLogger(__name__)
 
 InitLLM = Callable[..., LLMModel]
 
 __all__ = [
     "InitLLM",
     "LLMActionRails",
-    "LLMActionRuntime",
     "load_llm_action_models",
     "model_kwargs_from_config",
     "sync_update_llm_bindings",
 ]
-
-
-class LLMActionRuntime(Protocol):
-    def register_action_param(self, name: str, value: Any) -> None: ...
-
-
-class LLMActionRails(Protocol):
-    llm: Any
-    _llm_generation_actions: Any
-
-    @property
-    def config(self) -> Any: ...
-
-    @property
-    def runtime(self) -> LLMActionRuntime: ...
 
 
 def model_kwargs_from_config(model_config: Any) -> Dict[str, Any]:

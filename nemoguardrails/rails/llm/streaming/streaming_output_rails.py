@@ -18,53 +18,20 @@
 import json
 import logging
 from functools import partial
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional, Protocol
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from nemoguardrails.actions.output_mapping import is_output_blocked
 from nemoguardrails.rails.llm.buffer import get_buffer_strategy
 from nemoguardrails.rails.llm.config import OutputRailsStreamingConfig
+from nemoguardrails.rails.llm.types import StreamingOutputRails
 from nemoguardrails.rails.llm.utils import get_action_details_from_flow_id
 
 log = logging.getLogger(__name__)
 
 __all__ = [
-    "StreamingOutputActionDispatcher",
     "StreamingOutputRails",
-    "StreamingOutputRuntime",
     "run_output_rails_in_streaming",
 ]
-
-
-class StreamingOutputActionDispatcher(Protocol):
-    async def execute_action(self, action_name: str, params: Dict[str, Any]) -> Any: ...
-
-    def get_action(self, name: str, /) -> Any: ...
-
-
-class StreamingOutputRuntime(Protocol):
-    @property
-    def action_dispatcher(self) -> StreamingOutputActionDispatcher: ...
-
-    @property
-    def llm_task_manager(self) -> Any: ...
-
-    @property
-    def registered_action_params(self) -> Dict[str, Any]: ...
-
-
-class StreamingOutputRails(Protocol):
-    _explain_info: Any
-
-    @property
-    def config(self) -> Any: ...
-
-    @property
-    def runtime(self) -> StreamingOutputRuntime: ...
-
-    @property
-    def llm(self) -> Any: ...
-
-    def _ensure_explain_info(self) -> Any: ...
 
 
 async def run_output_rails_in_streaming(
