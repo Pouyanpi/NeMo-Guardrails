@@ -151,6 +151,18 @@ def _patch_action_details(monkeypatch):
     )
 
 
+def _patch_shared_action_details(monkeypatch, action_params: dict):
+    def fake_get_action_details_from_flow_id(flow_id: str, flows: list):
+        del flow_id, flows
+        return "self_check_output", action_params
+
+    monkeypatch.setattr(
+        streaming_output_rails,
+        "get_action_details_from_flow_id",
+        fake_get_action_details_from_flow_id,
+    )
+
+
 @pytest.mark.asyncio
 async def test_output_rails_stream_runs_sequential_rails_before_yielding(monkeypatch):
     _patch_buffer_strategy(
@@ -188,6 +200,42 @@ async def test_output_rails_stream_runs_sequential_rails_before_yielding(monkeyp
     assert params["llms"] == {"main": "registered-llm"}
     assert params["llm"] == "rail-llm"
     assert rails._explain_info == {"ensured": 1}
+
+
+@pytest.mark.asyncio
+async def test_output_rails_stream_does_not_mutate_action_param_templates(monkeypatch):
+    _patch_buffer_strategy(
+        monkeypatch,
+        [
+            ChunkBatch(processing_context=["He"], user_output_chunks=["He"]),
+            ChunkBatch(processing_context=["llo"], user_output_chunks=["llo"]),
+        ],
+    )
+    shared_action_params = {
+        "bot_response": "$bot_message",
+        "user_input": "$user_message",
+    }
+    _patch_shared_action_details(monkeypatch, shared_action_params)
+    dispatcher = FakeActionDispatcher(result=True)
+    rails = FakeRails(dispatcher)
+
+    await _collect(
+        run_output_rails_in_streaming(
+            rails,
+            _empty_stream(),
+            OutputRailsStreamingConfig(stream_first=False),
+            messages=[{"role": "user", "content": "Hi"}],
+        )
+    )
+
+    assert shared_action_params == {
+        "bot_response": "$bot_message",
+        "user_input": "$user_message",
+    }
+    assert dispatcher.calls[0][1]["bot_response"] == "He"
+    assert dispatcher.calls[1][1]["bot_response"] == "llo"
+    assert dispatcher.calls[0][1]["user_input"] == {"role": "user", "content": "Hi"}
+    assert dispatcher.calls[1][1]["user_input"] == {"role": "user", "content": "Hi"}
 
 
 @pytest.mark.asyncio

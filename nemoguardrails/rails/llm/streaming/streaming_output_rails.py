@@ -284,6 +284,7 @@ def _prepare_params(
     # we pass action params that are defined in the flow
     # caveate, e.g. prmpt_security uses bot_response=$bot_message
     # to resolve replace placeholders in action_params
+    action_params = dict(action_params)
     for key, value in action_params.items():
         if value == "$bot_message":
             action_params[key] = bot_response_chunk
