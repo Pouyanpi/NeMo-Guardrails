@@ -22,10 +22,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends git gcc g++ \
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.17 /uv /uvx /bin/
 
-RUN if [ "$(uname -m)" = "x86_64" ]; then \
-  export ANNOY_COMPILER_ARGS="-D_CRT_SECURE_NO_WARNINGS,-DANNOYLIB_MULTITHREADED_BUILD,-march=x86-64"; \
-  fi
-
 ENV UV_COMPILE_BYTECODE=1
 # Use copy mode so the BuildKit cache mount below works across the mount boundary
 ENV UV_LINK_MODE=copy
