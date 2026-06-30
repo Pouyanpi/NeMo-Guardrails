@@ -31,11 +31,11 @@ WORKDIR /nemoguardrails
 # The cache mount persists uv's download/build cache across image builds.
 COPY pyproject.toml uv.lock /nemoguardrails/
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --all-extras --group dev --locked --no-install-project
+    uv sync --all-extras --no-dev --locked --no-install-project
 # Copy source and install the project itself
 COPY . /nemoguardrails
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --all-extras --group dev --locked
+    uv sync --all-extras --no-dev --locked
 ENV PATH="/nemoguardrails/.venv/bin:$PATH"
 
 
