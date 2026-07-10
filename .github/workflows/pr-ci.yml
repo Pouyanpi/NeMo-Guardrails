@@ -1,0 +1,250 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+  merge_group:
+    types: [checks_requested]
+
+permissions: {}
+
+concurrency:
+  group: pr-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      docker: ${{ steps.classify.outputs.docker }}
+      docs: ${{ steps.classify.outputs.docs }}
+      runtime: ${{ steps.classify.outputs.runtime }}
+      workflows: ${{ steps.classify.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Classify changed files
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          docker=false
+          docs=false
+          runtime=false
+          workflows=false
+
+          while IFS= read -r -d '' file; do
+            case "$file" in
+              *.md|.github/*) ;;
+              *) runtime=true ;;
+            esac
+
+            case "$file" in
+              .github/actions/setup-uv/action.yml|.github/workflows/_test.yml|.github/workflows/full-tests.yml|.github/workflows/pr-ci.yml|.github/workflows/pr-tests.yml)
+                runtime=true
+                ;;
+            esac
+
+            case "$file" in
+              .github/dependabot.yml|.github/workflows/*|.github/zizmor.yml|action.yml|action.yaml|*/action.yml|*/action.yaml)
+                workflows=true
+                ;;
+            esac
+
+            case "$file" in
+              .github/workflows/docs-build.yaml|Makefile|docs/*|fern/*|scripts/normalize-fern-sdk-reference.mjs|scripts/watch-fern-preview.mjs|scripts/fix-empty-fern-links.mjs)
+                docs=true
+                ;;
+            esac
+
+            case "$file" in
+              Dockerfile|pyproject.toml|uv.lock|.github/workflows/test-docker.yml)
+                docker=true
+                ;;
+            esac
+          done < <(git diff --name-only -z "$BASE_SHA" "$HEAD_SHA")
+
+          {
+            echo "docker=$docker"
+            echo "docs=$docs"
+            echo "runtime=$runtime"
+            echo "workflows=$workflows"
+          } >> "$GITHUB_OUTPUT"
+
+  lint:
+    name: Lint
+    uses: ./.github/workflows/lint.yml
+    permissions:
+      contents: read
+
+  python-tests:
+    name: Python tests
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true'
+    uses: ./.github/workflows/pr-tests.yml
+    permissions:
+      contents: read
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  full-tests:
+    name: Full tests
+    needs: changes
+    if: needs.changes.outputs.runtime == 'true' && (github.event_name == 'merge_group' || github.event.pull_request.draft == false)
+    uses: ./.github/workflows/full-tests.yml
+    permissions:
+      contents: read
+
+  zizmor:
+    name: GitHub Actions security
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    uses: ./.github/workflows/zizmor.yml
+    permissions:
+      contents: read
+
+  docs:
+    name: Docs
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    uses: ./.github/workflows/docs-build.yaml
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    secrets:
+      DOCS_FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+
+  docker:
+    name: Docker
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    uses: ./.github/workflows/test-docker.yml
+    permissions:
+      contents: read
+
+  pr-gate:
+    name: PR Gate
+    if: ${{ always() }}
+    needs: [changes, lint, python-tests, full-tests, zizmor, docs, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    env:
+      ACTOR: ${{ github.actor }}
+      CHANGES_RESULT: ${{ needs.changes.result }}
+      DOCKER_CHANGED: ${{ needs.changes.outputs.docker }}
+      DOCKER_RESULT: ${{ needs.docker.result }}
+      DOCS_CHANGED: ${{ needs.changes.outputs.docs }}
+      DOCS_RESULT: ${{ needs.docs.result }}
+      EVENT_NAME: ${{ github.event_name }}
+      FULL_TESTS_RESULT: ${{ needs.full-tests.result }}
+      LINT_RESULT: ${{ needs.lint.result }}
+      PR_DRAFT: ${{ github.event.pull_request.draft || false }}
+      PYTHON_TESTS_RESULT: ${{ needs.python-tests.result }}
+      RUNTIME_CHANGED: ${{ needs.changes.outputs.runtime }}
+      WORKFLOWS_CHANGED: ${{ needs.changes.outputs.workflows }}
+      ZIZMOR_RESULT: ${{ needs.zizmor.result }}
+    steps:
+      - name: Verify required jobs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          failed=false
+
+          require_success() {
+            if [[ "$2" != "success" ]]; then
+              echo "$1 must succeed; result: $2"
+              failed=true
+            fi
+          }
+
+          require_skipped() {
+            if [[ "$2" != "skipped" ]]; then
+              echo "$1 must be skipped; result: $2"
+              failed=true
+            fi
+          }
+
+          require_success_or_skipped() {
+            if [[ "$2" != "success" && "$2" != "skipped" ]]; then
+              echo "$1 must succeed or be skipped; result: $2"
+              failed=true
+            fi
+          }
+
+          require_success "Change classification" "$CHANGES_RESULT"
+          require_success "Lint" "$LINT_RESULT"
+          if [[ "$RUNTIME_CHANGED" == "true" ]]; then
+            require_success "Python tests" "$PYTHON_TESTS_RESULT"
+            if [[ "$EVENT_NAME" == "merge_group" || "$PR_DRAFT" == "false" ]]; then
+              require_success "Full tests" "$FULL_TESTS_RESULT"
+            else
+              require_skipped "Full tests" "$FULL_TESTS_RESULT"
+            fi
+          else
+            require_skipped "Python tests" "$PYTHON_TESTS_RESULT"
+            require_skipped "Full tests" "$FULL_TESTS_RESULT"
+          fi
+
+          if [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
+            require_success "Zizmor" "$ZIZMOR_RESULT"
+          else
+            require_skipped "Zizmor" "$ZIZMOR_RESULT"
+          fi
+
+          if [[ "$DOCS_CHANGED" == "true" ]]; then
+            if [[ "$ACTOR" == "dependabot[bot]" ]]; then
+              require_success_or_skipped "Docs" "$DOCS_RESULT"
+            else
+              require_success "Docs" "$DOCS_RESULT"
+            fi
+          else
+            require_skipped "Docs" "$DOCS_RESULT"
+          fi
+
+          if [[ "$DOCKER_CHANGED" == "true" ]]; then
+            require_success "Docker" "$DOCKER_RESULT"
+          else
+            require_skipped "Docker" "$DOCKER_RESULT"
+          fi
+
+          if [[ "$failed" == "true" ]]; then
+            exit 1
+          fi
+
+  lint-code-compatibility:
+    name: Lint Code
+    if: ${{ always() }}
+    needs: lint
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Preserve the existing required lint check
+        env:
+          RESULT: ${{ needs.lint.result }}
+        run: test "$RESULT" = "success"
+
+  pr-tests-summary-compatibility:
+    name: PR Tests Summary
+    if: ${{ always() }}
+    needs: pr-gate
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Preserve the existing required test check
+        env:
+          RESULT: ${{ needs.pr-gate.result }}
+        run: test "$RESULT" = "success"

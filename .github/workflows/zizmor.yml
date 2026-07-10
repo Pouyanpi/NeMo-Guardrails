@@ -1,16 +1,9 @@
 name: GitHub Actions security
 
 on:
-  pull_request:
-    branches: [develop]
-    paths:
-      - ".github/dependabot.yml"
-      - ".github/workflows/**"
-      - ".github/zizmor.yml"
-      - "**/action.yml"
-      - "**/action.yaml"
+  workflow_call:
   push:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - ".github/dependabot.yml"
       - ".github/workflows/**"

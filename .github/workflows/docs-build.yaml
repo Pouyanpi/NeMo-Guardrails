@@ -1,17 +1,10 @@
 name: docs-build
 
 on:
-  pull_request:
-    branches: [develop]
-    types: [opened, synchronize]
-    paths:
-      - ".github/workflows/docs-build.yaml"
-      - "Makefile"
-      - "docs/**"
-      - "fern/**"
-      - "scripts/normalize-fern-sdk-reference.mjs"
-      - "scripts/watch-fern-preview.mjs"
-      - "scripts/fix-empty-fern-links.mjs"
+  workflow_call:
+    secrets:
+      DOCS_FERN_TOKEN:
+        required: false
   push:
     branches: [develop]
     tags:
@@ -35,7 +28,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: docs-build-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
