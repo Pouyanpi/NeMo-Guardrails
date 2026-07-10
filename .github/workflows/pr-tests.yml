@@ -1,10 +1,10 @@
 name: PR Tests
 
 on:
-  pull_request:
-    paths-ignore:
-      - "**/*.md"
-      - ".github/**"
+  workflow_call:
+    secrets:
+      CODECOV_TOKEN:
+        required: false
 
 permissions:
   contents: read
@@ -29,10 +29,3 @@ jobs:
       image: ${{ matrix.image }}
       python-version: ${{ matrix.python-version }}
       with-coverage: ${{ matrix.with-coverage || false }}
-  pr-tests-summary:
-    name: PR Tests Summary
-    needs: pr-tests-matrix
-    runs-on: ubuntu-latest
-    steps:
-      - name: Confirm all PR tests passed
-        run: echo "All PR Tests completed successfully"
