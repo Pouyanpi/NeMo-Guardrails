@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   changes:
-    name: Classify changes
+    name: Determine required checks
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -83,13 +83,13 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   lint:
-    name: Lint
+    name: Code quality
     uses: ./.github/workflows/lint.yml
     permissions:
       contents: read
 
   python-tests:
-    name: Python tests
+    name: Linux tests
     needs: changes
     if: needs.changes.outputs.runtime == 'true'
     uses: ./.github/workflows/pr-tests.yml
@@ -99,7 +99,7 @@ jobs:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   full-tests:
-    name: Full tests
+    name: Cross-platform tests
     needs: changes
     if: needs.changes.outputs.runtime == 'true' && (github.event_name == 'merge_group' || github.event.pull_request.draft == false)
     uses: ./.github/workflows/full-tests.yml
@@ -107,7 +107,7 @@ jobs:
       contents: read
 
   zizmor:
-    name: GitHub Actions security
+    name: Workflow security
     needs: changes
     if: needs.changes.outputs.workflows == 'true'
     uses: ./.github/workflows/zizmor.yml
@@ -115,7 +115,7 @@ jobs:
       contents: read
 
   docs:
-    name: Docs
+    name: Documentation
     needs: changes
     if: needs.changes.outputs.docs == 'true'
     uses: ./.github/workflows/docs-build.yaml
@@ -127,7 +127,7 @@ jobs:
       DOCS_FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
 
   docker:
-    name: Docker
+    name: Container image
     needs: changes
     if: needs.changes.outputs.docker == 'true'
     uses: ./.github/workflows/test-docker.yml
@@ -185,40 +185,40 @@ jobs:
             fi
           }
 
-          require_success "Change classification" "$CHANGES_RESULT"
-          require_success "Lint" "$LINT_RESULT"
+          require_success "Determine required checks" "$CHANGES_RESULT"
+          require_success "Code quality" "$LINT_RESULT"
           if [[ "$RUNTIME_CHANGED" == "true" ]]; then
-            require_success "Python tests" "$PYTHON_TESTS_RESULT"
+            require_success "Linux tests" "$PYTHON_TESTS_RESULT"
             if [[ "$EVENT_NAME" == "merge_group" || "$PR_DRAFT" == "false" ]]; then
-              require_success "Full tests" "$FULL_TESTS_RESULT"
+              require_success "Cross-platform tests" "$FULL_TESTS_RESULT"
             else
-              require_skipped "Full tests" "$FULL_TESTS_RESULT"
+              require_skipped "Cross-platform tests" "$FULL_TESTS_RESULT"
             fi
           else
-            require_skipped "Python tests" "$PYTHON_TESTS_RESULT"
-            require_skipped "Full tests" "$FULL_TESTS_RESULT"
+            require_skipped "Linux tests" "$PYTHON_TESTS_RESULT"
+            require_skipped "Cross-platform tests" "$FULL_TESTS_RESULT"
           fi
 
           if [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
-            require_success "Zizmor" "$ZIZMOR_RESULT"
+            require_success "Workflow security" "$ZIZMOR_RESULT"
           else
-            require_skipped "Zizmor" "$ZIZMOR_RESULT"
+            require_skipped "Workflow security" "$ZIZMOR_RESULT"
           fi
 
           if [[ "$DOCS_CHANGED" == "true" ]]; then
             if [[ "$ACTOR" == "dependabot[bot]" ]]; then
-              require_success_or_skipped "Docs" "$DOCS_RESULT"
+              require_success_or_skipped "Documentation" "$DOCS_RESULT"
             else
-              require_success "Docs" "$DOCS_RESULT"
+              require_success "Documentation" "$DOCS_RESULT"
             fi
           else
-            require_skipped "Docs" "$DOCS_RESULT"
+            require_skipped "Documentation" "$DOCS_RESULT"
           fi
 
           if [[ "$DOCKER_CHANGED" == "true" ]]; then
-            require_success "Docker" "$DOCKER_RESULT"
+            require_success "Container image" "$DOCKER_RESULT"
           else
-            require_skipped "Docker" "$DOCKER_RESULT"
+            require_skipped "Container image" "$DOCKER_RESULT"
           fi
 
           if [[ "$failed" == "true" ]]; then

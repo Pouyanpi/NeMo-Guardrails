@@ -41,7 +41,7 @@ defaults:
 
 jobs:
   tests:
-    name: ${{ inputs.os }} / Python ${{ inputs.python-version }}
+    name: ${{ inputs.os }} · Python ${{ inputs.python-version }}
     runs-on: ${{ inputs.image }}
 
     steps:
