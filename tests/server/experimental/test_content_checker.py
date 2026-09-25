@@ -31,7 +31,11 @@ from nemoguardrails.server.experimental._content_checker import (
 
 
 class StaticChecker:
+    def __init__(self):
+        self.policy_reads = 0
+
     def inspection_policy(self):
+        self.policy_reads += 1
         return ContentInspectionPolicy(True, True)
 
     async def check_input(self, check):
@@ -76,7 +80,11 @@ def test_output_check_rejects_incorrect_subject_roles(input_role, output_role):
 def test_static_checker_is_validated_once_without_a_resolver():
     checker = StaticChecker()
 
-    assert validate_content_checker(checker) is checker
+    validated = validate_content_checker(checker)
+
+    assert validated.checker is checker
+    assert validated.policy == ContentInspectionPolicy(True, True)
+    assert checker.policy_reads == 1
 
 
 @pytest.mark.parametrize("missing_method", ["inspection_policy", "check_input", "check_output"])

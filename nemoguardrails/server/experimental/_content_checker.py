@@ -126,7 +126,15 @@ class ContentChecker(Protocol):
     async def check_output(self, check: OutputContentCheck) -> ContentCheckDecision: ...
 
 
-def validate_content_checker(checker: object) -> ContentChecker:
+@dataclass(frozen=True, slots=True)
+class ValidatedContentChecker:
+    """Bind one checker to the policy validated for its execution."""
+
+    checker: ContentChecker
+    policy: ContentInspectionPolicy
+
+
+def validate_content_checker(checker: object) -> ValidatedContentChecker:
     """Validate one statically bound checker before operation execution."""
 
     for method_name in ("inspection_policy", "check_input", "check_output"):
@@ -136,7 +144,7 @@ def validate_content_checker(checker: object) -> ContentChecker:
     policy = validated.inspection_policy()
     if not isinstance(policy, ContentInspectionPolicy):
         raise InvalidContentChecker("The content checker must return a ContentInspectionPolicy.")
-    return validated
+    return ValidatedContentChecker(validated, policy)
 
 
 def validate_content_check_decision(decision: object) -> ContentCheckDecision:
