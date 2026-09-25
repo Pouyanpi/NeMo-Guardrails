@@ -1,0 +1,78 @@
+overlay: 1.1.0
+info:
+  title: Guard example chat text
+  version: 1.0.0
+extends: provider.openapi.yaml
+actions:
+  - target: $.components.schemas
+    description: Add guarded request and response projections.
+    update:
+      NemoGuardrailsExampleChatRequest:
+        type: object
+        additionalProperties: true
+        properties:
+          prompt:
+            type: string
+            minLength: 1
+            x-nemo-guardrails:
+              classification: guarded
+              subject:
+                kind: text
+                role: user
+                replaceable: false
+          model:
+            x-nemo-guardrails:
+              classification: opaque
+          stream:
+            const: false
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Buffered profile does not support streaming.
+        required: [prompt, model]
+        x-nemo-guardrails:
+          version: 1
+          kind: payload
+          profile: single_text.v1
+          direction: request
+          source: '#/components/schemas/ProviderChatRequest'
+      NemoGuardrailsExampleChatResponse:
+        type: object
+        additionalProperties: true
+        properties:
+          id:
+            x-nemo-guardrails:
+              classification: opaque
+          text:
+            type: string
+            minLength: 1
+            x-nemo-guardrails:
+              classification: guarded
+              subject:
+                kind: text
+                role: assistant
+                replaceable: false
+          usage:
+            x-nemo-guardrails:
+              classification: opaque
+        required: [id, text]
+        x-nemo-guardrails:
+          version: 1
+          kind: payload
+          profile: single_text.v1
+          direction: response
+          source: '#/components/schemas/ProviderChatResponse'
+  - target: $.paths['/chat'].post
+    description: Bind the guarded projections to the operation.
+    update:
+      x-nemo-guardrails:
+        version: 1
+        operation: example_chat
+        projections:
+          request: '#/components/schemas/NemoGuardrailsExampleChatRequest'
+          response: '#/components/schemas/NemoGuardrailsExampleChatResponse'
+  - target: $.paths['/chat'].post.requestBody.content['application/json'].schema['$ref']
+    description: Use the guarded request projection.
+    update: '#/components/schemas/NemoGuardrailsExampleChatRequest'
+  - target: $.paths['/chat'].post.responses['200'].content['application/json'].schema['$ref']
+    description: Use the guarded response projection.
+    update: '#/components/schemas/NemoGuardrailsExampleChatResponse'

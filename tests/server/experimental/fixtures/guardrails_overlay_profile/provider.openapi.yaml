@@ -1,0 +1,46 @@
+openapi: 3.1.0
+info:
+  title: Guardrails Overlay Profile fixture
+  version: 1.0.0
+paths:
+  /chat:
+    post:
+      operationId: createExampleChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderChatRequest'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderChatResponse'
+components:
+  schemas:
+    ProviderChatRequest:
+      type: object
+      additionalProperties: true
+      properties:
+        prompt:
+          type: string
+        model:
+          type: string
+        stream:
+          type: boolean
+      required: [prompt, model]
+    ProviderChatResponse:
+      type: object
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        usage:
+          type: object
+          additionalProperties: true
+      required: [id, text]

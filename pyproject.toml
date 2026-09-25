@@ -114,6 +114,8 @@ all = [
 lint = ["ruff==0.14.6"]
 typing = ["ty==0.0.56"]
 test = [
+  "jsonpath-rfc9535==1.0.0",
+  "openapi-spec-validator==0.9.0",
   "pytest>=9.0.3,<10.0.0",
   "pytest-asyncio>=1.4.0,<2.0.0",
   "pytest-cov>=4.1.0",

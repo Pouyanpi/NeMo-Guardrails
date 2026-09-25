@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nemo-guardrails:experimental:guardrails-overlay-profile:v1",
+  "title": "Guardrails Overlay Profile v1 extension",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/field"
+    },
+    {
+      "$ref": "#/$defs/projection"
+    },
+    {
+      "$ref": "#/$defs/operation"
+    }
+  ],
+  "$defs": {
+    "subject": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "text"
+        },
+        "role": {
+          "enum": [
+            "user",
+            "assistant"
+          ]
+        },
+        "replaceable": {
+          "const": false
+        }
+      },
+      "required": [
+        "kind",
+        "role",
+        "replaceable"
+      ],
+      "additionalProperties": false
+    },
+    "field": {
+      "type": "object",
+      "properties": {
+        "classification": {
+          "enum": [
+            "guarded",
+            "constrained",
+            "opaque"
+          ]
+        },
+        "subject": {
+          "$ref": "#/$defs/subject"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/component-reference"
+        },
+        "unknown_fields": {
+          "$ref": "#/$defs/unknown-field-policy"
+        }
+      },
+      "required": [
+        "classification"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "subject"
+            ]
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "guarded"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "reason"
+            ]
+          },
+          "then": {
+            "properties": {
+              "classification": {
+                "const": "constrained"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "projection": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "payload"
+        },
+        "profile": {
+          "const": "single_text.v1"
+        },
+        "direction": {
+          "enum": [
+            "request",
+            "response"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "pattern": "^#/components/schemas/[A-Za-z_][A-Za-z0-9._-]*$"
+        },
+        "unknown_fields": {
+          "$ref": "#/$defs/unknown-field-policy"
+        }
+      },
+      "required": [
+        "version",
+        "kind",
+        "profile",
+        "direction",
+        "source",
+        "source"
+      ],
+      "additionalProperties": false
+    },
+    "operation": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "operation": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "projections": {
+          "type": "object",
+          "properties": {
+            "request": {
+              "$ref": "#/$defs/component-reference"
+            },
+            "response": {
+              "$ref": "#/$defs/component-reference"
+            }
+          },
+          "required": [
+            "request",
+            "response"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "operation",
+        "projections"
+      ],
+      "additionalProperties": false
+    },
+    "component-reference": {
+      "type": "string",
+      "pattern": "^#/components/schemas/[A-Za-z_][A-Za-z0-9._-]*$"
+    },
+    "unknown-field-policy": {
+      "enum": [
+        "allow",
+        "forbid",
+        "configurable"
+      ]
+    }
+  }
+}
