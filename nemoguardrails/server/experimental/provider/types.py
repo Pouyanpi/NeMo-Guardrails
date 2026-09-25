@@ -13,27 +13,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import subprocess
-import sys
+"""Define provider-neutral values shared by the guarded proxy pipeline."""
 
-import pytest
+from dataclasses import dataclass
+from typing import Literal
 
 
-@pytest.mark.parametrize(
-    "module",
-    [
-        "nemoguardrails.server.experimental",
-        "nemoguardrails.server.experimental._content_checker",
-        "nemoguardrails.server.experimental._guarded_operation",
-        "nemoguardrails.server.experimental.provider.types",
-    ],
-)
-def test_private_kernel_modules_import_in_a_fresh_interpreter(module):
-    completed = subprocess.run(
-        [sys.executable, "-c", f"import {module}"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+@dataclass(frozen=True, slots=True)
+class GuardedMessage:
+    """Represent one message inspected by input or output rails."""
 
-    assert completed.returncode == 0, completed.stderr
+    role: Literal["user", "assistant"]
+    content: str

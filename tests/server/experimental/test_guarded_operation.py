@@ -15,16 +15,16 @@
 
 import pytest
 
-from nemoguardrails.server.experimental._content_checker import GuardedText
 from nemoguardrails.server.experimental._guarded_operation import BufferedGuardedOperation
+from nemoguardrails.server.experimental.provider.types import GuardedMessage
 
 
 def project_input(payload):
-    return GuardedText("user", payload["input"])
+    return GuardedMessage("user", payload["input"])
 
 
 def project_output(payload):
-    return GuardedText("assistant", payload["output"])
+    return GuardedMessage("assistant", payload["output"])
 
 
 def test_buffered_operation_accepts_private_dotted_name_and_projections():

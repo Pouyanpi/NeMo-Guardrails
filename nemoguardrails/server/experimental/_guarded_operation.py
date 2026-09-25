@@ -19,17 +19,17 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Generic, Protocol, TypeVar
 
-from nemoguardrails.server.experimental._content_checker import GuardedText
+from nemoguardrails.server.experimental.provider.types import GuardedMessage
 
 PayloadT = TypeVar("PayloadT", contravariant=True)
 RequestT = TypeVar("RequestT")
 ResponseT = TypeVar("ResponseT")
 
 
-class GuardedTextProjection(Protocol[PayloadT]):
+class GuardedMessageProjection(Protocol[PayloadT]):
     """Project one guarded text subject from a provider-owned value."""
 
-    def __call__(self, payload: PayloadT) -> GuardedText: ...
+    def __call__(self, payload: PayloadT) -> GuardedMessage: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,8 +37,8 @@ class BufferedGuardedOperation(Generic[RequestT, ResponseT]):
     """Declare the guarded subjects of one buffered provider operation."""
 
     name: str
-    input_projection: GuardedTextProjection[RequestT]
-    output_projection: GuardedTextProjection[ResponseT]
+    input_projection: GuardedMessageProjection[RequestT]
+    output_projection: GuardedMessageProjection[ResponseT]
 
     def __post_init__(self) -> None:
         if not isinstance(self.name, str) or not self.name:

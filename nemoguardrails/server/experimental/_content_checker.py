@@ -16,29 +16,21 @@
 """Private content-checking declarations for guarded provider operations."""
 
 from dataclasses import dataclass, field
-from typing import Literal, Protocol, TypeAlias, cast
+from typing import Protocol, TypeAlias, cast
+
+from nemoguardrails.server.experimental.provider.types import GuardedMessage
 
 
 class InvalidContentChecker(TypeError):
     """Report an object that does not satisfy the private checker boundary."""
 
 
+class UnsupportedContentCheckerConfiguration(ValueError):
+    """Report checker capabilities unsupported by the proxy pipeline."""
+
+
 class UnsupportedContentModification(RuntimeError):
     """Report a checker modification that the proxy cannot safely apply."""
-
-
-@dataclass(frozen=True, slots=True)
-class GuardedText:
-    """Carry one plain-text subject across the checker boundary."""
-
-    role: Literal["user", "assistant"]
-    content: str
-
-    def __post_init__(self) -> None:
-        if self.role not in ("user", "assistant"):
-            raise ValueError("Guarded text must have a user or assistant role.")
-        if not isinstance(self.content, str):
-            raise TypeError("Guarded text content must be a string.")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,21 +49,15 @@ class ContentInspectionPolicy:
 class InputContentCheck:
     """Carry a provider input subject to one checker."""
 
-    subject: GuardedText
+    message: GuardedMessage
 
 
 @dataclass(frozen=True, slots=True)
 class OutputContentCheck:
     """Carry generated text and its effective input context to one checker."""
 
-    input_subject: GuardedText
-    output_subject: GuardedText
-
-    def __post_init__(self) -> None:
-        if self.input_subject.role != "user":
-            raise ValueError("Output checks require a user input subject.")
-        if self.output_subject.role != "assistant":
-            raise ValueError("Output checks require an assistant output subject.")
+    input_message: GuardedMessage
+    output_content: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,14 +113,14 @@ class ContentChecker(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class ValidatedContentChecker:
+class _ResolvedContentChecker:
     """Bind one checker to the policy validated for its execution."""
 
     checker: ContentChecker
     policy: ContentInspectionPolicy
 
 
-def validate_content_checker(checker: object) -> ValidatedContentChecker:
+def validate_content_checker(checker: object) -> _ResolvedContentChecker:
     """Validate one statically bound checker before operation execution."""
 
     for method_name in ("inspection_policy", "check_input", "check_output"):
@@ -144,7 +130,7 @@ def validate_content_checker(checker: object) -> ValidatedContentChecker:
     policy = validated.inspection_policy()
     if not isinstance(policy, ContentInspectionPolicy):
         raise InvalidContentChecker("The content checker must return a ContentInspectionPolicy.")
-    return ValidatedContentChecker(validated, policy)
+    return _ResolvedContentChecker(validated, policy)
 
 
 def validate_content_check_decision(decision: object) -> ContentCheckDecision:

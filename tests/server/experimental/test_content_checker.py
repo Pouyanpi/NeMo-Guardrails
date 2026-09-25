@@ -20,14 +20,15 @@ from nemoguardrails.server.experimental._content_checker import (
     ContentBlocked,
     ContentCheckFailed,
     ContentInspectionPolicy,
-    GuardedText,
     InputContentCheck,
     InvalidContentChecker,
     OutputContentCheck,
+    UnsupportedContentCheckerConfiguration,
     UnsupportedContentModification,
     validate_content_check_decision,
     validate_content_checker,
 )
+from nemoguardrails.server.experimental.provider.types import GuardedMessage
 
 
 class StaticChecker:
@@ -45,36 +46,23 @@ class StaticChecker:
         return ContentAllowed()
 
 
-def test_guarded_text_accepts_supported_roles():
-    assert GuardedText("user", "question").content == "question"
-    assert GuardedText("assistant", "answer").content == "answer"
+def test_guarded_message_preserves_role_and_content():
+    assert GuardedMessage("user", "question").content == "question"
+    assert GuardedMessage("assistant", "answer").content == "answer"
 
 
-def test_guarded_text_rejects_unknown_roles():
-    with pytest.raises(ValueError, match="user or assistant"):
-        GuardedText("tool", "result")
-
-
-def test_output_check_requires_user_and_assistant_subjects():
+def test_output_check_preserves_source_contract():
     check = OutputContentCheck(
-        input_subject=GuardedText("user", "question"),
-        output_subject=GuardedText("assistant", "answer"),
+        input_message=GuardedMessage("user", "question"),
+        output_content="answer",
     )
 
-    assert check.input_subject.content == "question"
-    assert check.output_subject.content == "answer"
+    assert check.input_message.content == "question"
+    assert check.output_content == "answer"
 
 
-@pytest.mark.parametrize(
-    ("input_role", "output_role"),
-    [("assistant", "assistant"), ("user", "user")],
-)
-def test_output_check_rejects_incorrect_subject_roles(input_role, output_role):
-    with pytest.raises(ValueError):
-        OutputContentCheck(
-            input_subject=GuardedText(input_role, "input"),
-            output_subject=GuardedText(output_role, "output"),
-        )
+def test_source_unsupported_configuration_exception_is_available():
+    assert issubclass(UnsupportedContentCheckerConfiguration, ValueError)
 
 
 def test_static_checker_is_validated_once_without_a_resolver():
@@ -117,7 +105,7 @@ def test_content_modification_is_explicitly_unsupported():
         validate_content_check_decision(ContentAllowed(replacement="modified"))
 
 
-def test_input_check_carries_the_guarded_subject():
-    subject = GuardedText("user", "question")
+def test_input_check_carries_the_guarded_message():
+    message = GuardedMessage("user", "question")
 
-    assert InputContentCheck(subject).subject is subject
+    assert InputContentCheck(message).message is message
