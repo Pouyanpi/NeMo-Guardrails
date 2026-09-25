@@ -10,6 +10,12 @@
       "$ref": "#/$defs/projection"
     },
     {
+      "$ref": "#/$defs/stream-projection"
+    },
+    {
+      "$ref": "#/$defs/stream-event"
+    },
+    {
       "$ref": "#/$defs/operation"
     }
   ],
@@ -132,6 +138,119 @@
       ],
       "additionalProperties": false
     },
+    "stream-projection": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "stream"
+        },
+        "profile": {
+          "const": "single_text_delta.v1"
+        },
+        "source": {
+          "$ref": "#/$defs/component-reference"
+        },
+        "unknown_fields": {
+          "$ref": "#/$defs/unknown-field-policy"
+        },
+        "transport": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "const": "sse"
+            },
+            "non_data_shape": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sentinels": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "format",
+            "non_data_shape",
+            "sentinels"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "version",
+        "kind",
+        "profile",
+        "source",
+        "unknown_fields",
+        "transport"
+      ],
+      "additionalProperties": false
+    },
+    "stream-event": {
+      "type": "object",
+      "properties": {
+        "event": {
+          "type": "object",
+          "properties": {
+            "classification": {
+              "enum": [
+                "guarded_delta",
+                "provider_error"
+              ]
+            },
+            "shape": {
+              "type": "string",
+              "minLength": 1
+            },
+            "match": {
+              "type": "object"
+            },
+            "required_fields": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "uniqueItems": true
+            },
+            "missing_text": {
+              "type": "object",
+              "properties": {
+                "classification": {
+                  "const": "opaque_metadata"
+                },
+                "shape": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "classification",
+                "shape"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "classification",
+            "shape",
+            "match",
+            "required_fields"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "additionalProperties": false
+    },
     "operation": {
       "type": "object",
       "properties": {
@@ -150,6 +269,36 @@
             },
             "response": {
               "$ref": "#/$defs/component-reference"
+            },
+            "stream": {
+              "type": "object",
+              "properties": {
+                "projection": {
+                  "$ref": "#/$defs/component-reference"
+                },
+                "selector": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                    },
+                    "value": {
+                      "const": true
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "value"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "projection",
+                "selector"
+              ],
+              "additionalProperties": false
             }
           },
           "required": [

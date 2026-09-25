@@ -38,6 +38,53 @@ PROVIDER_DOCUMENT_VERSION = "2.3.0"
 PROVIDER_DOCUMENT_SHA256 = "f2dae1a9aced09b91310db89edda51bf1e36ecbfb05230c3a50b239c07708469"
 CAPABILITY_PROFILE = "single_text.v1"
 REQUEST_SOURCE_SCHEMA = "CreateChatCompletionRequest"
+REQUEST_GUARDED_FIELDS = frozenset(["messages"])
+REQUEST_CONSTRAINED_FIELDS = frozenset(
+    [
+        "audio",
+        "function_call",
+        "functions",
+        "modalities",
+        "n",
+        "parallel_tool_calls",
+        "prediction",
+        "response_format",
+        "stream",
+        "tool_choice",
+        "tools",
+        "web_search_options",
+    ]
+)
+REQUEST_OPAQUE_FIELDS = frozenset(
+    [
+        "frequency_penalty",
+        "logit_bias",
+        "logprobs",
+        "max_completion_tokens",
+        "max_tokens",
+        "metadata",
+        "model",
+        "moderation",
+        "presence_penalty",
+        "prompt_cache_key",
+        "prompt_cache_options",
+        "prompt_cache_retention",
+        "reasoning_effort",
+        "safety_identifier",
+        "seed",
+        "service_tier",
+        "stop",
+        "store",
+        "stream_options",
+        "temperature",
+        "top_logprobs",
+        "top_p",
+        "user",
+        "verbosity",
+    ]
+)
+REQUEST_CONTENT_SCHEMAS = (("ChatCompletionRequestUserMessage", frozenset(["content", "name", "role"])),)
+STREAM_SELECTOR_FIELD = "stream"
 GUARDED_TEXT_LOCATION = GuardedTextLocation(
     role="user",
     object_path=("messages", 0),
@@ -114,4 +161,4 @@ class ChatCompletionsGuardedRequest(ChatCompletionsGuardedRequestProjection):
 
     guarded_text_location = GUARDED_TEXT_LOCATION
     projection_contract = PAYLOAD_CONTRACT
-    stream_selector_field = "stream"
+    stream_selector_field = STREAM_SELECTOR_FIELD

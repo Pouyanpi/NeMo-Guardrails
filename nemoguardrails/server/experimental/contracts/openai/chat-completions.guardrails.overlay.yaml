@@ -1,10 +1,10 @@
 overlay: 1.1.0
 info:
-  title: Guard OpenAI Chat Completions buffered text
+  title: Guard OpenAI Chat Completions buffered and streamed text
   version: 1.0.0
 actions:
   - target: $.components.schemas
-    description: Add buffered Chat Completions request and response projections.
+    description: Add buffered and streamed Chat Completions projections.
     update:
       NemoGuardrailsChatCompletionsRequest:
         type: object
@@ -91,11 +91,11 @@ actions:
               classification: constrained
               reason: The buffered text profile requires plain text output.
           stream:
-            const: false
+            type: boolean
             default: false
             x-nemo-guardrails:
               classification: constrained
-              reason: Streaming is introduced by the next delivery phase.
+              reason: The operation selects buffered or streamed response handling from this field.
           tool_choice:
             type: 'null'
             default: null
@@ -315,8 +315,175 @@ actions:
           profile: single_text.v1
           direction: response
           source: '#/components/schemas/CreateChatCompletionResponse'
+      NemoGuardrailsChatCompletionsStream:
+        oneOf:
+          - type: object
+            additionalProperties: true
+            properties:
+              choices:
+                type: array
+                maxItems: 1
+                items:
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    delta:
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        audio:
+                          type: 'null'
+                          default: null
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Audio content is outside the streamed text profile.
+                        content:
+                          type: [string, 'null']
+                          x-nemo-guardrails:
+                            classification: guarded
+                            subject:
+                              kind: text
+                              role: assistant
+                              replaceable: false
+                        function_call:
+                          type: 'null'
+                          default: null
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Function calling is outside the streamed text profile.
+                        reasoning_content:
+                          type: 'null'
+                          default: null
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Reasoning content is outside the streamed text profile.
+                        refusal:
+                          type: 'null'
+                          default: null
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Refusal content is outside the streamed text profile.
+                        role:
+                          enum: [assistant, null]
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Streamed message roles must remain assistant-owned.
+                        tool_calls:
+                          type: 'null'
+                          default: null
+                          x-nemo-guardrails:
+                            classification: constrained
+                            reason: Tool calling is outside the streamed text profile.
+                      x-nemo-guardrails:
+                        classification: guarded
+                        source: '#/components/schemas/ChatCompletionStreamResponseDelta'
+                        unknown_fields: forbid
+                    finish_reason:
+                      x-nemo-guardrails:
+                        classification: opaque
+                    index:
+                      const: 0
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: The streamed text profile guards one assistant choice.
+                    logprobs:
+                      x-nemo-guardrails:
+                        classification: opaque
+                  required: [delta, index]
+                  x-nemo-guardrails:
+                    classification: guarded
+                    unknown_fields: allow
+                x-nemo-guardrails:
+                  classification: guarded
+              created:
+                x-nemo-guardrails:
+                  classification: opaque
+              id:
+                x-nemo-guardrails:
+                  classification: opaque
+              model:
+                x-nemo-guardrails:
+                  classification: opaque
+              moderation:
+                x-nemo-guardrails:
+                  classification: opaque
+              object:
+                const: chat.completion.chunk
+                x-nemo-guardrails:
+                  classification: constrained
+                  reason: The classifier accepts only Chat Completions chunk events.
+              obfuscation:
+                x-nemo-guardrails:
+                  classification: opaque
+              service_tier:
+                x-nemo-guardrails:
+                  classification: opaque
+              system_fingerprint:
+                x-nemo-guardrails:
+                  classification: opaque
+              usage:
+                x-nemo-guardrails:
+                  classification: opaque
+            required: [choices, object]
+            x-nemo-guardrails:
+              event:
+                classification: guarded_delta
+                shape: chat.completion.chunk:content
+                match:
+                  object: chat.completion.chunk
+                required_fields: []
+                missing_text:
+                  classification: opaque_metadata
+                  shape: chat.completion.chunk:metadata
+          - type: object
+            additionalProperties: false
+            properties:
+              error:
+                type: object
+                additionalProperties: true
+                properties:
+                  code:
+                    x-nemo-guardrails:
+                      classification: opaque
+                  message:
+                    type: string
+                    x-nemo-guardrails:
+                      classification: opaque
+                  misalignment:
+                    x-nemo-guardrails:
+                      classification: opaque
+                  param:
+                    x-nemo-guardrails:
+                      classification: opaque
+                  type:
+                    x-nemo-guardrails:
+                      classification: opaque
+                required: [message]
+                x-nemo-guardrails:
+                  classification: constrained
+                  reason: Provider errors contain no assistant text to inspect.
+                  source: '#/components/schemas/Error'
+                  unknown_fields: allow
+            required: [error]
+            x-nemo-guardrails:
+              event:
+                classification: provider_error
+                shape: error
+                match: {}
+                required_fields: [error]
+        x-nemo-guardrails:
+          version: 1
+          kind: stream
+          profile: single_text_delta.v1
+          source: '#/components/schemas/CreateChatCompletionStreamResponse'
+          unknown_fields: allow
+          transport:
+            format: sse
+            non_data_shape: '[DONE]'
+            sentinels:
+              '[DONE]': '[DONE]'
   - target: $.paths['/chat/completions'].post
-    description: Bind the buffered guarded projections to Chat Completions.
+    description: Bind the buffered and streamed guarded projections to Chat Completions.
     update:
       x-nemo-guardrails:
         version: 1
@@ -324,9 +491,17 @@ actions:
         projections:
           request: '#/components/schemas/NemoGuardrailsChatCompletionsRequest'
           response: '#/components/schemas/NemoGuardrailsChatCompletionsResponse'
+          stream:
+            projection: '#/components/schemas/NemoGuardrailsChatCompletionsStream'
+            selector:
+              field: stream
+              value: true
   - target: $.paths['/chat/completions'].post.requestBody.content['application/json'].schema['$ref']
     description: Use the guarded request projection.
     update: '#/components/schemas/NemoGuardrailsChatCompletionsRequest'
   - target: $.paths['/chat/completions'].post.responses['200'].content['application/json'].schema['$ref']
     description: Use the guarded buffered response projection.
     update: '#/components/schemas/NemoGuardrailsChatCompletionsResponse'
+  - target: $.paths['/chat/completions'].post.responses['200'].content['text/event-stream'].schema['$ref']
+    description: Use the guarded stream event projection.
+    update: '#/components/schemas/NemoGuardrailsChatCompletionsStream'

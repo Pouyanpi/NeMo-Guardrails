@@ -91,7 +91,7 @@ def test_chat_contract_is_valid_overlay_with_closed_guardrails_semantics():
     assert all(subject["replaceable"] is False for subject in subjects)
 
 
-def test_chat_contract_is_buffered_only_and_binds_both_payload_projections():
+def test_chat_contract_binds_buffered_and_streamed_projections():
     overlay = _load_yaml(OPENAI / "chat-completions.guardrails.overlay.yaml")
     schemas = _projection_schemas(overlay)
     operation = next(action for action in overlay["actions"] if action["target"] == "$.paths['/chat/completions'].post")
@@ -100,14 +100,26 @@ def test_chat_contract_is_buffered_only_and_binds_both_payload_projections():
     assert set(schemas) == {
         "NemoGuardrailsChatCompletionsRequest",
         "NemoGuardrailsChatCompletionsResponse",
+        "NemoGuardrailsChatCompletionsStream",
     }
     assert declaration["projections"] == {
         "request": "#/components/schemas/NemoGuardrailsChatCompletionsRequest",
         "response": "#/components/schemas/NemoGuardrailsChatCompletionsResponse",
+        "stream": {
+            "projection": "#/components/schemas/NemoGuardrailsChatCompletionsStream",
+            "selector": {"field": "stream", "value": True},
+        },
     }
-    assert len(overlay["actions"]) == 4
-    assert all("text/event-stream" not in action["target"] for action in overlay["actions"])
-    assert schemas["NemoGuardrailsChatCompletionsRequest"]["properties"]["stream"]["const"] is False
+    assert len(overlay["actions"]) == 5
+    assert any("text/event-stream" in action["target"] for action in overlay["actions"])
+    assert schemas["NemoGuardrailsChatCompletionsRequest"]["properties"]["stream"] == {
+        "type": "boolean",
+        "default": False,
+        EXTENSION: {
+            "classification": "constrained",
+            "reason": "The operation selects buffered or streamed response handling from this field.",
+        },
+    }
 
 
 def test_chat_request_contract_accounts_for_the_pinned_provider_fields():
@@ -200,3 +212,34 @@ def test_projection_components_are_valid_json_schemas():
 
     for schema in _projection_schemas(overlay).values():
         Draft202012Validator.check_schema(schema)
+
+
+def test_chat_stream_contract_closes_content_shapes_and_declares_event_inventory():
+    stream = _projection_schemas(_load_yaml(OPENAI / "chat-completions.guardrails.overlay.yaml"))[
+        "NemoGuardrailsChatCompletionsStream"
+    ]
+    chunk, error = stream["oneOf"]
+    delta = chunk["properties"]["choices"]["items"]["properties"]["delta"]
+
+    assert delta["additionalProperties"] is False
+    assert delta["properties"]["content"][EXTENSION]["subject"] == {
+        "kind": "text",
+        "role": "assistant",
+        "replaceable": False,
+    }
+    assert chunk[EXTENSION]["event"] == {
+        "classification": "guarded_delta",
+        "shape": "chat.completion.chunk:content",
+        "match": {"object": "chat.completion.chunk"},
+        "required_fields": [],
+        "missing_text": {
+            "classification": "opaque_metadata",
+            "shape": "chat.completion.chunk:metadata",
+        },
+    }
+    assert error[EXTENSION]["event"]["classification"] == "provider_error"
+    assert stream[EXTENSION]["transport"] == {
+        "format": "sse",
+        "non_data_shape": "[DONE]",
+        "sentinels": {"[DONE]": "[DONE]"},
+    }
