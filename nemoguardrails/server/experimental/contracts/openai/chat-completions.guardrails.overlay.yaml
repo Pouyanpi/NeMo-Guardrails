@@ -1,0 +1,332 @@
+overlay: 1.1.0
+info:
+  title: Guard OpenAI Chat Completions buffered text
+  version: 1.0.0
+actions:
+  - target: $.components.schemas
+    description: Add buffered Chat Completions request and response projections.
+    update:
+      NemoGuardrailsChatCompletionsRequest:
+        type: object
+        additionalProperties: true
+        properties:
+          audio:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Audio output is outside the buffered text profile.
+          function_call:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Function calling is outside the buffered text profile.
+          functions:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Function calling is outside the buffered text profile.
+          messages:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              additionalProperties: true
+              properties:
+                content:
+                  type: string
+                  minLength: 1
+                  x-nemo-guardrails:
+                    classification: guarded
+                    subject:
+                      kind: text
+                      role: user
+                      replaceable: false
+                name:
+                  x-nemo-guardrails:
+                    classification: opaque
+                role:
+                  const: user
+                  x-nemo-guardrails:
+                    classification: constrained
+                    reason: The buffered text profile accepts one user message.
+              required: [content, role]
+              x-nemo-guardrails:
+                classification: guarded
+                source: '#/components/schemas/ChatCompletionRequestUserMessage'
+                unknown_fields: configurable
+            x-nemo-guardrails:
+              classification: guarded
+          modalities:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Multimodal output is outside the buffered text profile.
+          n:
+            const: 1
+            default: 1
+            x-nemo-guardrails:
+              classification: constrained
+              reason: The buffered text profile guards one assistant response.
+          parallel_tool_calls:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Tool calling is outside the buffered text profile.
+          prediction:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Predicted content is outside the buffered text profile.
+          response_format:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: The buffered text profile requires plain text output.
+          stream:
+            const: false
+            default: false
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Streaming is introduced by the next delivery phase.
+          tool_choice:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Tool calling is outside the buffered text profile.
+          tools:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Tool calling is outside the buffered text profile.
+          web_search_options:
+            type: 'null'
+            default: null
+            x-nemo-guardrails:
+              classification: constrained
+              reason: Web search is outside the buffered text profile.
+          safety_identifier:
+            x-nemo-guardrails:
+              classification: opaque
+          logit_bias:
+            x-nemo-guardrails:
+              classification: opaque
+          presence_penalty:
+            x-nemo-guardrails:
+              classification: opaque
+          reasoning_effort:
+            x-nemo-guardrails:
+              classification: opaque
+          store:
+            x-nemo-guardrails:
+              classification: opaque
+          stop:
+            x-nemo-guardrails:
+              classification: opaque
+          top_p:
+            x-nemo-guardrails:
+              classification: opaque
+          verbosity:
+            x-nemo-guardrails:
+              classification: opaque
+          seed:
+            x-nemo-guardrails:
+              classification: opaque
+          stream_options:
+            x-nemo-guardrails:
+              classification: opaque
+          moderation:
+            x-nemo-guardrails:
+              classification: opaque
+          service_tier:
+            x-nemo-guardrails:
+              classification: opaque
+          user:
+            x-nemo-guardrails:
+              classification: opaque
+          prompt_cache_options:
+            x-nemo-guardrails:
+              classification: opaque
+          temperature:
+            x-nemo-guardrails:
+              classification: opaque
+          max_tokens:
+            x-nemo-guardrails:
+              classification: opaque
+          max_completion_tokens:
+            x-nemo-guardrails:
+              classification: opaque
+          frequency_penalty:
+            x-nemo-guardrails:
+              classification: opaque
+          top_logprobs:
+            x-nemo-guardrails:
+              classification: opaque
+          prompt_cache_key:
+            x-nemo-guardrails:
+              classification: opaque
+          model:
+            x-nemo-guardrails:
+              classification: opaque
+          metadata:
+            x-nemo-guardrails:
+              classification: opaque
+          logprobs:
+            x-nemo-guardrails:
+              classification: opaque
+          prompt_cache_retention:
+            x-nemo-guardrails:
+              classification: opaque
+        required: [messages]
+        x-nemo-guardrails:
+          version: 1
+          kind: payload
+          profile: single_text.v1
+          direction: request
+          source: '#/components/schemas/CreateChatCompletionRequest'
+      NemoGuardrailsChatCompletionsResponse:
+        type: object
+        additionalProperties: true
+        properties:
+          choices:
+            type: array
+            minItems: 1
+            maxItems: 1
+            items:
+              type: object
+              additionalProperties: true
+              properties:
+                finish_reason:
+                  x-nemo-guardrails:
+                    classification: opaque
+                index:
+                  x-nemo-guardrails:
+                    classification: opaque
+                logprobs:
+                  type: 'null'
+                  default: null
+                  x-nemo-guardrails:
+                    classification: constrained
+                    reason: Token log probabilities may contain unchecked generated text.
+                message:
+                  type: object
+                  additionalProperties: true
+                  properties:
+                    annotations:
+                      type: array
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Provider annotations affect whether generated text can be replaced safely.
+                    audio:
+                      type: 'null'
+                      default: null
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Audio content is outside the buffered text profile.
+                    content:
+                      type: string
+                      minLength: 1
+                      x-nemo-guardrails:
+                        classification: guarded
+                        subject:
+                          kind: text
+                          role: assistant
+                          replaceable: false
+                    function_call:
+                      type: 'null'
+                      default: null
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Function calling is outside the buffered text profile.
+                    reasoning_content:
+                      type: 'null'
+                      default: null
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Reasoning content is outside the buffered text profile.
+                    refusal:
+                      type: 'null'
+                      default: null
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Refusal content is outside the buffered text profile.
+                    role:
+                      const: assistant
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: The guarded response must contain an assistant message.
+                    tool_calls:
+                      type: 'null'
+                      default: null
+                      x-nemo-guardrails:
+                        classification: constrained
+                        reason: Tool calling is outside the buffered text profile.
+                  required: [content, role]
+                  x-nemo-guardrails:
+                    classification: guarded
+                    source: '#/components/schemas/ChatCompletionResponseMessage'
+                    unknown_fields: configurable
+              required: [message]
+              x-nemo-guardrails:
+                classification: guarded
+                unknown_fields: configurable
+            x-nemo-guardrails:
+              classification: guarded
+          service_tier:
+            x-nemo-guardrails:
+              classification: opaque
+          created:
+            x-nemo-guardrails:
+              classification: opaque
+          object:
+            x-nemo-guardrails:
+              classification: opaque
+          system_fingerprint:
+            x-nemo-guardrails:
+              classification: opaque
+          usage:
+            x-nemo-guardrails:
+              classification: opaque
+          id:
+            x-nemo-guardrails:
+              classification: opaque
+          model:
+            x-nemo-guardrails:
+              classification: opaque
+          metadata:
+            x-nemo-guardrails:
+              classification: opaque
+          moderation:
+            x-nemo-guardrails:
+              classification: opaque
+        required: [choices]
+        x-nemo-guardrails:
+          version: 1
+          kind: payload
+          profile: single_text.v1
+          direction: response
+          source: '#/components/schemas/CreateChatCompletionResponse'
+  - target: $.paths['/chat/completions'].post
+    description: Bind the buffered guarded projections to Chat Completions.
+    update:
+      x-nemo-guardrails:
+        version: 1
+        operation: chat_completions
+        projections:
+          request: '#/components/schemas/NemoGuardrailsChatCompletionsRequest'
+          response: '#/components/schemas/NemoGuardrailsChatCompletionsResponse'
+  - target: $.paths['/chat/completions'].post.requestBody.content['application/json'].schema['$ref']
+    description: Use the guarded request projection.
+    update: '#/components/schemas/NemoGuardrailsChatCompletionsRequest'
+  - target: $.paths['/chat/completions'].post.responses['200'].content['application/json'].schema['$ref']
+    description: Use the guarded buffered response projection.
+    update: '#/components/schemas/NemoGuardrailsChatCompletionsResponse'
