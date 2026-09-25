@@ -30,6 +30,11 @@ from nemoguardrails.server.experimental._guarded_operation import (
     InvalidGuardedPayload,
     UnsupportedGuardedRepresentation,
 )
+from nemoguardrails.server.experimental._guarded_stream import (
+    StreamInspectionUnsupported,
+    StreamProcessingFailed,
+    StreamUpstreamFailed,
+)
 from nemoguardrails.server.experimental._http_kernel import (
     BufferedHttpResponse,
     HttpFailureKind,
@@ -81,6 +86,9 @@ def render_openai_error(
         | OperationModificationUnsupported
         | OperationProjectionFailed
         | HttpOperationFailed
+        | StreamInspectionUnsupported
+        | StreamProcessingFailed
+        | StreamUpstreamFailed
     ),
 ) -> BufferedHttpResponse:
     """Render one typed proxy outcome with the OpenAI-compatible envelope."""
@@ -113,6 +121,27 @@ def render_openai_error(
             "The guarded provider response content cannot be replaced.",
             "unsupported_response",
             "response_content_not_replaceable",
+        )
+    if isinstance(outcome, StreamInspectionUnsupported):
+        return _error_response(
+            422,
+            "The configured output inspection policy cannot guard a streamed response.",
+            "unsupported_request",
+            "unsupported_stream_inspection_policy",
+        )
+    if isinstance(outcome, StreamUpstreamFailed):
+        return _error_response(
+            502,
+            "The upstream OpenAI Chat Completions stream failed.",
+            "proxy_error",
+            "upstream_stream_failed",
+        )
+    if isinstance(outcome, StreamProcessingFailed):
+        return _error_response(
+            502,
+            "The OpenAI Chat Completions stream could not be processed safely.",
+            "proxy_error",
+            "stream_processing_failed",
         )
     if isinstance(outcome, HttpOperationFailed):
         status_code, error_type, message = {
