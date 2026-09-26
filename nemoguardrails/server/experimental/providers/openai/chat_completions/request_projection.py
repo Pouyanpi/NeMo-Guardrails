@@ -17,9 +17,9 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, StrictBool
 
-from nemoguardrails.server.experimental.provider.payload import GuardedContentModel, GuardedRequestModel, StrictFalse
+from nemoguardrails.server.experimental.provider.payload import GuardedContentModel, GuardedRequestModel
 
 
 class ChatCompletionsUserMessageProjection(GuardedContentModel):
@@ -42,7 +42,7 @@ class ChatCompletionsGuardedRequestProjection(GuardedRequestModel):
     parallel_tool_calls: None = None
     prediction: None = None
     response_format: None = None
-    stream: StrictFalse = False
+    stream: StrictBool = False
     tool_choice: None = None
     tools: None = None
     web_search_options: None = None

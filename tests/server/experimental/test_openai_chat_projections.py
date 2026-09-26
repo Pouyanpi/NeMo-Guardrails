@@ -119,7 +119,6 @@ def test_request_binding_targets_original_provider_object_without_rewriting_byte
         _request(messages=[{"role": "user", "content": "one"}, {"role": "user", "content": "two"}]),
         _request(messages=[{"role": "assistant", "content": "question"}]),
         _request(messages=[{"role": "user", "content": ""}]),
-        _request(stream=True),
         _request(stream=0),
         _request(n=2),
         _request(tools=[{"type": "function"}]),
@@ -142,6 +141,15 @@ def test_response_binding_targets_original_provider_object_without_rewriting_byt
     assert target._object is payload["choices"][0]["message"]
     assert target.allows_replacement is False
     assert body == original
+
+
+@pytest.mark.parametrize(("stream", "expected"), [(False, False), (True, True)])
+def test_request_projection_uses_one_strict_boolean_stream_selector(stream, expected):
+    payload = _request(stream=stream)
+
+    projection = ChatCompletionsGuardedRequest.validate_payload(payload)
+
+    assert projection.streams_response is expected
 
 
 @pytest.mark.parametrize(

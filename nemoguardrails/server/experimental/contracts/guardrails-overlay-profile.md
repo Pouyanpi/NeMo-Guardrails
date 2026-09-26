@@ -31,7 +31,7 @@ The profile vocabulary is validated by [`guardrails-overlay-profile-v1.schema.js
 
 ## Capability profile
 
-Version 1 defines one capability profile: `single_text.v1`.
+Version 1 defines two capability profiles: `single_text.v1` for buffered payloads and `single_text_delta.v1` for event streams.
 
 It supports one or more text subjects whose roles are `user` or `assistant`. It does not imply that provider payloads are flat or that only one provider field exists. Every provider-owned field represented at a guarded boundary must have one classification.
 
@@ -42,6 +42,8 @@ It supports one or more text subjects whose roles are `user` or `assistant`. It 
 | `opaque` | The field remains under provider authority and is preserved without Guardrails interpretation. |
 
 Classification does not authorize payload rewriting. Every v1 text subject declares `replaceable: false`. A checker request to modify content remains an explicit runtime failure.
+
+`single_text_delta.v1` carries one assistant text as ordered deltas. Every reviewed event shape is classified as a guarded delta, opaque metadata, or provider error. Provider-error events are preserved but never interpreted as generated assistant text. A guarded-delta declaration must define how missing text becomes an explicit opaque event shape. The profile does not allow output to be released before its configured inspection window passes.
 
 ## Projection declarations
 
@@ -104,6 +106,8 @@ x-nemo-guardrails:
 
 The binding is local to one OpenAPI operation. Overlay actions also redirect that operation's request and successful buffered-response schema references to the same components. A profile validator must reject missing, mismatched, or dangling bindings.
 
+A streaming operation adds a `stream` binding containing an event projection and a boolean request selector. The referenced schema is an ordinary OpenAPI union whose branches carry closed stream-event declarations. Its root declares the reviewed provider event schema, explicit unknown-field policy, SSE framing, non-data event shape, and terminal sentinels. The shared request projection selects buffered or streaming response handling; stream event projection and classification remain separate. Generated-looking classifiers implement the declared event shapes, while permanent handwritten hooks own provider-native error framing.
+
 Overlay action targets are RFC 9535 JSONPath expressions. Direct operation and
 component-index bindings accept equivalent dot and bracket notation; their
 meaning must not depend on one textual spelling. The later compiler remains
@@ -139,7 +143,6 @@ Version 1 does not define:
 
 - an authoring frontend or compiler;
 - a provider contract or source acquisition format;
-- streaming events or classifiers;
 - normalization overlays;
 - tools, images, audio, or multimodal content;
 - safe replacement;
