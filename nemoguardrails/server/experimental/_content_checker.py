@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Private content-checking declarations for guarded provider operations."""
+"""Define private content-checking declarations for guarded operations."""
 
 from dataclasses import dataclass, field
 from typing import Protocol, TypeAlias, cast
@@ -35,12 +35,14 @@ class UnsupportedContentModification(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ContentInspectionPolicy:
-    """Declare which crossings one checker inspects."""
+    """Record whether a checker examines input and output content."""
 
     inspect_input: bool
     inspect_output: bool
 
     def __post_init__(self) -> None:
+        """Reject non-boolean inspection flags."""
+
         if not isinstance(self.inspect_input, bool) or not isinstance(self.inspect_output, bool):
             raise TypeError("Content inspection flags must be booleans.")
 
@@ -67,6 +69,8 @@ class ContentAllowed:
     replacement: str | None = None
 
     def __post_init__(self) -> None:
+        """Reject replacement values that cannot represent text."""
+
         if self.replacement is not None and not isinstance(self.replacement, str):
             raise TypeError("A content replacement must be a string.")
 
@@ -79,6 +83,8 @@ class ContentBlocked:
     rule: str | None = None
 
     def __post_init__(self) -> None:
+        """Require a client-safe message and an optional non-empty rule."""
+
         if not isinstance(self.message, str) or not self.message:
             raise ValueError("A blocked-content message must be a non-empty string.")
         if self.rule is not None and (not isinstance(self.rule, str) or not self.rule):
@@ -87,12 +93,14 @@ class ContentBlocked:
 
 @dataclass(frozen=True, slots=True)
 class ContentCheckFailed:
-    """Report that checking could not produce an enforcement decision."""
+    """Report that checking could not produce a decision."""
 
     message: str
     cause: BaseException | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
+        """Require a message and preserve only exception-shaped causes."""
+
         if not isinstance(self.message, str) or not self.message:
             raise ValueError("A checker failure message must be a non-empty string.")
         if self.cause is not None and not isinstance(self.cause, BaseException):
@@ -103,13 +111,22 @@ ContentCheckDecision: TypeAlias = ContentAllowed | ContentBlocked | ContentCheck
 
 
 class ContentChecker(Protocol):
-    """Inspect provider content without owning provider or transport behavior."""
+    """Inspect provider-neutral input and output content."""
 
-    def inspection_policy(self) -> ContentInspectionPolicy: ...
+    def inspection_policy(self) -> ContentInspectionPolicy:
+        """Return which input and output checks are enabled."""
 
-    async def check_input(self, check: InputContentCheck) -> ContentCheckDecision: ...
+        ...
 
-    async def check_output(self, check: OutputContentCheck) -> ContentCheckDecision: ...
+    async def check_input(self, check: InputContentCheck) -> ContentCheckDecision:
+        """Inspect one input message."""
+
+        ...
+
+    async def check_output(self, check: OutputContentCheck) -> ContentCheckDecision:
+        """Inspect output text with its input context."""
+
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,5 +156,5 @@ def validate_content_check_decision(decision: object) -> ContentCheckDecision:
     if not isinstance(decision, (ContentAllowed, ContentBlocked, ContentCheckFailed)):
         raise TypeError("The content checker returned an unsupported decision.")
     if isinstance(decision, ContentAllowed) and decision.replacement is not None:
-        raise UnsupportedContentModification("Content modification is not supported by the transparent proxy kernel.")
+        raise UnsupportedContentModification("Content modification is not supported.")
     return decision

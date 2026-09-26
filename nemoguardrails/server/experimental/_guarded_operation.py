@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Private guarded-operation declarations."""
+"""Describe buffered provider operations and their checked content."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,20 +27,25 @@ ResponseT = TypeVar("ResponseT")
 
 
 class GuardedMessageProjection(Protocol[PayloadT]):
-    """Project one guarded text subject from a provider-owned value."""
+    """Extract one message to check from a provider-owned value."""
 
-    def __call__(self, payload: PayloadT) -> GuardedMessage: ...
+    def __call__(self, payload: PayloadT) -> GuardedMessage:
+        """Return the message selected from one payload."""
+
+        ...
 
 
 @dataclass(frozen=True, slots=True)
 class BufferedGuardedOperation(Generic[RequestT, ResponseT]):
-    """Declare the guarded subjects of one buffered provider operation."""
+    """Describe the checked input and output of one buffered operation."""
 
     name: str
     input_projection: GuardedMessageProjection[RequestT]
     output_projection: GuardedMessageProjection[ResponseT]
 
     def __post_init__(self) -> None:
+        """Validate the operation identity and its provider projections."""
+
         if not isinstance(self.name, str) or not self.name:
             raise ValueError("A guarded operation name must be a non-empty dotted identifier.")
         if not all(part.isidentifier() for part in self.name.split(".")):

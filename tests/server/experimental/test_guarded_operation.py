@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test declarations for buffered guarded operations."""
+
 import pytest
 
 from nemoguardrails.server.experimental._guarded_operation import BufferedGuardedOperation
@@ -28,6 +30,8 @@ def project_output(payload):
 
 
 def test_buffered_operation_accepts_private_dotted_name_and_projections():
+    """Accept a dotted operation name and callable projections."""
+
     operation = BufferedGuardedOperation(
         name="test.chat.completions",
         input_projection=project_input,
@@ -40,6 +44,8 @@ def test_buffered_operation_accepts_private_dotted_name_and_projections():
 
 @pytest.mark.parametrize("name", ["", ".chat", "chat.", "chat-completions", "chat completions"])
 def test_buffered_operation_rejects_invalid_names(name):
+    """Reject operation names that cannot serve as dotted identities."""
+
     with pytest.raises(ValueError, match="dotted identifier"):
         BufferedGuardedOperation(
             name=name,
@@ -50,6 +56,8 @@ def test_buffered_operation_rejects_invalid_names(name):
 
 @pytest.mark.parametrize("field", ["input_projection", "output_projection"])
 def test_buffered_operation_rejects_non_callable_projections(field):
+    """Require both provider projection hooks to be callable."""
+
     values = {
         "name": "test.operation",
         "input_projection": project_input,

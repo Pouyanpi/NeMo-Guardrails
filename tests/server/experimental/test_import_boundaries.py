@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Test that private proxy modules remain independently importable."""
+
 import subprocess
 import sys
 
@@ -29,6 +31,8 @@ import pytest
     ],
 )
 def test_private_kernel_modules_import_in_a_fresh_interpreter(module):
+    """Import each private module without relying on ambient import state."""
+
     completed = subprocess.run(
         [sys.executable, "-c", f"import {module}"],
         check=False,
