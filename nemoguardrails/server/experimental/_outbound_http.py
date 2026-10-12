@@ -1,0 +1,184 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Send guarded proxy exchanges through an application-owned HTTP client."""
+
+import math
+
+import httpx
+
+from nemoguardrails.server.experimental._http_kernel import (
+    DEFAULT_MAX_RESPONSE_BODY_BYTES,
+    BufferedHttpRequest,
+    BufferedHttpResponse,
+    HttpHeaders,
+    ResponseBodyTooLarge,
+)
+from nemoguardrails.server.experimental._httpx_response import _HttpxResponseBody
+from nemoguardrails.server.experimental._streaming_http import StreamingHttpResponse
+
+DEFAULT_OUTBOUND_TIMEOUT = 30.0
+
+_HOP_BY_HOP_HEADERS = frozenset(
+    {
+        b"connection",
+        b"keep-alive",
+        b"proxy-authenticate",
+        b"proxy-authorization",
+        b"proxy-connection",
+        b"te",
+        b"trailer",
+        b"transfer-encoding",
+        b"upgrade",
+    }
+)
+
+
+def _connection_tokens(headers: HttpHeaders) -> set[bytes]:
+    tokens = set()
+    for name, value in headers:
+        if name.lower() == b"connection":
+            tokens.update(token.strip().lower() for token in value.split(b",") if token.strip())
+    return tokens
+
+
+def _request_headers(headers: HttpHeaders) -> list[tuple[bytes, bytes]]:
+    excluded = (
+        _HOP_BY_HOP_HEADERS
+        | _connection_tokens(headers)
+        | {
+            b"host",
+            b"content-length",
+        }
+    )
+    return [(name, value) for name, value in headers if name.lower() not in excluded]
+
+
+def _response_headers(headers: httpx.Headers) -> HttpHeaders:
+    raw = tuple(headers.raw)
+    excluded = _HOP_BY_HOP_HEADERS | _connection_tokens(raw)
+    return tuple((name, value) for name, value in raw if name.lower() not in excluded)
+
+
+class ApplicationHttpDispatcher:
+    """Dispatch one resolved target through a caller-owned HTTPX client.
+
+    Provider-instance selection happens before this private boundary. Later
+    composition may create several dispatchers or replace the one-target shape;
+    this object never owns or closes the injected client.
+    """
+
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        *,
+        base_url: str,
+        mount_path: str = "",
+        max_response_body_bytes: int = DEFAULT_MAX_RESPONSE_BODY_BYTES,
+        timeout: float = DEFAULT_OUTBOUND_TIMEOUT,
+    ):
+        if not isinstance(http_client, httpx.AsyncClient):
+            raise TypeError("The outbound HTTP client must be an httpx.AsyncClient.")
+        parsed_base_url = httpx.URL(base_url)
+        if not parsed_base_url.is_absolute_url or parsed_base_url.scheme not in {"http", "https"}:
+            raise ValueError("The outbound base URL must be an absolute HTTP or HTTPS URL.")
+        if parsed_base_url.userinfo:
+            raise ValueError("The outbound base URL must not contain credentials.")
+        if parsed_base_url.query or parsed_base_url.fragment:
+            raise ValueError("The outbound base URL must not contain a query or fragment.")
+        normalized_mount = mount_path.rstrip("/")
+        if normalized_mount and (not normalized_mount.startswith("/") or not normalized_mount.isascii()):
+            raise ValueError("The outbound mount path must be an absolute ASCII path.")
+        if (
+            type(max_response_body_bytes) is not int
+            or max_response_body_bytes <= 0
+            or not isinstance(timeout, (int, float))
+            or isinstance(timeout, bool)
+            or timeout <= 0
+            or not math.isfinite(timeout)
+        ):
+            raise ValueError("The outbound response limit and timeout must be positive.")
+        self._http_client = http_client
+        self._base_url = parsed_base_url
+        self._mount_path = normalized_mount
+        self._max_response_body_bytes = max_response_body_bytes
+        self._timeout = float(timeout)
+
+    def _upstream_url(self, request: BufferedHttpRequest) -> httpx.URL:
+        path = request.path
+        raw_path = request.raw_path
+        if not path.startswith("/") or not raw_path.startswith(b"/") or b"?" in raw_path:
+            raise ValueError("An outbound request must contain an absolute path without a query.")
+        if self._mount_path:
+            if path == self._mount_path:
+                path = "/"
+            elif path.startswith(self._mount_path + "/"):
+                path = path[len(self._mount_path) :]
+            else:
+                raise ValueError("The outbound request path is outside the configured mount path.")
+            raw_mount = self._mount_path.encode("ascii")
+            if raw_path == raw_mount:
+                raw_path = b"/"
+            elif raw_path.startswith(raw_mount + b"/"):
+                raw_path = raw_path[len(raw_mount) :]
+            else:
+                raise ValueError("The encoded outbound path does not match the configured mount path.")
+        base_path = self._base_url.raw_path.rstrip(b"/")
+        upstream_path = base_path + b"/" + raw_path.lstrip(b"/")
+        if request.query:
+            upstream_path += b"?" + request.query
+        return self._base_url.copy_with(raw_path=upstream_path)
+
+    async def _open(self, request: BufferedHttpRequest) -> httpx.Response:
+        upstream_request = self._http_client.build_request(
+            request.method,
+            self._upstream_url(request),
+            headers=_request_headers(request.headers),
+            content=request.body,
+            timeout=self._timeout,
+        )
+        return await self._http_client.send(upstream_request, stream=True, follow_redirects=False)
+
+    async def _buffer(self, response: httpx.Response) -> BufferedHttpResponse:
+        body = _HttpxResponseBody(response)
+        chunks = []
+        size = 0
+        try:
+            async for chunk in body:
+                size += len(chunk)
+                if size > self._max_response_body_bytes:
+                    raise ResponseBodyTooLarge
+                chunks.append(chunk)
+        finally:
+            await body.aclose()
+        return BufferedHttpResponse(response.status_code, _response_headers(response.headers), b"".join(chunks))
+
+    async def dispatch(self, request: BufferedHttpRequest) -> BufferedHttpResponse:
+        """Send and fully buffer one outbound response."""
+
+        return await self._buffer(await self._open(request))
+
+    async def stream_dispatch(self, request: BufferedHttpRequest) -> StreamingHttpResponse | BufferedHttpResponse:
+        """Open a successful response stream or buffer a non-success response."""
+
+        response = await self._open(request)
+        if 200 <= response.status_code <= 299:
+            body = _HttpxResponseBody(response)
+            try:
+                return StreamingHttpResponse(response.status_code, _response_headers(response.headers), body)
+            except BaseException:
+                await body.aclose()
+                raise
+        return await self._buffer(response)
