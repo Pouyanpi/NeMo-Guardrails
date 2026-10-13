@@ -83,11 +83,19 @@ class StreamProcessingFailed:
     failure: BaseException
 
 
+@dataclass(frozen=True, slots=True)
+class StreamInspectionUnsupported:
+    """Stop before dispatch when output inspection cannot guard a stream."""
+
+    failure: UnsupportedStreamInspection
+
+
 StreamOutcome = (
     OperationBlocked
     | OperationCheckFailed
     | OperationModificationUnsupported
     | OperationProjectionFailed
+    | StreamInspectionUnsupported
     | StreamUpstreamFailed
     | StreamProcessingFailed
 )
@@ -182,7 +190,8 @@ def _log_outcome(outcome: StreamOutcome) -> None:
     failure = outcome.failure
     if isinstance(failure, ContentCheckFailed):
         failure = failure.cause
-    stage = "stream" if isinstance(outcome, StreamUpstreamFailed | StreamProcessingFailed) else outcome.stage.value
+    staged = OperationCheckFailed | OperationModificationUnsupported | OperationProjectionFailed
+    stage = outcome.stage.value if isinstance(outcome, staged) else "stream"
     log.warning("Guarded stream stopped: %s at %s stage (%s)", type(outcome).__name__, stage, type(failure).__name__)
 
 
