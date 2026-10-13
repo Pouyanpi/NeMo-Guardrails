@@ -31,6 +31,8 @@ from nemoguardrails.server.experimental._http_kernel import (
     BufferedHttpResponse,
     GuardedHttpOperation,
     GuardedOperationPath,
+    _has_identity_encoding,
+    _has_media_type,
 )
 from nemoguardrails.server.experimental._json_payload import InvalidJson, UnsupportedJsonShape, parse_json_object
 from nemoguardrails.server.experimental.provider.endpoint import GuardedJsonEndpoint
@@ -49,26 +51,14 @@ class GuardableProviderRequest:
     target: GuardedMessageTarget
 
 
-def _header(headers: tuple[tuple[bytes, bytes], ...], name: bytes) -> str | None:
-    """Return the last value of a case-insensitive HTTP header."""
-    values = [value.decode("latin-1") for key, value in headers if key.lower() == name]
-    return values[-1] if values else None
-
-
-def _media_type(value: str | None) -> str | None:
-    """Return a normalized media type without parameters."""
-    return value.split(";", 1)[0].strip().lower() if value is not None else None
-
-
 def _require_json_representation(request: BufferedHttpRequest) -> None:
     """Require an unencoded JSON representation for guarded request parsing."""
-    if _media_type(_header(request.headers, b"content-type")) != "application/json":
+    if not _has_media_type(request.headers, b"application/json"):
         raise UnsupportedGuardedRepresentation(
             "Content-Type must be application/json.",
             "unsupported_media_type",
         )
-    content_encoding = _header(request.headers, b"content-encoding")
-    if content_encoding is not None and content_encoding.strip().lower() not in {"", "identity"}:
+    if not _has_identity_encoding(request.headers):
         raise UnsupportedGuardedRepresentation(
             "Encoded request bodies are not supported by the guarded path.",
             "unsupported_content_encoding",
@@ -133,12 +123,11 @@ def create_buffered_guarded_http_operation(
         """Select guarded output text from a successful JSON response."""
         if not 200 <= payload.status_code < 300:
             return ContentInspectionNotApplicable()
-        if _media_type(_header(payload.headers, b"content-type")) != "application/json":
+        if not _has_media_type(payload.headers, b"application/json"):
             raise UnsupportedGuardedPayload(
                 "The successful provider response must use application/json.", endpoint.unsupported_response_code
             )
-        content_encoding = _header(payload.headers, b"content-encoding")
-        if content_encoding is not None and content_encoding.strip().lower() not in {"", "identity"}:
+        if not _has_identity_encoding(payload.headers):
             raise UnsupportedGuardedPayload(
                 "Encoded successful provider responses are not supported.", endpoint.unsupported_response_code
             )

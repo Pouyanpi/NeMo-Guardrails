@@ -374,17 +374,25 @@ async def _buffer_request(request: Request, max_body_bytes: int) -> BufferedHttp
     )
 
 
-def _render_response(value: BufferedHttpResponse, request_method: str | None = None) -> Response:
-    """Preserve end-to-end values while generating safe downstream framing."""
+def _end_to_end_headers(headers: HttpHeaders) -> list[tuple[bytes, bytes]]:
+    """Remove connection-specific metadata from buffered and streamed responses."""
 
     connection_tokens = {
         token.strip().lower()
-        for name, content in value.headers
+        for name, content in headers
         if name.lower() == b"connection"
         for token in content.split(b",")
     }
-    excluded = _HOP_BY_HOP_HEADERS | connection_tokens | {b"content-length"}
-    headers = [(name, content) for name, content in value.headers if name.lower() not in excluded]
+    excluded = _HOP_BY_HOP_HEADERS | connection_tokens
+    return [(name, content) for name, content in headers if name.lower() not in excluded]
+
+
+def _render_response(value: BufferedHttpResponse, request_method: str | None = None) -> Response:
+    """Preserve end-to-end values while generating safe downstream framing."""
+
+    headers = [
+        (name, content) for name, content in _end_to_end_headers(value.headers) if name.lower() != b"content-length"
+    ]
     bodyless = request_method == "HEAD" or value.status_code < 200 or value.status_code in {204, 205, 304}
     response = Response(content=b"" if bodyless else value.body, status_code=value.status_code)
     if value.status_code == 205:
@@ -399,6 +407,32 @@ def _render_response(value: BufferedHttpResponse, request_method: str | None = N
         headers.extend(response.raw_headers)
     response.raw_headers = headers
     return response
+
+
+def _has_media_type(headers: HttpHeaders, expected: bytes) -> bool:
+    """Require one Content-Type with the expected lowercase media type.
+
+    Header names and media types are case-insensitive; parameters are ignored.
+    Reject even identical duplicates so readers cannot select different values.
+    """
+    values = [value for name, value in headers if name.lower() == b"content-type"]
+    return len(values) == 1 and values[0].partition(b";")[0].strip().lower() == expected
+
+
+def _has_identity_encoding(headers: HttpHeaders) -> bool:
+    """Return whether every Content-Encoding coding is identity.
+
+    Duplicate headers and comma lists combine into one coding list, so a body
+    is unencoded only when no coding other than identity appears anywhere.
+    Empty list elements carry no coding and are ignored.
+    """
+    return all(
+        token.strip().lower() == b"identity"
+        for name, value in headers
+        if name.lower() == b"content-encoding"
+        for token in value.split(b",")
+        if token.strip()
+    )
 
 
 def _request_identity_encoding(headers: HttpHeaders) -> HttpHeaders:
