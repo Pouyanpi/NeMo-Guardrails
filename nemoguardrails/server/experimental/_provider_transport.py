@@ -23,6 +23,7 @@ from nemoguardrails.server.experimental._http_kernel import (
     DEFAULT_MAX_RESPONSE_BODY_BYTES,
     BufferedHttpRequest,
     BufferedHttpResponse,
+    HttpDispatchFailed,
     HttpHeaders,
     ResponseBodyTooLarge,
 )
@@ -72,12 +73,13 @@ def _response_headers(headers: httpx.Headers) -> HttpHeaders:
     return tuple((name, value) for name, value in raw if name.lower() not in excluded)
 
 
-class ApplicationHttpDispatcher:
+class ProviderTransport:
     """Dispatch one resolved target through a caller-owned HTTPX client.
 
-    Provider-instance selection happens before this private boundary. Later
-    composition may create several dispatchers or replace the one-target shape;
-    this object never owns or closes the injected client.
+    Provider-instance selection happens before this private boundary. This
+    object owns responses, not the injected client. Request headers and cookies
+    come only from the current caller; client defaults and authentication are
+    not inherited. Expected HTTPX network failures become HttpDispatchFailed.
     """
 
     def __init__(
@@ -142,14 +144,17 @@ class ApplicationHttpDispatcher:
         return self._base_url.copy_with(raw_path=upstream_path)
 
     async def _open(self, request: BufferedHttpRequest) -> httpx.Response:
-        upstream_request = self._http_client.build_request(
+        upstream_request = httpx.Request(
             request.method,
             self._upstream_url(request),
             headers=_request_headers(request.headers),
             content=request.body,
-            timeout=self._timeout,
+            extensions={"timeout": httpx.Timeout(self._timeout).as_dict()},
         )
-        return await self._http_client.send(upstream_request, stream=True, follow_redirects=False)
+        try:
+            return await self._http_client.send(upstream_request, stream=True, follow_redirects=False, auth=None)
+        except httpx.RequestError as failure:
+            raise HttpDispatchFailed("The upstream request failed.") from failure
 
     async def _buffer(self, response: httpx.Response) -> BufferedHttpResponse:
         body = _HttpxResponseBody(response)
@@ -161,6 +166,8 @@ class ApplicationHttpDispatcher:
                 if size > self._max_response_body_bytes:
                     raise ResponseBodyTooLarge
                 chunks.append(chunk)
+        except httpx.RequestError as failure:
+            raise HttpDispatchFailed("The upstream response could not be read.") from failure
         finally:
             await body.aclose()
         return BufferedHttpResponse(response.status_code, _response_headers(response.headers), b"".join(chunks))

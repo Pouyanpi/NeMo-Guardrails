@@ -13,16 +13,80 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import asyncio
+
 import httpx
 import pytest
 
 from nemoguardrails.server.experimental._http_kernel import (
     BufferedHttpRequest,
     BufferedHttpResponse,
+    HttpDispatchFailed,
     ResponseBodyTooLarge,
 )
-from nemoguardrails.server.experimental._outbound_http import ApplicationHttpDispatcher
+from nemoguardrails.server.experimental._provider_transport import ProviderTransport
 from nemoguardrails.server.experimental._streaming_http import StreamingHttpResponse
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("failure_type", [httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError])
+async def test_network_failure_is_translated_without_exposing_details(httpx_mock, streaming, failure_type):
+    failure = failure_type("private upstream detail")
+    httpx_mock.add_exception(failure)
+    async with httpx.AsyncClient() as client:
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
+        dispatch = dispatcher.stream_dispatch if streaming else dispatcher.dispatch
+        with pytest.raises(HttpDispatchFailed) as caught:
+            await dispatch(buffered_request())
+    assert caught.value.__cause__ is failure
+    assert "private upstream detail" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_buffered_read_failure_is_translated_and_closed(httpx_mock, streaming):
+    failure = httpx.ReadError("private upstream detail")
+    stream = TrackedStream([b"partial"], failure)
+    httpx_mock.add_response(status_code=503 if streaming else 200, stream=stream)
+    async with httpx.AsyncClient() as client:
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
+        dispatch = dispatcher.stream_dispatch if streaming else dispatcher.dispatch
+        with pytest.raises(HttpDispatchFailed) as caught:
+            await dispatch(buffered_request())
+    assert caught.value.__cause__ is failure
+    assert stream.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [asyncio.CancelledError(), ValueError("bad transport")])
+async def test_dispatch_preserves_cancellation_and_programming_errors(httpx_mock, failure):
+    async def fail(_request):
+        raise failure
+
+    httpx_mock.add_callback(fail)
+    async with httpx.AsyncClient() as client:
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
+        with pytest.raises(type(failure)) as caught:
+            await dispatcher.dispatch(buffered_request())
+    assert caught.value is failure
+
+
+@pytest.mark.asyncio
+async def test_requests_do_not_inherit_another_callers_cookies_or_client_credentials(httpx_mock):
+    for _ in range(3):
+        httpx_mock.add_response(
+            headers={"set-cookie": "session=previous-caller; Path=/"}, stream=TrackedStream([b"ok"])
+        )
+    async with httpx.AsyncClient(auth=("default-user", "default-password"), headers={"x-default": "private"}) as client:
+        client.cookies.set("session", "preexisting", domain="provider.test", path="/")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
+        for headers in [(), ((b"cookie", b"session=explicit-caller"),), ()]:
+            await dispatcher.dispatch(buffered_request(headers=headers))
+    requests = httpx_mock.get_requests()
+    assert [request.headers.get("cookie") for request in requests] == [None, "session=explicit-caller", None]
+    assert all("authorization" not in request.headers and "x-default" not in request.headers for request in requests)
+    assert requests[0].extensions["timeout"]["read"] == 30.0
 
 
 class TrackedStream(httpx.AsyncByteStream):
@@ -82,7 +146,7 @@ async def test_buffered_dispatch_maps_mount_and_preserves_end_to_end_values():
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(
+        dispatcher = ProviderTransport(
             client,
             base_url="https://provider.test/provider/v1",
             mount_path="/v1",
@@ -118,7 +182,7 @@ async def test_buffered_dispatch_bounds_and_closes_response():
         return httpx.Response(200, stream=stream)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test", max_response_body_bytes=5)
+        dispatcher = ProviderTransport(client, base_url="https://provider.test", max_response_body_bytes=5)
 
         with pytest.raises(ResponseBodyTooLarge):
             await dispatcher.dispatch(buffered_request())
@@ -138,7 +202,7 @@ async def test_stream_dispatch_returns_open_success_and_closes_after_consumption
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
         response = await dispatcher.stream_dispatch(buffered_request())
 
         assert isinstance(response, StreamingHttpResponse)
@@ -157,7 +221,7 @@ async def test_stream_dispatch_source_closes_before_iteration():
         return httpx.Response(200, headers=((b"content-type", b"application/json"),), stream=stream)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
         response = await dispatcher.stream_dispatch(buffered_request())
         assert isinstance(response, StreamingHttpResponse)
 
@@ -178,7 +242,7 @@ async def test_stream_dispatch_buffers_and_closes_provider_error():
         )
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
         response = await dispatcher.stream_dispatch(buffered_request())
 
     assert response == BufferedHttpResponse(
@@ -197,7 +261,7 @@ async def test_stream_source_failure_closes_response():
         return httpx.Response(200, headers=((b"content-type", b"text/event-stream"),), stream=stream)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test")
         response = await dispatcher.stream_dispatch(buffered_request())
         assert isinstance(response, StreamingHttpResponse)
 
@@ -216,7 +280,7 @@ async def test_request_outside_mount_stops_before_upstream_dispatch():
         return httpx.Response(200)
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as client:
-        dispatcher = ApplicationHttpDispatcher(client, base_url="https://provider.test/v1", mount_path="/v1")
+        dispatcher = ProviderTransport(client, base_url="https://provider.test/v1", mount_path="/v1")
 
         with pytest.raises(ValueError, match="outside the configured mount"):
             await dispatcher.dispatch(buffered_request(path="/other", raw_path=b"/other"))
@@ -239,10 +303,10 @@ async def test_request_outside_mount_stops_before_upstream_dispatch():
     ],
 )
 @pytest.mark.asyncio
-async def test_dispatcher_rejects_invalid_application_settings(base_url, mount_path, limit, timeout, error):
+async def test_transport_rejects_invalid_application_settings(base_url, mount_path, limit, timeout, error):
     async with httpx.AsyncClient() as client:
         with pytest.raises(ValueError, match=error):
-            ApplicationHttpDispatcher(
+            ProviderTransport(
                 client,
                 base_url=base_url,
                 mount_path=mount_path,
