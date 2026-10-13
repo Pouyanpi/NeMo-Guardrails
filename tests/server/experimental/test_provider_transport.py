@@ -28,6 +28,7 @@ from nemoguardrails.server.experimental._http_kernel import (
 from nemoguardrails.server.experimental._provider_transport import ProviderTransport
 from nemoguardrails.server.experimental._streaming_http import StreamingHttpResponse
 from nemoguardrails.server.experimental.provider.integration import UpstreamSettings
+from nemoguardrails.server.experimental.routers.passthrough import _passthrough_response
 
 
 @pytest.mark.asyncio
@@ -404,7 +405,7 @@ async def test_bodyless_passthrough_closes_upstream_before_returning(method, sta
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
         transport = ProviderTransport(UpstreamSettings("https://provider.test"), client)
-        response = await transport.passthrough(request)
+        response = await _passthrough_response(request, transport)
 
     assert response.body == b""
     assert response.status_code == status
