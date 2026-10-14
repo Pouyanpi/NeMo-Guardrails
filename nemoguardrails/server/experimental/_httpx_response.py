@@ -24,6 +24,8 @@ from nemoguardrails.server.experimental._stream_cleanup import StreamClose, clos
 
 
 class _OwnedHttpxStream(httpx.AsyncByteStream):
+    """Delegate raw reads while routing HTTPX's close through the retained owner."""
+
     def __init__(self, resource: httpx.AsyncByteStream, close: StreamClose):
         self._resource = resource
         self._close = close
@@ -32,6 +34,8 @@ class _OwnedHttpxStream(httpx.AsyncByteStream):
         return self._resource.__aiter__()
 
     async def aclose(self) -> None:
+        """Attempt the owner's close with the shared shielded cleanup budget."""
+
         await close_stream(None, close=self._close)
 
 
@@ -45,6 +49,8 @@ class _HttpxResponseBody(AsyncIterator[bytes]):
     """
 
     def __init__(self, response: httpx.Response):
+        """Retain the original resource and wrap the response stream before raw reads."""
+
         if not isinstance(response.stream, httpx.AsyncByteStream):
             raise TypeError("The provider response must have an asynchronous byte stream.")
         self._response = response
@@ -58,6 +64,8 @@ class _HttpxResponseBody(AsyncIterator[bytes]):
         return self
 
     async def __anext__(self) -> bytes:
+        """Relay raw bytes and attempt bounded cleanup on EOF or a read failure."""
+
         try:
             return await self._source.__anext__()
         except BaseException:
@@ -65,10 +73,14 @@ class _HttpxResponseBody(AsyncIterator[bytes]):
             raise
 
     async def _close_resource(self) -> None:
+        """Serialize resource closes and record completion only after success."""
+
         async with self._close_lock:
             if not self._closed:
                 await self._resource.aclose()
                 self._closed = True
 
     async def aclose(self) -> None:
+        """Attempt bounded response cleanup, retaining unfinished resource closure for retry."""
+
         await close_stream(self._response, close=self._close_resource)

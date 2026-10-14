@@ -49,6 +49,8 @@ _HOP_BY_HOP_HEADERS = frozenset(
 
 
 def _connection_tokens(headers: HttpHeaders) -> set[bytes]:
+    """Collect case-insensitive header names nominated by Connection fields."""
+
     tokens = set()
     for name, value in headers:
         if name.lower() == b"connection":
@@ -57,6 +59,8 @@ def _connection_tokens(headers: HttpHeaders) -> set[bytes]:
 
 
 def _request_headers(headers: HttpHeaders) -> list[tuple[bytes, bytes]]:
+    """Remove connection-specific headers and let HTTPX rebuild host and framing."""
+
     excluded = (
         _HOP_BY_HOP_HEADERS
         | _connection_tokens(headers)
@@ -69,6 +73,8 @@ def _request_headers(headers: HttpHeaders) -> list[tuple[bytes, bytes]]:
 
 
 def _response_headers(headers: httpx.Headers) -> HttpHeaders:
+    """Preserve raw end-to-end response headers, including duplicates and order."""
+
     raw = tuple(headers.raw)
     excluded = _HOP_BY_HOP_HEADERS | _connection_tokens(raw)
     return tuple((name, value) for name, value in raw if name.lower() not in excluded)
@@ -121,6 +127,8 @@ class ProviderTransport:
         max_response_body_bytes: int = DEFAULT_MAX_RESPONSE_BODY_BYTES,
         timeout: float = DEFAULT_OUTBOUND_TIMEOUT,
     ):
+        """Validate the fixed upstream mapping, response bound, and timeout."""
+
         if not isinstance(http_client, httpx.AsyncClient):
             raise TypeError("The outbound HTTP client must be an httpx.AsyncClient.")
         parsed_base_url = httpx.URL(base_url)
@@ -149,6 +157,8 @@ class ProviderTransport:
         self._timeout = float(timeout)
 
     def _upstream_url(self, request: BufferedHttpRequest) -> httpx.URL:
+        """Apply the base and mount mapping without reencoding suffix or query bytes."""
+
         path = request.path
         raw_path = request.raw_path
         if not path.startswith("/") or not raw_path.startswith(b"/") or b"?" in raw_path:
@@ -162,6 +172,13 @@ class ProviderTransport:
         return self._base_url.copy_with(raw_path=upstream_path)
 
     async def _open(self, request: BufferedHttpRequest) -> httpx.Response:
+        """Send caller bytes and headers without inherited headers, cookies, or auth.
+
+        Redirects are disabled. Expected HTTPX request failures become
+        HttpDispatchFailed. The returned response remains open and its cleanup
+        belongs to the receiving caller.
+        """
+
         upstream_request = httpx.Request(
             request.method,
             self._upstream_url(request),
@@ -175,6 +192,12 @@ class ProviderTransport:
             raise HttpDispatchFailed("The upstream request failed.") from failure
 
     async def _buffer(self, response: httpx.Response) -> BufferedHttpResponse:
+        """Bound raw response reads and attempt closure on every exit path.
+
+        Raise ResponseBodyTooLarge above the configured limit and translate
+        HTTPX read failures to HttpDispatchFailed.
+        """
+
         body = _HttpxResponseBody(response)
         chunks = []
         size = 0
@@ -191,12 +214,16 @@ class ProviderTransport:
         return BufferedHttpResponse(response.status_code, _response_headers(response.headers), b"".join(chunks))
 
     async def dispatch(self, request: BufferedHttpRequest) -> BufferedHttpResponse:
-        """Send and fully buffer one outbound response."""
+        """Send and buffer one response within the limit, attempting closure before return."""
 
         return await self._buffer(await self._open(request))
 
     async def stream_dispatch(self, request: BufferedHttpRequest) -> StreamingHttpResponse | BufferedHttpResponse:
-        """Open a successful response stream or buffer a non-success response."""
+        """Transfer a successful response's byte source or buffer a non-success reply.
+
+        The caller must close a returned streaming body even if never iterated.
+        Non-success responses use the configured buffering limit and cleanup.
+        """
 
         response = await self._open(request)
         if 200 <= response.status_code <= 299:
