@@ -17,7 +17,14 @@ import asyncio
 
 import httpx
 import pytest
+from fastapi import FastAPI
 
+from nemoguardrails.server.experimental._content_checker import (
+    ContentAllowed,
+    ContentBlocked,
+    ContentInspectionPolicy,
+    StreamBufferingPolicy,
+)
 from nemoguardrails.server.experimental._http_kernel import (
     BufferedHttpRequest,
     BufferedHttpResponse,
@@ -26,6 +33,8 @@ from nemoguardrails.server.experimental._http_kernel import (
 )
 from nemoguardrails.server.experimental._provider_transport import ProviderTransport
 from nemoguardrails.server.experimental._streaming_http import StreamingHttpResponse
+from nemoguardrails.server.experimental.providers.openai.integration import create_openai_chat_router
+from tests.server.experimental.test_openai_chat_streaming_integration import StaticChecker, request_body, stream_event
 
 
 @pytest.mark.asyncio
@@ -125,6 +134,75 @@ def buffered_request(path="/v1/chat/completions", raw_path=b"/v1/chat/completion
     }
     values.update(updates)
     return BufferedHttpRequest(**values)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("blocked_stage", [None, "input", "output"])
+async def test_transport_connects_chat_router_to_upstream_between_inspections(streaming, blocked_stage):
+    checker = StaticChecker(
+        ContentInspectionPolicy(True, True, StreamBufferingPolicy(1, 0)),
+        input_decision=ContentBlocked("blocked") if blocked_stage == "input" else ContentAllowed(),
+        output_decisions=[ContentBlocked("blocked")] if blocked_stage == "output" else [],
+    )
+    body = request_body(stream=streaming)
+    provider_body = (
+        stream_event("answer") + b"data: [DONE]\n\n"
+        if streaming
+        else b'{"choices":[{"index":0,"message":{"role":"assistant","content":"answer"}}]}'
+    )
+    source = TrackedStream([provider_body])
+    upstream_requests = []
+
+    async def upstream(request):
+        assert [kind for kind, _ in checker.calls] == ["input"]
+        assert checker.calls[0][1].message.content == "question"
+        assert str(request.url) == "https://provider.test/v1/chat/completions"
+        assert request.content == body
+        upstream_requests.append(request)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream" if streaming else "application/json"},
+            stream=source,
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(upstream)) as upstream_client:
+        transport = ProviderTransport(upstream_client, base_url="https://provider.test")
+        app = FastAPI()
+        app.include_router(
+            create_openai_chat_router(
+                checker=checker,
+                dispatch=transport.dispatch,
+                stream_dispatch=transport.stream_dispatch,
+            )
+        )
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://proxy.test") as client:
+            response = await client.post(
+                "/v1/chat/completions", content=body, headers={"content-type": "application/json"}
+            )
+        assert not upstream_client.is_closed
+
+    if blocked_stage == "input":
+        assert upstream_requests == []
+        assert [kind for kind, _ in checker.calls] == ["input"]
+    else:
+        assert len(upstream_requests) == 1
+        assert [kind for kind, _ in checker.calls] == ["input", "output"]
+        assert checker.calls[1][1].output_content == "answer"
+        assert source.closed
+
+    if blocked_stage is None:
+        assert response.status_code == 200
+        assert response.content == provider_body
+    elif streaming and blocked_stage == "output":
+        assert response.status_code == 200
+        assert b'"code":"content_blocked"' in response.content
+        assert response.content.endswith(b"data: [DONE]\n\n")
+        assert b"answer" not in response.content
+    else:
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "content_blocked"
+        assert b"answer" not in response.content
 
 
 @pytest.mark.asyncio
