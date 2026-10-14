@@ -213,25 +213,35 @@ async def test_transport_connects_chat_router_to_upstream_between_inspections(st
         ("/api/v1", "/api/v1/models", b"/a%70i%2fv%31/models", b"/provider/models"),
         ("/v1", "/v1/models/model/name", b"/%76%31%2Fmodels/model%2Fname", b"/provider/models/model%2Fname"),
         ("/API/v1", "/API/v1/models", b"/%41%50%49/v1/models", b"/provider/models"),
+        ("/v1", "/v1//models", b"/%76%31//models", b"/provider//models"),
+        ("/v1", "/v1/models/%2Fname", b"/%76%31/models/%252Fname", b"/provider/models/%252Fname"),
     ],
 )
 async def test_dispatch_maps_encoded_mount_without_reencoding_suffix(
     httpx_mock, mount_path, path, raw_path, upstream_path
 ):
     source = TrackedStream([b"provider response"])
+    query = b"trace=%2Fopaque&trace=%252Fopaque"
     httpx_mock.add_response(stream=source)
     async with httpx.AsyncClient() as client:
         transport = ProviderTransport(client, base_url="https://provider.test/provider", mount_path=mount_path)
-        response = await transport.dispatch(buffered_request(path=path, raw_path=raw_path))
+        response = await transport.dispatch(buffered_request(path=path, raw_path=raw_path, query=query))
 
-    assert httpx_mock.get_request().url.raw_path == upstream_path + b"?trace=opaque"
+    assert httpx_mock.get_request().url.raw_path == upstream_path + b"?" + query
     assert response.body == b"provider response"
     assert source.closed
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "raw_path", [b"/%76%32/chat/completions", b"/%76%31x/chat/completions", b"/%76%3Z/chat/completions"]
+    "raw_path",
+    [
+        b"/%76%32/chat/completions",
+        b"/%76%31x/chat/completions",
+        b"/%76%3Z/chat/completions",
+        b"/%2576%31/chat/completions",
+        b"/%56%31/chat/completions",
+    ],
 )
 async def test_dispatch_rejects_raw_mount_mismatch_before_sending(httpx_mock, raw_path):
     async with httpx.AsyncClient() as client:

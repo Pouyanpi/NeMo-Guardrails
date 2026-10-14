@@ -74,6 +74,35 @@ def _response_headers(headers: httpx.Headers) -> HttpHeaders:
     return tuple((name, value) for name, value in raw if name.lower() not in excluded)
 
 
+def _strip_mount_prefix(path: str, raw_path: bytes, mount_path: str) -> bytes:
+    """Match the mount using ASGI's decoded path and preserve its raw suffix.
+
+    The mount and its following decoded slash are replaced by one literal
+    upstream separator. Percent escapes in the remaining suffix are untouched.
+    """
+
+    if path == mount_path:
+        raw_mount = mount_path.encode("ascii")
+    elif path.startswith(mount_path + "/"):
+        raw_mount = (mount_path + "/").encode("ascii")
+    else:
+        raise ValueError("The outbound request path is outside the configured mount path.")
+    offset = 0
+    for character in raw_mount:
+        token = raw_path[offset : offset + 1]
+        width = 1
+        if token == b"%":
+            decoded = unquote_to_bytes(raw_path[offset : offset + 3])
+            if len(decoded) == 1:
+                token, width = decoded, 3
+        if token != bytes((character,)):
+            raise ValueError("The encoded outbound path does not match the configured mount path.")
+        offset += width
+    if path == mount_path and offset != len(raw_path):
+        raise ValueError("The encoded outbound path does not match the configured mount path.")
+    return b"/" + raw_path[offset:]
+
+
 class ProviderTransport:
     """Dispatch one resolved target through a caller-owned HTTPX client.
 
@@ -125,28 +154,9 @@ class ProviderTransport:
         if not path.startswith("/") or not raw_path.startswith(b"/") or b"?" in raw_path:
             raise ValueError("An outbound request must contain an absolute path without a query.")
         if self._mount_path:
-            if path == self._mount_path:
-                raw_mount = self._mount_path.encode("ascii")
-            elif path.startswith(self._mount_path + "/"):
-                raw_mount = (self._mount_path + "/").encode("ascii")
-            else:
-                raise ValueError("The outbound request path is outside the configured mount path.")
-            offset = 0
-            for character in raw_mount:
-                token = raw_path[offset : offset + 1]
-                width = 1
-                if token == b"%":
-                    decoded = unquote_to_bytes(raw_path[offset : offset + 3])
-                    if len(decoded) == 1:
-                        token, width = decoded, 3
-                if token != bytes((character,)):
-                    raise ValueError("The encoded outbound path does not match the configured mount path.")
-                offset += width
-            if path == self._mount_path and offset != len(raw_path):
-                raise ValueError("The encoded outbound path does not match the configured mount path.")
-            raw_path = b"/" + raw_path[offset:]
+            raw_path = _strip_mount_prefix(path, raw_path, self._mount_path)
         base_path = self._base_url.raw_path.rstrip(b"/")
-        upstream_path = base_path + b"/" + raw_path.lstrip(b"/")
+        upstream_path = base_path + raw_path
         if request.query:
             upstream_path += b"?" + request.query
         return self._base_url.copy_with(raw_path=upstream_path)
