@@ -16,6 +16,7 @@
 """Send guarded proxy exchanges through an application-owned HTTP client."""
 
 import math
+from urllib.parse import unquote_to_bytes
 
 import httpx
 
@@ -125,18 +126,25 @@ class ProviderTransport:
             raise ValueError("An outbound request must contain an absolute path without a query.")
         if self._mount_path:
             if path == self._mount_path:
-                path = "/"
+                raw_mount = self._mount_path.encode("ascii")
             elif path.startswith(self._mount_path + "/"):
-                path = path[len(self._mount_path) :]
+                raw_mount = (self._mount_path + "/").encode("ascii")
             else:
                 raise ValueError("The outbound request path is outside the configured mount path.")
-            raw_mount = self._mount_path.encode("ascii")
-            if raw_path == raw_mount:
-                raw_path = b"/"
-            elif raw_path.startswith(raw_mount + b"/"):
-                raw_path = raw_path[len(raw_mount) :]
-            else:
+            offset = 0
+            for character in raw_mount:
+                token = raw_path[offset : offset + 1]
+                width = 1
+                if token == b"%":
+                    decoded = unquote_to_bytes(raw_path[offset : offset + 3])
+                    if len(decoded) == 1:
+                        token, width = decoded, 3
+                if token != bytes((character,)):
+                    raise ValueError("The encoded outbound path does not match the configured mount path.")
+                offset += width
+            if path == self._mount_path and offset != len(raw_path):
                 raise ValueError("The encoded outbound path does not match the configured mount path.")
+            raw_path = b"/" + raw_path[offset:]
         base_path = self._base_url.raw_path.rstrip(b"/")
         upstream_path = base_path + b"/" + raw_path.lstrip(b"/")
         if request.query:
