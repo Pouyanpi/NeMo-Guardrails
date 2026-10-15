@@ -15,7 +15,7 @@ export UV_LOCKED
 DIST ?= worksteal
 
 PYTEST ?= uv run --all-packages pytest
-RECORDED_TESTS ?= tests/recorded
+RECORDED_TESTS ?= tests/recorded guardrails-server/tests/recorded
 RECORDED_RECORD_MODE ?= once
 RECORDED_SNAPSHOT_MODE ?= create
 RECORDED_REQUIRED_KEYS ?= OPENAI_API_KEY NVIDIA_API_KEY
@@ -49,7 +49,7 @@ test-watch:
 	uv run ptw --snapshot-update --now . -- -vv $(ARGS) $(TEST)
 
 test-coverage:
-	$(UNIT_TEST_ENV) $(PYTEST) -n $(WORKERS) --dist $(DIST) --cov=nemoguardrails --cov-report=xml:coverage.xml $(ARGS) $(TEST)
+	$(UNIT_TEST_ENV) $(PYTEST) -n $(WORKERS) --dist $(DIST) --cov=nemoguardrails --cov=guardrails_proxy --cov-report=xml:coverage.xml $(ARGS) $(TEST)
 
 test-profile:
 	$(PYTEST) -vv --profile-svg $(ARGS) $(TEST)

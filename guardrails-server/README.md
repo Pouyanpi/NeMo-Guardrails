@@ -76,6 +76,11 @@ locked runtime dependencies in a fresh environment. Run `uv sync --locked
 --all-packages --group dev` first to populate the dependency cache. Tests check
 CLI/module parity and reuse the localhost buffered, streaming, blocking and
 disconnect cases against the installed console script and packaged Rails example.
+Repository cassette targets include both library and proxy recordings by default;
+set `RECORDED_TESTS` to narrow them. Coverage includes both Python packages.
+The existing library Dockerfile copies the member's metadata for workspace
+resolution but still installs and starts only the legacy library server. This
+change does not introduce a proxy image.
 
 Recorded tests reuse repository-owned sanitization helpers; those are development
 tools, not server runtime dependencies. Recordings are moved unchanged. Tests

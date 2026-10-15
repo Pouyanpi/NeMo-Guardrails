@@ -30,6 +30,7 @@ WORKDIR /nemoguardrails
 # Install deps first (cached layer — only invalidated when pyproject.toml/uv.lock change).
 # The cache mount persists uv's download/build cache across image builds.
 COPY pyproject.toml uv.lock /nemoguardrails/
+COPY guardrails-server/pyproject.toml /nemoguardrails/guardrails-server/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --all-extras --no-dev --locked --no-install-project
 # Copy source and install the project itself

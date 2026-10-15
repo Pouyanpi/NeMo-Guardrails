@@ -16,6 +16,7 @@
 """Check package ownership, runtime assets and standalone source builds."""
 
 import json
+import shutil
 import subprocess
 import tarfile
 import zipfile
@@ -24,6 +25,25 @@ from pathlib import Path
 
 import pytest
 from packaging.requirements import Requirement
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_library_dependency_layer_resolves_without_sources(tmp_path):
+    """Preserve the legacy image's metadata-only, library-only dependency layer."""
+    for name in ("pyproject.toml", "uv.lock", "guardrails-server/pyproject.toml"):
+        destination = tmp_path / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / name, destination)
+    result = subprocess.run(
+        ["uv", "sync", "--locked", "--offline", "--all-extras", "--no-dev", "--no-install-project", "--dry-run"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "guardrails-proxy==" not in result.stdout + result.stderr
 
 
 def test_distribution_ownership_and_dependencies(distributions):
