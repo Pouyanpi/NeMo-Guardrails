@@ -105,25 +105,25 @@ OPENAI_API_KEY=... make record-cassettes \
 
 The OpenAI Chat proxy recordings use the OpenAI protocol through NVIDIA's
 inference endpoint and explicitly bind the
-[LiteLLM dialect](../../nemoguardrails/server/experimental/providers/openai/dialects/litellm/README.md).
+[LiteLLM dialect](../../guardrails-server/src/guardrails_proxy/providers/openai/dialects/litellm/README.md).
 The default OpenAI endpoint is not silently widened to accept this gateway.
 Refresh them with the dedicated credential and no OpenAI key:
 
 ```bash
 NVIDIA_INFERENCE_KEY=... make record-cassettes \
-  RECORDED_TESTS=tests/recorded/server/experimental/openai/test_chat_completions.py \
+  RECORDED_TESTS=guardrails-server/tests/recorded/openai/test_chat_completions.py \
   RECORDED_REQUIRED_KEYS=NVIDIA_INFERENCE_KEY
 ```
 
 Replay the Chat pipeline and the archived-field inventory together:
 
 ```bash
-make replay-cassettes RECORDED_TESTS=tests/recorded/server/experimental/openai
+make replay-cassettes RECORDED_TESTS=guardrails-server/tests/recorded/openai
 ```
 
 The separately reviewed Responses recordings explicitly select the
-[LiteLLM Responses dialect](../../nemoguardrails/server/experimental/providers/openai/dialects/litellm/responses.md).
-Refresh only `tests/recorded/server/experimental/openai/test_litellm_responses.py`
+[LiteLLM Responses dialect](../../guardrails-server/src/guardrails_proxy/providers/openai/dialects/litellm/responses.md).
+Refresh only `guardrails-server/tests/recorded/openai/test_litellm_responses.py`
 with `RECORDED_REQUIRED_KEYS=NVIDIA_INFERENCE_KEY`. Capture stores the complete
 sanitized response before checking policy; the subsequent offline replay is the
 acceptance gate. Responses uses the same shared sanitizer as Chat, with no extra
@@ -186,7 +186,7 @@ tests/recorded/rails/<suite>/cassettes/<test_module>/<test_name>.yaml
 Experimental server proxy recordings are grouped by provider:
 
 ```text
-tests/recorded/server/experimental/<provider>/cassettes/<test_module>/<test_name>.yaml
+guardrails-server/tests/recorded/<provider>/cassettes/<test_module>/<test_name>.yaml
 ```
 
 Parameterized tests include the parameter id in the cassette filename. Every test (rails and clients) uses this default naming; do not add `@pytest.mark.default_cassette(...)`.

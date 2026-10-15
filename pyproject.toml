@@ -179,6 +179,7 @@ include = [
   "nemoguardrails/logging/**",
   "nemoguardrails/tracing/**",
   "nemoguardrails/server/**",
+  "guardrails-server/src/**",
   "nemoguardrails/guardrails/**",
   "nemoguardrails/manifests/**",
   "nemoguardrails/library/**/rail.py",
