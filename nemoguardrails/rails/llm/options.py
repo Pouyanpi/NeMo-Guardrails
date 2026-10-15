@@ -77,6 +77,7 @@ To get more details on the LLM calls that were executed, including the raw respo
 
 """
 
+import warnings
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Union
 
@@ -213,6 +214,9 @@ class GenerationLogOptions(BaseModel):
     )
 
 
+DEPRECATED_TOOL_RAIL_FIELDS = {"tool_output": "tool_call", "tool_input": "tool_result"}
+
+
 class GenerationRailsOptions(BaseModel):
     """Options for what rails should be used during the generation."""
 
@@ -235,16 +239,71 @@ class GenerationRailsOptions(BaseModel):
         default=True,
         description="Whether the dialog rails are enabled or not.",
     )
+    tool_call: Union[bool, List[str]] = Field(
+        default=True,
+        description="Whether the tool call rails are enabled or not. "
+        "If a list of names is specified, then only the specified tool call rails will be applied.",
+    )
+    tool_result: Union[bool, List[str]] = Field(
+        default=True,
+        description="Whether the tool result rails are enabled or not. "
+        "If a list of names is specified, then only the specified tool result rails will be applied.",
+    )
     tool_output: Union[bool, List[str]] = Field(
         default=True,
-        description="Whether the tool output rails are enabled or not. "
-        "If a list of names is specified, then only the specified tool output rails will be applied.",
+        deprecated="Use 'tool_call' instead. This field will be removed in a future version.",
+        description="DEPRECATED: Use tool_call instead.",
+        exclude=True,
     )
     tool_input: Union[bool, List[str]] = Field(
         default=True,
-        description="Whether the tool input rails are enabled or not. "
-        "If a list of names is specified, then only the specified tool input rails will be applied.",
+        deprecated="Use 'tool_result' instead. This field will be removed in a future version.",
+        description="DEPRECATED: Use tool_result instead.",
+        exclude=True,
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_deprecated_tool_rail_fields(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+
+        values = dict(values)
+        for deprecated_name, canonical_name in DEPRECATED_TOOL_RAIL_FIELDS.items():
+            if deprecated_name not in values:
+                continue
+            if canonical_name in values:
+                raise ValueError(
+                    f"Cannot configure both rails.{deprecated_name} and rails.{canonical_name}; "
+                    f"use rails.{canonical_name}."
+                )
+            warnings.warn(
+                f"rails.{deprecated_name} is deprecated; use rails.{canonical_name} instead.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            values[canonical_name] = values.pop(deprecated_name)
+        return values
+
+    @model_validator(mode="after")
+    def sync_deprecated_tool_rail_fields(self) -> "GenerationRailsOptions":
+        self._sync_deprecated_tool_rail_fields()
+        return self
+
+    def _sync_deprecated_tool_rail_fields(self) -> None:
+        for deprecated_name, canonical_name in DEPRECATED_TOOL_RAIL_FIELDS.items():
+            self.__dict__[deprecated_name] = self.__dict__[canonical_name]
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # The engine reads only the canonical fields, so a write to a deprecated name must land there.
+        canonical_name = DEPRECATED_TOOL_RAIL_FIELDS.get(name)
+        if canonical_name is not None:
+            warnings.warn(
+                f"rails.{name} is deprecated; use rails.{canonical_name} instead.", DeprecationWarning, stacklevel=2
+            )
+            name = canonical_name
+        super().__setattr__(name, value)
+        self._sync_deprecated_tool_rail_fields()
 
 
 class GenerationOptions(BaseModel):
@@ -295,10 +354,18 @@ class GenerationOptions(BaseModel):
                 "dialog": False,
                 "retrieval": False,
                 "output": False,
-                "tool_output": False,
-                "tool_input": False,
+                "tool_call": False,
+                "tool_result": False,
             }
             for rail_type in values["rails"]:
+                canonical_name = DEPRECATED_TOOL_RAIL_FIELDS.get(rail_type)
+                if canonical_name is not None:
+                    warnings.warn(
+                        f"rails.{rail_type} is deprecated; use rails.{canonical_name} instead.",
+                        DeprecationWarning,
+                        stacklevel=3,
+                    )
+                    rail_type = canonical_name
                 _rails[rail_type] = True
             values["rails"] = _rails
 

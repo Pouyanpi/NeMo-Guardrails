@@ -879,16 +879,16 @@ TOOL_AND_IO_CONFIG = {
     **NEMOGUARDS_CONFIG,
     "rails": {
         **NEMOGUARDS_CONFIG["rails"],
-        "tool_output": {"flows": ["tool call validation"]},
-        "tool_input": {"flows": ["tool result validation"]},
+        "tool_call": {"flows": ["tool call validation"]},
+        "tool_result": {"flows": ["tool result validation"]},
     },
 }
 
 PER_TOOL_ONLY_CONFIG = {
     **TOOL_CONFIG,
     "rails": {
-        "config": {"regex_detection": {"tool_output": {"run_sql": {"patterns": [r"DROP\s+TABLE"]}}}},
-        "tool_output": {"per_tool": {"run_sql": ["regex check tool output"]}},
+        "config": {"regex_detection": {"tool_call": {"run_sql": {"patterns": [r"DROP\s+TABLE"]}}}},
+        "tool_call": {"per_tool": {"run_sql": ["regex check tool call"]}},
     },
 }
 
@@ -1022,7 +1022,7 @@ class TestCheckToolCalls:
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         ("configured_tool_iorails", "rail"),
-        [(TOOL_CONFIG, "tool call validation"), (PER_TOOL_ONLY_CONFIG, "regex check tool output")],
+        [(TOOL_CONFIG, "tool call validation"), (PER_TOOL_ONLY_CONFIG, "regex check tool call")],
         ids=["global_validator", "per_tool_rail_only"],
         indirect=["configured_tool_iorails"],
     )
@@ -1263,9 +1263,9 @@ class TestCheckToolRailConfiguration:
         async with started_iorails(PER_TOOL_ONLY_CONFIG) as engine:
             result = await engine.check_async(messages, rail_types=[RailType.TOOL_CALL], tools=[run_sql])
 
-        assert result.rail == "regex check tool output"
+        assert result.rail == "regex check tool call"
         assert [(v.violation_type, v.rail, v.index) for v in result.tool_violations] == [
-            (ToolViolationType.PER_TOOL_RAIL, "regex check tool output", 0)
+            (ToolViolationType.PER_TOOL_RAIL, "regex check tool call", 0)
         ]
 
     @pytest.mark.asyncio
@@ -1281,7 +1281,7 @@ class TestCheckToolRailConfiguration:
     @pytest.mark.asyncio
     async def test_per_tool_rails_with_no_flows_are_not_configured(self):
         """A ``per_tool`` map whose lists are all empty runs nothing, so the tool rail type counts as unconfigured."""
-        config = {**TOOL_CONFIG, "rails": {"tool_output": {"per_tool": {"run_sql": []}}}}
+        config = {**TOOL_CONFIG, "rails": {"tool_call": {"per_tool": {"run_sql": []}}}}
 
         async with started_iorails(config) as engine:
             with pytest.raises(RailTypeNotConfiguredError, match="rail type 'tool_call' has no configured rails"):
