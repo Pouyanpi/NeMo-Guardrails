@@ -13,6 +13,12 @@ jobs:
   publish-wheel:
     runs-on: ubuntu-latest
     steps:
+      - name: Validate version
+        env:
+          LIBRARY_VERSION: ${{ inputs.version }}
+        run: |
+          [[ "$LIBRARY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
@@ -22,6 +28,20 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: nemoguardrails-${{ github.event.inputs.version }}.whl
+          path: dist/nemoguardrails
+
+      - name: Validate library-only wheel
+        env:
+          LIBRARY_VERSION: ${{ inputs.version }}
+        run: |
+          shopt -s nullglob dotglob
+          artifacts=(dist/nemoguardrails/*)
+          if [[ ${#artifacts[@]} -ne 1 ||
+                "${artifacts[0]}" != "dist/nemoguardrails/nemoguardrails-$LIBRARY_VERSION-py3-none-any.whl" ||
+                ! -f "${artifacts[0]}" || -L "${artifacts[0]}" ]]; then
+            echo "Expected exactly the requested library wheel; refusing publication." >&2
+            exit 1
+          fi
 
       - name: Publish package
         # zizmor: ignore[use-trusted-publishing] -- publishes with a PyPI API
@@ -31,4 +51,4 @@ jobs:
         with:
           verbose: true
           password: ${{ secrets.PYPI_API_TOKEN }}
-          packages-dir: ./
+          packages-dir: dist/nemoguardrails/

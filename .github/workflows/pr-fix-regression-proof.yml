@@ -68,7 +68,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.gate.outputs.is_fix == 'true'
-        run: uv sync --locked --group dev
+        run: uv sync --locked --all-packages --group dev
 
       - name: Prove tests fail without the fix
         if: steps.gate.outputs.is_fix == 'true'
@@ -91,7 +91,7 @@ jobs:
           revert_MD=()   # fix files modified/deleted  -> restore base version
           revert_R=()    # fix files renamed "old\tnew" -> restore old, remove new
 
-          is_testdir() { [[ "$1" == tests/* || "$1" == benchmark/tests/* ]]; }
+          is_testdir() { [[ "$1" == tests/* || "$1" == benchmark/tests/* || "$1" == guardrails-server/tests/* ]]; }
           is_testmod() {
             local base; base=$(basename "$1")
             [[ "$base" == test_*.py || "$base" == *_test.py ]]
@@ -154,9 +154,9 @@ jobs:
           # (this trigger already runs without provider secrets).
           run_pytest() {
             set +e
-            env -u OPENAI_API_KEY -u NVIDIA_API_KEY \
+            env -u OPENAI_API_KEY -u NVIDIA_API_KEY -u NVIDIA_INFERENCE_KEY \
               -u LIVE_TEST -u LIVE_TEST_MODE -u TEST_LIVE_MODE \
-              uv run pytest "${run_tests[@]}"
+              uv run --all-packages pytest "${run_tests[@]}"
             local code=$?
             set -e
             return $code
@@ -240,7 +240,7 @@ jobs:
               NO_TESTS)
                 echo "⚠️ **No regression test found.** This \`fix(...)\` PR changes no test"
                 echo "modules (\`test_*.py\` / \`*_test.py\`) under \`tests/\` or"
-                echo "\`benchmark/tests/\`."
+                echo "\`benchmark/tests/\` or \`guardrails-server/tests/\`."
                 echo
                 echo "A fix should come with a test that fails before it."
                 ;;

@@ -13,7 +13,8 @@ mkdir -p "$PACKAGE_DIR/examples"
 cp -r "$EXAMPLES_SRC" "$EXAMPLES_DST"
 
 # Build the wheel using uv
-uv build
+uv build --package nemoguardrails --out-dir dist/nemoguardrails
+bash .github/scripts/check-library-artifacts.sh dist/nemoguardrails "$(uv version --package nemoguardrails --short)"
 
 # Remove the copied directories after building
 rm -rf "$PACKAGE_DIR/examples"

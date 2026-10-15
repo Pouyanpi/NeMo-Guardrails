@@ -1,5 +1,5 @@
 .PHONY: help install
-.PHONY: test test-parallel test-serial test-benchmark test-watch test-coverage test-profile record-cassettes rewrite-cassettes replay-cassettes snapshot-cassettes check-record-test-env warm-fastembed-cache
+.PHONY: test test-parallel test-serial test-benchmark test-watch test-coverage test-profile test-proxy-package record-cassettes rewrite-cassettes replay-cassettes snapshot-cassettes check-record-test-env warm-fastembed-cache
 .PHONY: test-docs-scripts docs-fern-node-dependencies docs-fern docs-fern-strict docs-fern-live docs-fern-preview-watch docs-fern-generate-sdk docs-fern-fix-empty-links docs-fern-publish-staging docs-fern-publish-public
 .PHONY: pre-commit pre-commit-install
 
@@ -53,6 +53,9 @@ test-coverage:
 
 test-profile:
 	$(PYTEST) -vv --profile-svg $(ARGS) $(TEST)
+
+test-proxy-package:
+	$(UNIT_TEST_ENV) $(PYTEST) -n 0 guardrails-server/tests/packaging --block-network --allowed-hosts=127.0.0.1 $(ARGS)
 
 record-cassettes: check-record-test-env
 	$(PYTEST) $(RECORDED_TESTS) --record-mode=$(RECORDED_RECORD_MODE) -m "not fake_cassette"

@@ -69,19 +69,21 @@ jobs:
         uses: actions/download-artifact@v8
         with:
           name: ${{ steps.version.outputs.artifact_name }}
-          path: dist
+          path: dist/nemoguardrails
           github-token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           run-id: ${{ github.event.workflow_run.id }}
 
-      - name: List files
-        run: ls -la dist/
+      - name: Validate library-only artifacts
+        env:
+          LIBRARY_VERSION: ${{ steps.version.outputs.version }}
+        run: bash .github/scripts/check-library-artifacts.sh dist/nemoguardrails "$LIBRARY_VERSION"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           verbose: true
-          packages-dir: dist/
+          packages-dir: dist/nemoguardrails/
           attestations: true
 
       - name: Create GitHub Release

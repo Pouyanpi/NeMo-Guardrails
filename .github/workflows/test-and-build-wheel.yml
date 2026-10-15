@@ -66,7 +66,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.set-artifact-name.outputs.artifact_name }}
-          path: dist/*
+          path: |
+            dist/nemoguardrails/nemoguardrails-*.whl
+            dist/nemoguardrails/nemoguardrails-*.tar.gz
+          if-no-files-found: error
 
   test-wheel:
     needs: build-wheel

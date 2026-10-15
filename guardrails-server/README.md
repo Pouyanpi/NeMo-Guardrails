@@ -68,7 +68,7 @@ the console entry point adds no separate configuration or ownership layer.
 ```bash
 make test WORKERS=0 TEST=guardrails-server/tests/proxy_tests
 make test WORKERS=0 TEST=guardrails-server/tests/recorded ARGS="--block-network --record-mode=none"
-make test WORKERS=0 TEST=guardrails-server/tests/packaging ARGS="--block-network --allowed-hosts=127.0.0.1"
+make test-proxy-package
 ```
 
 Packaging tests build both distributions offline and install local wheels with
@@ -81,6 +81,18 @@ set `RECORDED_TESTS` to narrow them. Coverage includes both Python packages.
 The existing library Dockerfile copies the member's metadata for workspace
 resolution but still installs and starts only the legacy library server. This
 change does not introduce a proxy image.
+
+Ruff configuration, pre-commit hooks, license headers and type checking remain
+repository-owned. The proxy does not maintain a parallel lint configuration.
+CI installs both workspace packages explicitly. Ordinary test matrices exclude
+the packaging directory; a separate serial acceptance job runs its offline
+build/install and localhost checks. `make test` still includes these tests for
+local full-suite runs. Both GitHub Actions and GitLab have an acceptance job.
+
+The proxy is not published to PyPI. Library release builds explicitly select
+`nemoguardrails` and use `dist/nemoguardrails/`; publication rejects unexpected
+files or versions before uploading. Proxy test builds use isolated temporary
+directories and are not inputs to the publishing workflows.
 
 Recorded tests reuse repository-owned sanitization helpers; those are development
 tools, not server runtime dependencies. Recordings are moved unchanged. Tests

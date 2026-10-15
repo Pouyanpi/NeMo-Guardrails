@@ -44,7 +44,10 @@ jobs:
             const isDocs = (name) =>
               name.startsWith("docs/") || name.endsWith(".md");
 
-            const isTests = (name) => name.startsWith("tests/");
+            const isTests = (name) =>
+              name.startsWith("tests/") ||
+              name.startsWith("benchmark/tests/") ||
+              name.startsWith("guardrails-server/tests/");
 
             let code = 0;
             let docs = 0;

@@ -66,9 +66,9 @@ jobs:
         run: |
           if [ "${{ inputs.upgrade-deps}}" = "true" ]; then
             uv lock --upgrade
-            uv sync --locked --all-extras --group dev
+            uv sync --locked --all-packages --all-extras --group dev
           else
-            uv sync --locked --group dev
+            uv sync --locked --all-packages --group dev
           fi
 
       - name: Run pytest with coverage
@@ -77,7 +77,7 @@ jobs:
           # Enable the langchain-community provider drift canary only when
           # testing upgraded dependencies (the scheduled latest-deps job).
           LANGCHAIN_PROVIDER_DRIFT_CHECK: ${{ inputs.upgrade-deps && '1' || '' }}
-        run: make test-coverage ARGS="--cov-fail-under=85 --cov-report=term"
+        run: make test-coverage ARGS="--ignore=guardrails-server/tests/packaging --cov-fail-under=85 --cov-report=term"
 
       - name: Run pytest without coverage
         if: inputs.with-coverage == false
@@ -85,7 +85,7 @@ jobs:
           # Enable the langchain-community provider drift canary only when
           # testing upgraded dependencies (the scheduled latest-deps job).
           LANGCHAIN_PROVIDER_DRIFT_CHECK: ${{ inputs.upgrade-deps && '1' || '' }}
-        run: make test
+        run: make test ARGS="--ignore=guardrails-server/tests/packaging"
 
       - name: Upload coverage to Codecov
         if: inputs.with-coverage

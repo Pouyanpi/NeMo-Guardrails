@@ -32,13 +32,16 @@ jobs:
         run: uv lock --check
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras --group dev
+        run: uv sync --locked --all-packages --all-extras --group dev
 
       - name: Run pre-commit hooks
         run: make pre-commit
 
       - name: Run tests
-        run: make test
+        run: make test ARGS="--ignore=guardrails-server/tests/packaging"
+
+      - name: Test installed proxy distributions
+        run: make test-proxy-package
 
       - name: Build distributions
-        run: uv build
+        run: uv build --all-packages

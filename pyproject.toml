@@ -187,7 +187,8 @@ include = [
   "nemoguardrails/manifests/**",
   "nemoguardrails/library/**/rail.py",
   "nemoguardrails/library/**/rail_config.py",
-  "tests/recorded/**"
+  "tests/recorded/**",
+  "guardrails-server/tests/recorded/**"
 
 ]
 exclude = [

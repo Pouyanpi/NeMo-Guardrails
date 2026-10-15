@@ -1,0 +1,35 @@
+name: Proxy Package Acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: ./.github/actions/setup-uv
+        with:
+          cache-suffix: proxy-package
+
+      - name: Install workspace and warm dependency cache
+        run: uv sync --locked --all-packages --group dev
+
+      - name: Test isolated wheels and installed launcher
+        run: make test-proxy-package
