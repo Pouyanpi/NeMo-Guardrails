@@ -156,6 +156,9 @@ dev = [
 package = true
 exclude-newer = "7 days"
 
+[tool.uv.workspace]
+members = ["guardrails-server"]
+
 # Flat layout: the importable package is ./nemoguardrails (not under ./src).
 # uv_build ships everything under the module dir (Python plus the .co/.lark/.yml
 # data files). The build helper stages the top-level examples under the module.

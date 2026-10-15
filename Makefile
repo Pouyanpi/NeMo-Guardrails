@@ -14,7 +14,7 @@ export UV_LOCKED
 # worksteal dynamically rebalances queued tests; override DIST when debugging or grouping matters.
 DIST ?= worksteal
 
-PYTEST ?= uv run pytest
+PYTEST ?= uv run --all-packages pytest
 RECORDED_TESTS ?= tests/recorded
 RECORDED_RECORD_MODE ?= once
 RECORDED_SNAPSHOT_MODE ?= create
@@ -32,7 +32,7 @@ FERN_PUBLIC_INSTANCE ?= nvidia-nemo-guardrails.docs.buildwithfern.com/nemo/guard
 DOCS_NODE_STAMP := node_modules/.package-lock.json
 
 install:
-	uv sync --group dev
+	uv sync --all-packages --group dev
 
 test:
 	$(UNIT_TEST_ENV) $(PYTEST) -n $(WORKERS) --dist $(DIST) $(ARGS) $(TEST)

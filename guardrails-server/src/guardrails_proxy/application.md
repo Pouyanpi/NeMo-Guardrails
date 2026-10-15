@@ -5,7 +5,9 @@ one application factory. Typed Python projections, classifiers, and handwritten
 hooks remain the source of policy. Application configuration selects those
 bindings; it does not compile or load guard contracts.
 
-The Python interface and server-owned YAML launcher require the `server` extra.
+The Python interface and YAML launcher are provided by the `guardrails-proxy`
+distribution, which depends on `nemoguardrails`. The library's `server` extra is
+not required for this proxy.
 The manifest's numeric revision identifies its format, not a stability promise.
 The application owns outbound HTTP and preloads its Rails catalogue during
 lifespan startup. Configuration directories are trusted: their actions may
@@ -15,16 +17,13 @@ engines or contact providers.
 ## Run from YAML
 
 The server owns its launcher; it is not a subcommand of the library CLI.
-Its current module location is temporary. A later independent server package
-will register its own executable against the same CLI implementation.
-
-From this checkout, install dependencies with `uv sync --locked --extra server`,
+From this checkout, install dependencies with `uv sync --locked --all-packages`,
 then use:
 
 ```bash
-uv run --locked python -m guardrails_proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked python -m guardrails_proxy inspect guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked python -m guardrails_proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy python -m guardrails_proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy python -m guardrails_proxy inspect guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy python -m guardrails_proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
 ```
 
 The [example manifest](examples/basic/proxy.yaml)
@@ -77,7 +76,7 @@ including upstream addresses; treat it accordingly.
 For editor guidance, emit JSON Schema directly from the manifest model:
 
 ```bash
-uv run --locked python -m guardrails_proxy schema > proxy.schema.json
+uv run --locked --package guardrails-proxy python -m guardrails_proxy schema > proxy.schema.json
 ```
 
 This is the configuration schema, not an exported guard contract. Semantic
