@@ -1,6 +1,6 @@
 # Guardrails configuration resolution
 
-The private experimental proxy supports deployment-defined Guardrails policy
+The proxy supports deployment-defined Guardrails policy
 resolution without allowing callers to select an arbitrary configuration.
 Applications declare logical config IDs during assembly and may inject a
 resolver that selects one of those IDs for each guarded request.

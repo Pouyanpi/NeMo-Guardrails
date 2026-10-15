@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Launch the server-owned CLI at its temporary module location."""
+"""Launch the server CLI through ``python -m guardrails_proxy``."""
 
 from guardrails_proxy.cli import main
 

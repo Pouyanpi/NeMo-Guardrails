@@ -4,7 +4,7 @@ For the separately reviewed Responses operation, see the
 [LiteLLM Responses dialect](responses.md). Chat extension bags and backend
 evidence do not automatically apply to Responses.
 
-This experimental dialect applies the `single_text.v1` guardrail profile to
+This dialect applies the `single_text.v1` guardrail profile to
 reviewed LiteLLM Chat Completions wire shapes. Typed Python declarations in
 [chat_completions.py](chat_completions.py) and [stream.py](stream.py) are
 authoritative. Dialect identity, guardrail capability, and tested deployment
@@ -59,7 +59,7 @@ router = create_openai_chat_router(
 by this snippet. Use the existing server dependencies and HTTP transport; no
 LiteLLM SDK, optional LiteLLM extra, or dialect-specific API key is required.
 Upstream credentials follow the application's existing HTTP authorization path.
-This uses the experimental transparent HTTP proxy, not LangChain or a LiteLLM
+This uses the transparent HTTP proxy, not LangChain or a LiteLLM
 client wrapper. Omitting `endpoint` retains the OpenAI declaration. Neither the
 hostname, request model string, response fields, nor exported YAML selects it.
 

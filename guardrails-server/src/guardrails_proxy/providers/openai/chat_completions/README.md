@@ -14,7 +14,7 @@ The shared [projection policy module](../../../provider/projection_policy.py)
 provides the declaration helpers, runtime metadata derivation, and schema export.
 `ObjectPolicy` records object-level provider schema names, reviewed opaque fields, and
 unknown-field policy. It is not a deployment profile selector. The capability
-profile remains `single_text.v1`; the exported document format remains experimental
+profile remains `single_text.v1`; the exported document format remains pre-release
 `1.0.0-alpha.1`.
 
 `ObjectPolicy` controls object closure. `PolicyModel` requires Pydantic
@@ -60,7 +60,7 @@ scope and provider provenance. Neither is loaded by the models or bindings.
 ## Streaming declarations
 
 [stream_projection.py](stream_projection.py) uses the same field annotations and
-`ObjectPolicy` for the experimental `single_text_delta.v1` boundary. A chunk
+`ObjectPolicy` for the `single_text_delta.v1` boundary. A chunk
 accepts zero or one choice with a strict integer index of zero, and `logprobs`
 must be null. The root, choice, and delta reject unreviewed members; reviewed
 root metadata such as `id`, `model`, and `usage` passes through unchanged and

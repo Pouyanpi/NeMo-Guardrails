@@ -1,6 +1,6 @@
 # LiteLLM Responses dialect
 
-The experimental [typed declaration](responses.py) binds the existing Responses
+The [typed declaration](responses.py) binds the existing Responses
 single-text policy to a reviewed LiteLLM gateway surface. It is selected explicitly;
 the strict OpenAI endpoint and the LiteLLM Chat dialect are unchanged. No LiteLLM
 package, new transport, new kernel, or alternate lifecycle hooks are required.

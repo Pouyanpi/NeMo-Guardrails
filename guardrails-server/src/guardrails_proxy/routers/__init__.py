@@ -13,4 +13,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Private routers for the experimental transparent proxy."""
+"""Private routers for the transparent proxy."""

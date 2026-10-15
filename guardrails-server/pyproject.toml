@@ -22,6 +22,9 @@ dependencies = [
   "uvicorn>=0.23,<1",
 ]
 
+[project.scripts]
+guardrails-proxy = "guardrails_proxy.cli:main"
+
 [tool.uv.sources]
 nemoguardrails = { workspace = true }
 

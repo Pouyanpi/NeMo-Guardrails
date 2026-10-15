@@ -1,6 +1,6 @@
 # OpenAI Responses boundary
 
-This experimental integration guards foreground `POST /v1/responses` in
+This integration guards foreground `POST /v1/responses` in
 buffered and SSE modes. Typed Python declarations are authoritative. The
 [exported contract](../../../contracts/openai/_generated/responses.guard.yaml)
 documents the actual bound policy; runtime construction never reads it.

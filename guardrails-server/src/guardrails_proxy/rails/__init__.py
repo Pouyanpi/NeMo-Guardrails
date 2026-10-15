@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Expose Guardrails configuration resolution for the experimental server."""
+"""Expose Guardrails configuration resolution for the server."""
 
 from guardrails_proxy.rails.config import ConfigContext, ConfigEntry, ConfigResolver
 

@@ -147,5 +147,5 @@ def serve(
 
 
 def main() -> None:
-    """Enter the server CLI from module invocation or a future console script."""
+    """Enter the same server CLI from module invocation or the console script."""
     app()

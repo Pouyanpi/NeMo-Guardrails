@@ -17,6 +17,7 @@
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -46,7 +47,7 @@ def installed_proxy(distributions, tmp_path_factory):
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("UV_", "PYTHON"))}
     environment["NEMO_GUARDRAILS_NO_USAGE_STATS"] = "1"
     venv = directory / "venv"
-    run_uv("venv", "--offline", venv, cwd=directory, env=environment)
+    run_uv("venv", "--offline", "--python", sys.executable, venv, cwd=directory, env=environment)
     run_uv(
         "sync",
         "--locked",

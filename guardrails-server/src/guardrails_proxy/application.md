@@ -16,14 +16,15 @@ engines or contact providers.
 
 ## Run from YAML
 
-The server owns its launcher; it is not a subcommand of the library CLI.
+The server owns its `guardrails-proxy` executable; it is not a subcommand of the
+library CLI. `python -m guardrails_proxy` calls the same implementation.
 From this checkout, install dependencies with `uv sync --locked --all-packages`,
 then use:
 
 ```bash
-uv run --locked --package guardrails-proxy python -m guardrails_proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked --package guardrails-proxy python -m guardrails_proxy inspect guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked --package guardrails-proxy python -m guardrails_proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy guardrails-proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy guardrails-proxy inspect guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
+uv run --locked --package guardrails-proxy guardrails-proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
 ```
 
 The [example manifest](examples/basic/proxy.yaml)
@@ -76,7 +77,7 @@ including upstream addresses; treat it accordingly.
 For editor guidance, emit JSON Schema directly from the manifest model:
 
 ```bash
-uv run --locked --package guardrails-proxy python -m guardrails_proxy schema > proxy.schema.json
+uv run --locked --package guardrails-proxy guardrails-proxy schema > proxy.schema.json
 ```
 
 This is the configuration schema, not an exported guard contract. Semantic

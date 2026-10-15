@@ -9,7 +9,7 @@ source of truth. A contract is a description of their policy, not server
 configuration or a second policy to maintain by hand. Deployment configuration
 selects the rails that inspect supported content.
 
-This directory defines the experimental document format and an illustrative
+This directory defines the document format and an illustrative
 example. Provider exports belong with their integrations; the format alone does
 not implement an endpoint, an exporter, or runtime YAML loading.
 
@@ -138,7 +138,7 @@ extraction, preservation of unrelated data, or equivalence to arbitrary Python
 validators and coercion. These require implementation and source-aware tests.
 Provider revision and digest checks are separate from document validation.
 
-The format is experimental: `1.0.0-alpha.1`, not stable version 1. Its version
+The format is a pre-release: `1.0.0-alpha.1`, not stable version 1. Its version
 is separate from the capability profile `single_text.v1` and provider API
 revision. A profile identifies the supported content capability; it does not
 choose deployment rails or enable runtime profile selection.

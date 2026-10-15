@@ -146,10 +146,10 @@ async def synthetic_upstream():
 
 
 @asynccontextmanager
-async def launched_proxy(tmp_path, upstream, dialect=None):
-    """Launch the documented module, wait for readiness, and reap the child."""
-    manifest = yaml.safe_load((EXAMPLE / "proxy.yaml").read_text(encoding="utf-8"))
-    manifest["rails_configs"][0]["config_path"] = str(EXAMPLE / "rails")
+async def launched_proxy(tmp_path, upstream, dialect=None, *, command=None, example=EXAMPLE):
+    """Launch the source module or installed executable and reap the child."""
+    manifest = yaml.safe_load((example / "proxy.yaml").read_text(encoding="utf-8"))
+    manifest["rails_configs"][0]["config_path"] = str(example / "rails")
     manifest["providers"][0]["base_url"] = upstream
     if dialect is not None:
         manifest["providers"][0]["dialect"] = dialect
@@ -166,11 +166,14 @@ async def launched_proxy(tmp_path, upstream, dialect=None):
     ):
         environment.pop(key, None)
     environment["NEMO_GUARDRAILS_NO_USAGE_STATS"] = "1"
-    environment["PYTHONPATH"] = os.pathsep.join((str(ROOT / "guardrails-server/src"), str(ROOT)))
+    if command is None:
+        command = (sys.executable, "-m", "guardrails_proxy")
+        environment["PYTHONPATH"] = os.pathsep.join((str(ROOT / "guardrails-server/src"), str(ROOT)))
+    else:
+        environment.pop("PYTHONPATH", None)
+        environment.pop("PYTHONHOME", None)
     process = await asyncio.create_subprocess_exec(
-        sys.executable,
-        "-m",
-        "guardrails_proxy",
+        *command,
         "serve",
         str(path),
         "--port",

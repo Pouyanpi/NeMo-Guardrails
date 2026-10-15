@@ -22,6 +22,7 @@ import zipfile
 from email.parser import Parser
 from pathlib import Path
 
+import pytest
 from packaging.requirements import Requirement
 
 
@@ -55,14 +56,16 @@ def test_distribution_ownership_and_dependencies(distributions):
         assert str(requirement.specifier) == "<0.26,>=0.25.0.dev0"
 
 
-def test_server_sdist_builds_without_repository(distributions, tmp_path):
-    """The server source distribution does not need its workspace sibling to build."""
-    source = next(distributions.glob("guardrails_proxy-*.tar.gz"))
+@pytest.mark.parametrize("package", ["guardrails_proxy", "nemoguardrails"])
+def test_sdist_builds_without_repository(distributions, tmp_path, package):
+    """Neither source distribution needs its workspace sibling to build."""
+    source = next(distributions.glob(f"{package}-*.tar.gz"))
     with tarfile.open(source) as archive:
         names = archive.getnames()
-        assert not any("/nemoguardrails/" in name for name in names)
+        excluded = "/nemoguardrails/" if package == "guardrails_proxy" else "/guardrails-server/"
+        assert not any(excluded in name for name in names)
         archive.extractall(tmp_path, filter="data")
-    directory = next(tmp_path.glob("guardrails_proxy-*"))
+    directory = next(tmp_path.glob(f"{package}-*"))
     result = subprocess.run(
         ["uv", "build", "--offline", "--wheel", "--out-dir", str(tmp_path / "dist")],
         cwd=directory,
@@ -71,7 +74,7 @@ def test_server_sdist_builds_without_repository(distributions, tmp_path):
         timeout=180,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    original = next(distributions.glob("guardrails_proxy-*.whl"))
+    original = next(distributions.glob(f"{package}-*.whl"))
     rebuilt = next((tmp_path / "dist").glob("*.whl"))
     with zipfile.ZipFile(original) as left, zipfile.ZipFile(rebuilt) as right:
         assert set(left.namelist()) == set(right.namelist())
