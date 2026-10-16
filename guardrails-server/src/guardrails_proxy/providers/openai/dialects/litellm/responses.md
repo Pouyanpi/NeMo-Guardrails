@@ -1,5 +1,8 @@
 # LiteLLM Responses dialect
 
+For deployment selection, use the [configuration guide](../../../../../../docs/configuration.mdx).
+This reference records the dialect's current field policy and source evidence.
+
 The [typed declaration](responses.py) binds the existing Responses
 single-text policy to a reviewed LiteLLM gateway surface. It is selected explicitly;
 the strict OpenAI endpoint and the LiteLLM Chat dialect are unchanged. No LiteLLM
@@ -108,7 +111,7 @@ NVIDIA_INFERENCE_KEY=... make record-cassettes \
 make replay-cassettes \
   RECORDED_TESTS=guardrails-server/tests/recorded/openai/test_litellm_responses.py
 
-uv run --locked python -m guardrails_proxy.provider.contract_export \
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
   guardrails_proxy.providers.openai.dialects.litellm.responses:LITELLM_RESPONSES_ENDPOINT \
   --output guardrails-server/src/guardrails_proxy/contracts/openai/_generated/litellm-responses.guard.yaml
 ```

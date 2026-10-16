@@ -1,5 +1,9 @@
 # Guardrails configuration resolution
 
+For application examples, see [configuration](../../docs/configuration.mdx) and
+[per-request selection](../../docs/python-integration.mdx#select-rails-per-request).
+This reference describes resolver context and lifecycle behavior.
+
 The proxy supports deployment-defined Guardrails policy
 resolution without allowing callers to select an arbitrary configuration.
 Applications declare logical config IDs during assembly and may inject a
@@ -36,11 +40,11 @@ def resolve_config(context: ConfigContext) -> str:
     return "standard"
 ```
 
-The catalog and resolver are supplied when the private application is
+The catalog and resolver are supplied when the application is
 assembled:
 
 ```python
-from guardrails_proxy._application import create_proxy_application
+from guardrails_proxy.application import create_proxy_application
 
 application = create_proxy_application(
     providers=providers,
@@ -52,7 +56,9 @@ application = create_proxy_application(
 The runtime verifies that every selected ID belongs to the catalog. Resolver
 failures, empty IDs, and unknown IDs fail closed with the provider-native
 `config_resolution_failed` response before an upstream request is made. A
-single declared config gets a static resolver automatically.
+single declared config gets a static resolver automatically in direct-provider
+composition. `ProxyConfig` instead requires fixed per-provider IDs or a resolver
+for dynamic providers, including with a one-entry catalog.
 
 ## Resolution context
 
@@ -101,7 +107,7 @@ are identical. Requests perform a synchronous lookup of an already-started
 checker; they do not parse files, construct engines, or share startup tasks.
 
 If parsing, engine construction, or startup fails, the application does not
-accept traffic. Already-started checkers and the shared HTTP client are closed;
+accept traffic. Cleanup is attempted for started checkers and the shared HTTP client;
 the engine whose startup failed owns rollback of its incomplete initialization.
 Cancellation during startup follows the same rollback path. There is no
 partially ready catalog or request-time retry of a failed configuration. A new

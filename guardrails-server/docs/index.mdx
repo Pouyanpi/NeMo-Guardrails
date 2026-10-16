@@ -1,0 +1,43 @@
+---
+title: "Guardrails Proxy"
+sidebar-title: "Overview"
+description: "Add guardrails around existing model HTTP exchanges and choose the right guide for setup, configuration, coverage, or integration."
+content:
+  type: "concept"
+---
+
+Run the NVIDIA NeMo Guardrails library at the boundary between your clients and
+model services. Provider bindings select the content to inspect; Rails supplies
+the checks. Accepted provider JSON and SSE bytes are forwarded without rebuilding
+them from the validation models.
+
+## Start here
+
+[Run the proxy](quickstart.mdx), send a request, and see input blocked before
+inference using the bundled example. Then choose your next task:
+
+| Task | Guide |
+| --- | --- |
+| Select upstreams, operations, dialects, and Rails | [Configuration](configuration.mdx) |
+| Understand profiles, current provider coverage, and stream windows | [Providers and streaming](providers-and-streaming.mdx) |
+| Review or export the inspection boundary | [Guard contracts](guard-contracts.mdx) |
+| Choose mounts, replicas, gateways, or one-route routing | [Deployment](deployment.mdx) |
+| Embed the application or extend bindings and HTTP dispatch | [Python integration](python-integration.mdx) |
+
+## How the pieces fit
+
+| Piece | Responsibility |
+| --- | --- |
+| Application configuration | Choose upstream instances, operation bindings, dialects, and Rails IDs. |
+| Provider binding and capability profile | Describe which content the current integration and pipeline can handle. |
+| Rails configuration | Choose checks for that content and their dependencies. |
+| Guard contract | Make the bound inspection coverage reviewable as an export. |
+| HTTP transport | Perform the outbound exchange, with optional application-specific network policy. |
+
+Provider coverage and profiles can evolve without making deployment YAML a
+second provider-policy implementation. Current binding coverage is documented
+in the provider guide; extending it requires matching runtime/checking support.
+
+For builds, tests, package ownership, and compatibility work, see
+[Development](../DEVELOPMENT.md). For exact declaration details, follow the
+technical references linked from each guide.

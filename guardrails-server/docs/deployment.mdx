@@ -1,0 +1,161 @@
+---
+title: "Deploy and Route Requests"
+sidebar-title: "Deployment"
+description: "Choose a topology for one upstream, multiple provider instances, replicas, gateways, or embedded applications."
+content:
+  type: "how_to"
+---
+
+Choose where requests enter the proxy, where inference runs, and which checks
+apply as separate decisions. The proxy can serve a fixed upstream, compose
+several provider instances, or sit alongside infrastructure that owns routing.
+
+## Choose a topology
+
+| Need | Topology |
+| --- | --- |
+| Add checks to one model endpoint | One proxy instance with one configured upstream. |
+| Scale equivalent proxy capacity | A load balancer in front of equivalent replicas. |
+| Address several upstreams through one process | Unique provider mounts in one application. |
+| Keep one public path for several destinations | A gateway choosing internal mounts/deployments, or a custom outbound transport. |
+| Reuse an inference gateway's routing | Set that gateway as the provider's fixed `base_url`. |
+| Separate teams, credentials, regions, or rollout schedules | Independent proxy deployments, each optionally replicated. |
+| Integrate with an existing service | Python application composition with explicit lifespan ownership. |
+
+These are deployment patterns, not built-in retry, service-discovery, quota,
+or authentication services. Supply the required policy in your application or
+infrastructure.
+
+## Start with one upstream
+
+```text
+client → proxy /v1/chat/completions → upstream /v1/chat/completions
+```
+
+The [quickstart](quickstart.mdx) uses this topology. A provider instance has one
+initial `base_url`, a set of operation bindings, and a selected Rails config.
+You do not need a custom transport just to change that URL.
+
+## Mount multiple provider instances
+
+Declare unique instance IDs and local mounts:
+
+```yaml
+version: 1
+rails_configs:
+  - id: standard
+    config_path: ./rails
+providers:
+  - provider: openai
+    instance_id: direct
+    mount_path: /direct
+    base_url: https://api.openai.com/v1
+    operations: [chat_completions, responses]
+    rails_config_id: standard
+  - provider: openai
+    instance_id: gateway
+    mount_path: /gateway
+    base_url: https://gateway.example/v1
+    dialect: litellm
+    operations: [chat_completions, responses]
+    rails_config_id: standard
+```
+
+Requests to `/direct/v1/chat/completions` use the direct instance; requests to
+`/gateway/v1/chat/completions` use the gateway instance. Each instance can select
+its own dialect and Rails entry. Guarded routes retain ownership over the
+provider catch-all forwarding routes.
+
+`instance_id` identifies the instance internally. It does not automatically
+become a caller header or model-routing key. Separate IDs alone do not let
+several instances occupy the same local mount.
+
+All instances in one application share its lifespan-owned HTTP client and
+transport. They are not independently running replicas, and separate instances
+do not provide process-level resource or failure isolation.
+
+## Keep one public route
+
+An inbound gateway can route by trusted application policy and rewrite a public
+path to the selected provider mount:
+
+```text
+client /v1/chat/completions
+  → gateway
+    → proxy /direct/v1/chat/completions → service A
+    → proxy /gateway/v1/chat/completions → service B
+```
+
+Alternatively, each destination can have a separate proxy deployment exposing
+`/v1/chat/completions`. The gateway chooses the deployment, then optionally
+balances across its equivalent replicas.
+
+A basic connection balancer does not infer model selection from JSON. If routing
+requires a model field or authenticated tenant, use infrastructure that supports
+that selection or implement a trusted [outbound transport](python-integration.mdx#customize-outbound-http).
+Destination selection and balancing equivalent replicas are separate decisions.
+
+A custom transport can choose among trusted destinations after input inspection.
+The instance still has one initial, possibly logical URL. The chosen upstream
+must match the already selected binding and dialect; routing does not change
+inspection coverage automatically.
+
+## Put the proxy in front of a model gateway
+
+```text
+client → guarded proxy → inference gateway → model services
+```
+
+Configure the gateway URL and explicit dialect. Let the gateway own its model
+aliases, destination credentials, balancing, and any retry policy it implements.
+The proxy continues to check the content selected by its bindings on the way
+in and out. This can keep one public endpoint in front of many model services
+without implementing routing inside the proxy.
+
+## Replicas, embedding, and sidecars
+
+Equivalent replicas can share public paths and configuration while keeping
+independent client pools and preloaded Rails resources. An established stream
+stays with its handling replica; the proxy does not migrate or resume it on
+another replica.
+
+Use a local companion or sidecar when each workload owns its proxy configuration.
+That multiplies client pools and initialized Rails resources across deployments.
+The proxy does not automatically intercept network traffic.
+
+For an embedded FastAPI application, connect startup and shutdown to the actual
+parent lifespan. Mounting an ASGI application alone does not establish that its
+lifespan ran. See [Python integration](python-integration.mdx#lifespan-and-embedding).
+
+## Credentials and access
+
+The launcher binds loopback by default and does not authenticate inbound callers.
+Use your application's access controls or an inbound gateway before exposing it.
+Authorize access to provider mounts and Rails selections using trusted identity.
+
+The default transport forwards caller upstream credentials under its header
+rules. If an application changes origins, it must select credentials belonging
+to the destination and remove caller credentials that should not cross origins.
+Never obtain arbitrary destination URLs or Rails paths from untrusted callers.
+
+Upstream cookies are not persisted in the shared client. Explicit caller Cookie
+and upstream Set-Cookie headers can still pass through. Shared connection pools
+are not shared caller sessions.
+
+## Streaming and resource ownership
+
+Configure any fronting gateway's buffering, timeouts, and disconnect handling
+for the delivery behavior you need. Its buffering can delay SSE even when the
+proxy releases events incrementally.
+
+The application initializes every declared Rails config before serving. It
+attempts checker and HTTP cleanup on failed startup and shutdown. Response
+owners handle normal completion, disconnects, and failures before iteration.
+Cleanup is bounded and shielded cooperatively; timeouts do not prove that an
+uncooperative owner released every resource. The independent core cleanup
+regressions remain relevant to deployment acceptance; see
+[compatibility validation](../DEVELOPMENT.md#compatibility-and-lifecycle-validation).
+
+Windowed checks cannot retract released content. Retrying or failing over after
+partial output needs explicit application semantics; the transport hook does
+not provide exactly-once inference or resumable SSE.

@@ -1,342 +1,116 @@
-# Proxy application
+# Proxy application reference
 
-Declare provider instances and select their reviewed operation bindings through
-one application factory. Typed Python projections, classifiers, and handwritten
-hooks remain the source of policy. Application configuration selects those
-bindings; it does not compile or load guard contracts.
-
-The Python interface and YAML launcher are provided by the `guardrails-proxy`
-distribution, which depends on `nemoguardrails`. The library's `server` extra is
-not required for this proxy.
-The manifest's numeric revision identifies its format, not a stability promise.
-The application owns outbound HTTP and preloads its Rails catalogue during
-lifespan startup. Configuration directories are trusted: their actions may
-execute Python. Application construction validates paths but does not start
-engines or contact providers.
+For a runnable first deployment, use the
+[quickstart](../../docs/quickstart.mdx). The
+[configuration guide](../../docs/configuration.mdx) and
+[Python integration guide](../../docs/python-integration.mdx) are the primary
+usage guides. This page records application assembly semantics.
 
 ## Run from YAML
 
-The server owns its `guardrails-proxy` executable; it is not a subcommand of the
-library CLI. `python -m guardrails_proxy` calls the same implementation.
-From this checkout, install dependencies with `uv sync --locked --all-packages`,
-then use:
+The installed `guardrails-proxy` command and `python -m guardrails_proxy` enter
+the same CLI. The commands are `validate`, `inspect`, `schema`, and `serve`.
+They use the existing manifest parser and application factory.
 
-```bash
-uv run --locked --package guardrails-proxy guardrails-proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked --package guardrails-proxy guardrails-proxy inspect guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked --package guardrails-proxy guardrails-proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-```
+`validate` checks data, configuration-directory availability, URL rules, and
+routing without loading Rails code or contacting providers. `inspect` describes
+bound operations, profiles, fixed Rails IDs, and limits, not enabled checks or
+checker compatibility. `schema` derives the manifest's editor schema. `serve`
+enters application lifespan and loads Rails before accepting requests.
 
-The [example manifest](examples/basic/proxy.yaml)
-selects native OpenAI Chat Completions and Responses bindings against a local
-upstream at `http://127.0.0.1:9000/v1`; it does not start an upstream. Both
-operations support the reviewed single-text buffered and streaming modes.
-Set `base_url` to your deployed provider endpoint and select `dialect: litellm`
-only if that provider needs the reviewed dialect. A URL does not imply a dialect.
-
-```yaml
-version: 1
-rails_configs:
-  - id: standard
-    config_path: ./rails/standard
-providers:
-  - provider: openai
-    instance_id: gateway
-    base_url: https://gateway.example/v1
-    operations: [chat_completions, responses]
-    rails_config_id: standard
-```
-
-Keep the proxy manifest outside the Rails directory: Rails loads YAML files
-recursively from its own directory, and the two formats must not be mixed.
-The example uses `proxy.yaml` beside `rails/config.yml`.
-
-The YAML fields are the Python configuration fields below, plus required integer
-`version: 1`. Every provider must specify a fixed `rails_config_id` in YAML;
-there is no implicit selection, callback import or dynamic resolver syntax.
-Multiple providers and dozens of shared catalogue entries do not require
-repeating the catalogue. Use Python for trusted dynamic resolution.
-
-Relative Rails paths resolve against the manifest's directory, not the shell's
-working directory. If the manifest is a symlink, its target directory is used.
-No environment or tilde expansion is performed. Unknown fields, duplicate keys,
-explicit YAML tags, anchors, aliases, merges, non-string mapping keys and multiple
-documents are rejected. Input is UTF-8 and bounded to 1 MiB, depth 32 and 10,000
-nodes (including keys). The manifest is deployment-owned; never accept uploads
-from callers as configuration.
-
-`validate` checks the declaration, directory/config-file availability, upstream
-URL rules and route composition. It does not read Rails contents, import their
-actions, start engines, contact providers or prove checker compatibility.
-`inspect` returns JSON describing actual bindings and directional profiles,
-including passthrough behavior; it does not claim that particular rails are
-enabled. Upstream credentials, queries and fragments are rejected, and manifest
-diagnostics omit source values/excerpts. Inspection still contains deployment metadata,
-including upstream addresses; treat it accordingly.
-
-For editor guidance, emit JSON Schema directly from the manifest model:
-
-```bash
-uv run --locked --package guardrails-proxy guardrails-proxy schema > proxy.schema.json
-```
-
-This is the configuration schema, not an exported guard contract. Semantic
-checks such as fixed-ID references and routing still require `validate`.
-There is no separately maintained schema artifact.
-
-`serve` defaults to `127.0.0.1:8000`; `--host` and `--port` override it.
-Access logging and forwarded-proxy-header trust are disabled. Provide your own
-inbound access controls before listening beyond loopback. Caller authorization
-headers still follow the existing upstream forwarding rules; this launcher
-does not store provider keys or introduce service authentication.
+YAML requires `version: 1` and fixed `rails_config_id` selections. Relative paths
+resolve against the manifest target's directory. It does not expand environment
+variables or import callbacks. See [manifest rules](../../docs/configuration.mdx#manifest-validation-rules).
 
 ### Requests and blocking
 
-The [example Rails configuration](examples/basic/rails/config.yml) blocks common
-ASCII email-address patterns in guarded input and output text using local regex
-checks. It needs no rail model, additional package or rail-service API key;
-generation still uses the configured upstream. This is a small, editable policy,
-not comprehensive PII detection or semantic content moderation. It can miss
-obfuscated or internationalized addresses and can block harmless example addresses.
-Only text selected by the operation binding is checked, not every field in the
-provider payload.
+Input checks run before upstream dispatch. Buffered output checks run before
+returning the selected response text. Streaming output checks run over windows
+before approved event bytes are released. Earlier windows cannot be retracted.
 
-Output streaming explicitly uses `chunk_size: 200`, `context_size: 50` and
-`stream_first: false`. The sizes match the Rails configuration defaults, but in
-this proxy they count **nonempty provider text deltas**, not tokenizer tokens or
-SSE events. Each window is checked before its new text is released; the last
-partial window is checked at completion. Short responses may therefore be held
-until completion. Smaller windows reduce buffering delay but increase check
-frequency; these example values are not a deployment-specific tuning recommendation.
-The proxy requires `stream_first: false` when output checking is enabled.
-
-Context lets a later check detect patterns spanning windows, but cannot retract
-an already-released prefix. Finite context can also miss sufficiently long or
-fragmented patterns. Do not treat streaming regex checks as a guarantee against
-partial disclosure. Use buffered responses when the entire answer must be
-checked before any of its text is returned; the regex's detection limits still apply.
-
-With a compatible upstream running, replace `YOUR_DEPLOYED_MODEL` with its model
-ID. Add an `Authorization` header from a locally managed environment variable if
-the upstream requires one; never put credentials in the manifest.
-
-```bash
-curl -sS http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"hello"}]}'
-
-curl -N http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"hello"}],"stream":true}'
-
-curl -sS http://127.0.0.1:8000/v1/responses \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","input":"hello"}'
-
-curl -sS http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Contact person@example.com"}]}'
-```
-
-The last request returns `content_blocked` before upstream dispatch. To check
-output blocking deterministically, use a synthetic upstream that returns
-`person@example.com`: buffered output is rejected; a streamed window containing
-the address is withheld and an error event is returned after streaming headers
-have been sent. Earlier allowed windows may already have been released. An LLM
-prompt asking it to emit an address is not a deterministic regression test.
-
-Invalid guarded content does not fall back to a weaker binding. Unselected
-operations may still pass through, and a disabled input/output check does not
-become enabled merely by selecting an operation.
-
-Profile/variant selection is not exposed. Inspection reads current profiles
-from the bindings. Future variants would select shipped, tested combinations
-per operation at startup; Rails configuration alone cannot enable multimodal
-extraction or inspection.
-
-The launcher reuses the existing lifespan, including catalogue preloading.
-Known incomplete-cleanup/retry prerequisites in the core and shared HTTP owners
-remain separate. Successful launch or disconnect smoke tests do not establish
-that interrupted cleanup is complete; run those real-owner regressions before
-claiming lifecycle readiness.
+The [bundled example](examples/basic/proxy.yaml) uses local regex checks for
+email-address patterns and needs a separately running upstream. Its
+[streaming settings](../../docs/providers-and-streaming.mdx#streaming-windows)
+count nonempty provider text deltas, not tokens. See the
+[quickstart requests](../../docs/quickstart.mdx#send-a-buffered-request) and
+[blocking example](../../docs/quickstart.mdx#see-input-blocking).
 
 ## Declare a built-in provider
 
-```python
-from pathlib import Path
+Import `ConfigEntry`, `ProviderConfig`, `ProxyConfig`, and
+`create_proxy_application` from `guardrails_proxy.application`.
 
-from guardrails_proxy.application import (
-    ConfigEntry,
-    ProviderConfig,
-    ProxyConfig,
-    create_proxy_application,
-)
+`create_proxy_application(config)` accepts a `ProxyConfig` with providers and a
+Rails catalog. Construction validates paths and routes. Startup owns the HTTP
+client and initializes the catalog; requests use ready checkers.
 
-config = ProxyConfig(
-    rails_configs=(
-        ConfigEntry(id="standard", config_path=Path("./rails/standard")),
-    ),
-    providers=(
-        ProviderConfig(
-            provider="openai",
-            instance_id="gateway",
-            base_url="https://gateway.example/v1",
-            mount_path="/gateway",
-            operations=("chat_completions", "responses"),
-            rails_config_id="standard",
-        ),
-    ),
-)
-
-app = create_proxy_application(config)
-```
-
-The Rails directory must exist and contain a supported configuration. Relative
-paths resolve against the working directory at application construction; use
-absolute paths when embedding in another application.
-
-This forwards provider generation transparently through HTTPX. It does not use
-the Guardrails LLM framework or LangChain to generate the provider response.
-Rails configuration separately determines any models, optional integrations,
-credentials, or services required by its checks. Upstream authorization is
-forwarded from the caller under the existing transport rules; the declaration
-does not store credentials or configure inbound authentication. Establish that
-authentication separately when deploying beyond a trusted local environment.
+Python relative paths resolve against the application's construction working
+directory. Use absolute paths when its launch directory is not fixed.
 
 ### Operations and dialects
 
-| Selection | Configuration |
-| --- | --- |
-| Native Chat only | `operations=("chat_completions",)`; omit `dialect`. |
-| Native Chat and Responses | `operations=("chat_completions", "responses")`; omit `dialect`. |
-| Reviewed LiteLLM Chat and Responses | Same operations, with `dialect="litellm"`. |
+The built-in provider is `openai`. Select `chat_completions`, `responses`, or
+both in a nonempty ordered list/tuple; duplicate and unknown names are rejected.
+Omit the dialect for native bindings, or explicitly select `litellm`.
 
-Responses-only selection is also supported. Both operations have buffered and
-streaming bindings. Order is preserved; empty, duplicate, or unknown operations
-are rejected. There is no default that automatically adds future operations.
-
-Omitted dialect means the chosen provider's native reviewed bindings, not a
-global OpenAI default. Initially the built-in implementation is `openai`, with
-native and explicit LiteLLM bindings. Provider, instance, upstream, and dialect
-are distinct: changing the URL does not select a dialect. Unsupported names
-fail rather than falling back. The LiteLLM selection describes reviewed wire
-extensions, not compatibility with every LiteLLM backend.
-
-Native bindings still enforce the supported single-text policy; they do not
-accept every feature in the upstream API. See the
-[LiteLLM Chat boundary](providers/openai/dialects/litellm/README.md) and
-[LiteLLM Responses boundary](providers/openai/dialects/litellm/responses.md).
-
-**Operation selection is not a route allowlist.** Unselected routes retain
-passthrough behavior. Selected bindings also do not activate Rails checks
-disabled in the chosen Rails configuration. Inspect input/output configuration
-when deciding which traffic is actually checked.
+A URL or model name does not select a dialect. Current content coverage belongs
+to the selected binding and its capability profiles, which can evolve; consult
+[providers and streaming](../../docs/providers-and-streaming.mdx) for the shipped
+bindings. An operation selection does not install a route allowlist or enable
+checks disabled in Rails. Unselected operations may pass through.
 
 ## Fixed and dynamic Rails configuration
 
-Define the catalogue once, even when it contains dozens of entries.
-`rails_config_id` selects one fixed entry per provider instance. No repeated
-lists of allowed IDs are required:
+`rails_config_id` selects a registered ID per provider and bypasses user resolver
+code. A provider without a fixed ID in `ProxyConfig` requires a trusted resolver,
+even when the catalog contains only one entry. All-fixed declarations need no
+callback.
 
-```python
-config = ProxyConfig(
-    rails_configs=(
-        ConfigEntry(id="standard", config_path=Path("./rails/standard")),
-        ConfigEntry(id="strict", config_path=Path("./rails/strict")),
-    ),
-    providers=(
-        ProviderConfig(
-            provider="openai",
-            instance_id="public",
-            mount_path="/public",
-            base_url="https://gateway.example/v1",
-            operations=("chat_completions", "responses"),
-            rails_config_id="strict",
-        ),
-        ProviderConfig(
-            provider="openai",
-            instance_id="customers",
-            mount_path="/customers",
-            base_url="https://customers.example/v1",
-            operations=("chat_completions",),
-        ),
-    ),
-)
+`config_resolver` accepts the original request, provider type, instance ID, and
+canonical operation name through `ConfigContext`. It may return a string directly
+or through an awaitable. Unknown/invalid results and callback failures stop the
+request before upstream dispatch. Selection returns one configuration, not a
+sequence. Authorization belongs to the trusted callback.
 
-def resolve_config(context):
-    tenant = context.request.state.authenticated_tenant
-    return tenant.guardrails_config_id
-
-app = create_proxy_application(config, config_resolver=resolve_config)
-```
-
-The example requires trusted middleware to establish `authenticated_tenant`.
-It must not be copied directly from an untrusted request header.
-
-- `public` always uses `strict` and never invokes the user callback.
-- `customers` has no fixed ID, so the callback selects a registered entry.
-- The callback receives the original request, provider type, provider instance
-  ID, and canonical operation name, such as `chat_completions.create`.
-- Synchronous and asynchronous callbacks are supported. A dynamic instance
-  requires a callback even with a one-entry catalogue.
-- All-fixed applications need no callback, even with many catalogue entries.
-- Unknown fixed IDs fail construction. Unknown/invalid callback results and
-  callback failures fail closed before upstream dispatch, without fallback.
-- Selection chooses one configuration; it does not run multiple configurations
-  in sequence. Dynamic callbacks own authorization; registration in the shared
-  catalogue alone does not authorize a caller to select that configuration.
-
-There are no per-provider allowlist fields or declarative per-operation
-overrides in this interface. A trusted dynamic resolver can use operation
-context as needed. All catalogue entries are still preloaded under the existing
-repository behavior, including entries not selected by a particular request.
+Every catalog entry initializes before readiness. No request-time parsing,
+hot-reload mechanism, or dynamic catalog is added by resolution. See the
+[resolution reference](configuration-resolution.md) for lifecycle and trust rules.
 
 ## Custom Python composition
 
-The same factory still accepts explicit integrations, ordinary resolver
-callbacks, and an application-owned HTTP transport factory:
+The same factory accepts explicit `ProviderIntegration` objects through
+`providers=...`, Rails entries, a resolver, and an HTTP transport factory.
+This supports custom endpoints and mixed reviewed declarations without a global
+provider registry.
 
-```python
-from guardrails_proxy.providers.openai.integration import (
-    create_openai_chat_integration,
-)
+In direct mode, one Rails entry and no resolver infers a static selection;
+multiple entries require a resolver. An explicit resolver is invoked even with
+one entry. These direct-mode rules differ from `ProxyConfig`'s explicit per-provider
+fixed/dynamic selection.
 
-app = create_proxy_application(
-    providers=(
-        create_openai_chat_integration(
-            instance_id="gateway",
-            base_url="https://gateway.example/v1",
-        ),
-    ),
-    rails_configs=(ConfigEntry(id="standard", config_path=Path("./rails/standard")),),
-)
-```
-
-Direct `ProviderIntegration` objects allow custom endpoints, mixed dialects,
-or custom implementations without registration. The existing direct mode still
-infers static selection with one catalogue entry and no resolver, requires a
-resolver with multiple entries, and invokes an explicit resolver even with one
-entry. Those semantics are unchanged.
-
-Do not mix `ProxyConfig` with direct providers, Rails entries, or limit/prefix
-overrides. Put data settings in `ProxyConfig`; `config_resolver` and
-`http_transport_factory` remain separate Python callback arguments in either
-mode. See [HTTP transport](http-transport.md) for transport ownership.
+Do not combine `ProxyConfig` with direct provider/catalog/limit/prefix arguments.
+The Python callbacks `config_resolver` and `http_transport_factory` remain separate
+keyword arguments in either mode. See
+[Python composition](../../docs/python-integration.mdx) and
+[transport ownership](http-transport.md).
 
 ## Validation, defaults, and limitations
 
-Unknown fields are rejected, including inside catalogue entries. Configuration
-models snapshot input collections and are frozen. Provider IDs and mounts must
-be unique, and existing route validation rejects conflicting bindings. The
-upstream URL must be HTTP(S), without userinfo, query, or fragment. Declarative
-upstreams are explicit; provider-specific environment defaults are not used.
+Configuration models reject unknown fields, snapshot input collections, and are
+frozen. Instance IDs and mounts must be unique. Bound routes and operation IDs
+are validated for conflicts. Upstream URLs are explicit HTTP(S), without
+userinfo, query, or fragment; declarative configuration does not use provider
+URL environment defaults.
 
-The default application prefix is empty, the request limit is 1 MiB, the
-response limit is 10 MiB, and the outbound timeout is 30 seconds. The limits
-retain existing guarded-versus-passthrough behavior; they are not a newly added
-global response-buffering rule.
+The default application prefix is empty, guarded request limit is 1 MiB,
+inspected response limit is 10 MiB, and outbound timeout is 30 seconds.
+These bounds do not become global limits for unrelated pass-through traffic.
 
-The new selection path reuses existing lifecycle owners. It does not fix or
-claim complete safety for interrupted startup/shutdown or failed HTTP cleanup.
-Those owners require their own real-resource validation. Successful in-process
-buffered/SSE tests are not proof of socket-disconnect or shutdown safety.
+The proxy declares its own HTTP, CLI, YAML, and schema dependencies. The
+library's `server` extra and provider client SDKs are not required for HTTP
+forwarding. Individual Rails integrations may have additional dependencies.
+
+Startup and cleanup reuse the runtime's owners and cooperative budgets. The
+independent interrupted-cleanup regressions still require real-resource release
+validation; healthy launch or disconnect tests alone do not establish readiness
+for every cancellation path. See [development validation](../../DEVELOPMENT.md#compatibility-and-lifecycle-validation).

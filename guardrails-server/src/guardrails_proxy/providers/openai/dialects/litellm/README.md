@@ -1,5 +1,8 @@
 # LiteLLM Chat dialect
 
+For deployment selection, use the [configuration guide](../../../../../../docs/configuration.mdx).
+This reference records the dialect's current field policy and source evidence.
+
 For the separately reviewed Responses operation, see the
 [LiteLLM Responses dialect](responses.md). Chat extension bags and backend
 evidence do not automatically apply to Responses.
@@ -56,7 +59,7 @@ router = create_openai_chat_router(
 ```
 
 `checker` and `dispatcher` are application-owned dependencies, not constructed
-by this snippet. Use the existing server dependencies and HTTP transport; no
+by this snippet. Use the proxy package's HTTP dependencies and transport; no
 LiteLLM SDK, optional LiteLLM extra, or dialect-specific API key is required.
 Upstream credentials follow the application's existing HTTP authorization path.
 This uses the transparent HTTP proxy, not LangChain or a LiteLLM
@@ -109,8 +112,8 @@ key that LiteLLM's open dictionaries could contain.
 | Root response/stream identity, usage and other existing opaque fields | Preserve unchanged. Reasoning-token counts and cost inside usage are not reasoning text. |
 | Source constructor extras, including choice `enhancements`, and unknown backend fields | Reject unless already in the inherited opaque inventory. Open upstream dictionaries are not an automatic passthrough policy. |
 
-Separate deployment evidence is in the D-2 commit `1607aa70a464f2bb6fa4b650473c80a87f43f4e3`,
-under `guardrails-server/tests/recorded/openai/cassettes/test_chat_completions/`:
+Separate deployment evidence is recorded under
+`guardrails-server/tests/recorded/openai/cassettes/test_chat_completions/`:
 `test_buffered_chat_preserves_guarded_constrained_and_opaque_contract_fields.yaml`
 and `test_nvidia_chat_source_profile_preserves_allowed_relay[buffered].yaml`.
 Both contain message `{refusal: null}` and empty choice extension objects. The
@@ -133,16 +136,16 @@ content needs supported inspection or an explicit decision to leave it opaque.
 
 The default dialect remains closed. The existing unknown-field override does
 not relax declared constraints or this dialect's closed response objects.
-There is no request-controlled opt-out, YAML loader, wildcard metadata allowance,
-or new deployment configuration system. Broader operator configuration can be
-added separately if needed.
+There is no request-controlled opt-out, runtime guard-contract loader, or wildcard
+metadata allowance. Deployment configuration selects reviewed bindings rather
+than defining a second copy of their field policy.
 
-## Export and downstream handoff
+## Export
 
 Generate the complete effective document using the shared exporter:
 
 ```bash
-uv run --locked python -m guardrails_proxy.provider.contract_export \
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
   guardrails_proxy.providers.openai.dialects.litellm.chat_completions:LITELLM_CHAT_COMPLETIONS_ENDPOINT \
   --output guardrails-server/src/guardrails_proxy/contracts/openai/_generated/litellm-chat-completions.guard.yaml
 ```
@@ -154,9 +157,7 @@ inheritance program. Runtime construction does not import the exporter or load
 this artifact. Export retains the base format's documented limitations, including
 Python strictness, case-alias checks, and handwritten stream lifecycle behavior.
 
-This change belongs after D-1 and before D-2. D-2 should explicitly select this
-endpoint for the reviewed gateway recordings and replay them without editing
-recorded payloads to fit the policy. D-3 may add trusted deployment-level dialect
-selection while retaining the OpenAI protocol family; no registry or deployment
-configuration format is added here. Direct vLLM, other LiteLLM routes, broader
-conformance, and compiler preparation remain separate work.
+Replay recordings through the explicitly selected dialect without editing
+payloads to fit its policy. Keep evidence for each deployed model route and
+backend separate; this reviewed subset does not establish compatibility with
+every upstream using an OpenAI-shaped API.

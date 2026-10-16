@@ -1,108 +1,92 @@
 # Guardrails Proxy
 
-A separately packaged transparent HTTP proxy. The distribution is
-`guardrails-proxy`; its Python package is `guardrails_proxy`. The server depends
-on `nemoguardrails`, not the reverse. The library's existing server is unchanged.
-Version `0.1.0a1` is a pre-release, not a stability promise.
+Guardrails for the model APIs you already use.
 
-## Development and installation
+Put the NVIDIA NeMo Guardrails library between your clients and your inference
+services. Check requests before they reach a model and check responses before
+they reach your users, including streaming output.
 
-From the repository root:
+Your clients keep the provider's API format. Your model service keeps generating
+the response. The proxy extracts the content your checks need and relays accepted
+JSON bodies and server-sent events without rebuilding them.
 
-```bash
-uv sync --locked --all-packages --group dev
-uv run --locked --package guardrails-proxy guardrails-proxy --help
-uv build --all-packages
+```text
+Client ── request ──→ Input checks ──→ Model service
+       ←─ response ─ Output checks ←─┘
 ```
 
-Both projects have independent package metadata and distributions, with a shared
-uv workspace lockfile for development. The workspace source selects the local
-library checkout; wheel metadata contains a normal versioned `nemoguardrails`
-dependency, not a filesystem path. Installing the library alone does not install
-or package this proxy. No `nemoguardrails proxy` subcommand is added.
+## What it gives you
 
-This checkpoint requires the `0.25` library development line. Before that library
-release is available, install the library wheel built from this checkout together
-with the proxy wheel, rather than resolving an older published release. The
-version bound reflects the tested integration surface, not a completed release
-compatibility matrix. No package publication is performed by these commands.
+- **Guardrails at the HTTP boundary.** Apply configured input and output checks
+  across applications, without putting guardrail execution into each client.
+- **Provider-aware streaming.** Check text as it arrives while preserving the
+  provider's event format, metadata, and completion behavior on accepted paths.
+- **A reviewable inspection boundary.** Typed provider bindings declare what is
+  checked, constrained, or passed through. Export their guard contracts to
+  review that coverage without reading the implementation.
+- **Independent routing and policy.** Connect upstreams and gateways, mount
+  multiple provider instances, and select Rails by instance or trusted request
+  context. Add application-owned HTTP routing when you need it.
+- **A server and a Python interface.** Start from a YAML manifest or compose the
+  same application in Python with custom integrations and transports.
 
-## Run an example
+Built-in integrations include OpenAI Chat Completions and Responses, with explicit
+LiteLLM dialects. [Provider bindings](docs/providers-and-streaming.mdx) make their
+current content coverage explicit as integrations and capabilities evolve.
 
-The server owns its examples, schemas, contracts and documentation. See the
-[application guide](src/guardrails_proxy/application.md) for a trusted manifest,
-provider/dialect selection, credentials, supported modes and buffering limits.
-The basic example uses local regex checks with no additional rail-model service;
-generation still needs a compatible upstream. Native OpenAI and LiteLLM bindings
-are explicit selections, not inferred from URLs.
+## Try it
 
-```bash
-uv run --locked --package guardrails-proxy guardrails-proxy validate guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-uv run --locked --package guardrails-proxy guardrails-proxy serve guardrails-server/src/guardrails_proxy/examples/basic/proxy.yaml
-```
-
-The example's upstream is a placeholder at `http://127.0.0.1:9000/v1`. Copy the
-manifest and its sibling Rails directory together before editing your deployment.
-The default listener is loopback port 8000. The launcher does not supply inbound
-authentication; do not expose it publicly without deployment-owned access controls.
-
-After installing the wheels in your own environment, use `guardrails-proxy`
-directly. `python -m guardrails_proxy` is an equivalent entry point. Neither
-requires the repository checkout. Bundled examples are package resources; copy
-the complete basic example into a new deployment-owned directory:
+With the package installed and its environment active, run these commands from
+your deployment directory:
 
 ```bash
-uv run --no-project python -c "from importlib.resources import files; from shutil import copytree; copytree(files('guardrails_proxy') / 'examples/basic', 'proxy-example')"
-guardrails-proxy validate proxy-example/proxy.yaml
-guardrails-proxy inspect proxy-example/proxy.yaml
-guardrails-proxy serve proxy-example/proxy.yaml
+guardrails-proxy validate proxy.yaml
+guardrails-proxy inspect proxy.yaml
+guardrails-proxy serve proxy.yaml
 ```
 
-Activate the environment containing the installed wheels before these commands.
-Edit `proxy-example/proxy.yaml` to select your upstream and dialect. The launcher
-uses the same factory, trusted manifest parser and lifespan as Python assembly;
-the console entry point adds no separate configuration or ownership layer.
+The [quickstart](docs/quickstart.mdx) covers installation from this checkout and
+copying the bundled example into your own directory. Keep `proxy.yaml` and its
+sibling Rails directory together. Set `base_url` to your upstream's API base,
+including its path prefix; select `dialect: litellm` if you need that reviewed
+dialect. The example enables Chat Completions and Responses with local regex
+rails that block email-address patterns in input and output.
 
-## Tests and dependency boundaries
+Send a request from another terminal, using your upstream's model ID. Include an
+`Authorization` header if the upstream requires it:
 
 ```bash
-make test WORKERS=0 TEST=guardrails-server/tests/proxy_tests
-make test WORKERS=0 TEST=guardrails-server/tests/recorded ARGS="--block-network --record-mode=none"
-make test-proxy-package
+curl -sS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-Packaging tests build both distributions offline and install local wheels with
-locked runtime dependencies in a fresh environment. Run `uv sync --locked
---all-packages --group dev` first to populate the dependency cache. Tests check
-CLI/module parity and reuse the localhost buffered, streaming, blocking and
-disconnect cases against the installed console script and packaged Rails example.
-Repository cassette targets include both library and proxy recordings by default;
-set `RECORDED_TESTS` to narrow them. Coverage includes both Python packages.
-The existing library Dockerfile copies the member's metadata for workspace
-resolution but still installs and starts only the legacy library server. This
-change does not introduce a proxy image.
+Change the user text to `Contact person@example.com` to see an input blocked
+before inference. Add `"stream": true` and use `curl -N` for a streamed response.
+Follow the [quickstart](docs/quickstart.mdx) for complete setup and examples.
 
-Ruff configuration, pre-commit hooks, license headers and type checking remain
-repository-owned. The proxy does not maintain a parallel lint configuration.
-CI installs both workspace packages explicitly. Ordinary test matrices exclude
-the packaging directory; a separate serial acceptance job runs its offline
-build/install and localhost checks. `make test` still includes these tests for
-local full-suite runs. Both GitHub Actions and GitLab have an acceptance job.
+## Explore
 
-The proxy is not published to PyPI. Library release builds explicitly select
-`nemoguardrails` and use `dist/nemoguardrails/`; publication rejects unexpected
-files or versions before uploading. Proxy test builds use isolated temporary
-directories and are not inputs to the publishing workflows.
+| You want to… | Read |
+| --- | --- |
+| Run the proxy and see a guardrail execute | [Quickstart](docs/quickstart.mdx) |
+| Choose upstreams, operations, and Rails configurations | [Configuration](docs/configuration.mdx) |
+| Check provider coverage and understand streaming | [Providers and streaming](docs/providers-and-streaming.mdx) |
+| Understand what is inspected and review an export | [Guard contracts](docs/guard-contracts.mdx) |
+| Use multiple upstreams, replicas, or gateways | [Deployment](docs/deployment.mdx) |
+| Embed the application or extend its bindings and transport | [Python integration](docs/python-integration.mdx) |
 
-Recorded tests reuse repository-owned sanitization helpers; those are development
-tools, not server runtime dependencies. Recordings are moved unchanged. Tests
-must not call live providers. The full moved suite still exposes the pre-existing
-core queue-cleanup retry failure; packaging does not resolve lifecycle prerequisites.
+Inspection applies to the content declared by a binding and the checks enabled
+in its Rails configuration. Other operations may pass through without content
+inspection. Streaming checks cannot retract text already sent. See the guides
+for the current bindings' coverage and deployment behavior.
 
-The runtime library boundary currently uses `Guardrails`, `RailsConfig`, and
-`nemoguardrails.rails.llm.options` result/status types. It invokes the existing
-startup/check/shutdown API and reads Rails configuration for adapter selection.
-No private library import or shim is added by this move, but compatibility of
-these result types and lifecycle semantics remains part of release validation.
-The library's server extra is not used to supply this project's dependencies:
-the proxy declares its own HTTP, CLI, YAML and schema dependencies directly.
+## Project status
+
+Guardrails Proxy is experimental (`0.1.0a1`) and is not yet published to PyPI.
+It depends on the NVIDIA NeMo Guardrails library. Its launcher listens on
+loopback by default; provide inbound authentication before exposing a service.
+
+See [Development](DEVELOPMENT.md) to build, test, or contribute.
+Licensed under [Apache 2.0](LICENSE-Apache-2.0.txt).

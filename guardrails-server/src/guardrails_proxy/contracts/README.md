@@ -1,5 +1,9 @@
 # Guard contracts
 
+For a worked introduction and export commands, see the
+[guard contract guide](../../../docs/guard-contracts.mdx). This reference defines
+the document vocabulary and its representation limits.
+
 A guard contract describes a provider operation's guardrail boundary: which
 content is inspected, which values are restricted, and which data remains under
 provider authority. It makes that boundary reviewable without reading Python.
@@ -150,3 +154,4 @@ annotations.
 ## Provider boundaries
 
 - [OpenAI Chat Completions](openai/README.md)
+- [OpenAI Responses](../providers/openai/responses/README.md)

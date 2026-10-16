@@ -1,0 +1,167 @@
+---
+title: "Run Guardrails Proxy"
+sidebar-title: "Quickstart"
+description: "Start a guarded endpoint, send buffered and streaming requests, and see an input blocked before inference."
+content:
+  type: "get_started"
+---
+
+Use the bundled example to put input and output checks in front of a model
+service. The example selects Chat Completions and Responses and uses local regex
+rails to detect common email-address patterns. You can then replace those rails
+with the checks your application needs.
+
+## Install from source
+
+You need Python 3.10–3.13, [uv](https://docs.astral.sh/uv/), and an upstream that
+matches one of the [built-in bindings](providers-and-streaming.mdx).
+The proxy is not yet published to PyPI. From this checkout's repository root:
+
+```bash
+uv sync --locked --all-packages
+source .venv/bin/activate
+cp -R guardrails-server/src/guardrails_proxy/examples/basic proxy-example
+cd proxy-example
+```
+
+These shell commands activate the installed workspace environment and enter
+your deployment-owned copy. All proxy commands below run from this directory;
+they do not need a `uv run` prefix. The copy contains two separate configurations:
+
+```text
+proxy-example/
+  proxy.yaml          deployment: upstreams, operations, Rails selection
+  rails/config.yml    checks: input, output, streaming windows
+```
+
+If you already installed the proxy and a compatible library wheel, activate that
+environment, [copy its bundled example](../DEVELOPMENT.md#build-and-install-local-distributions),
+and enter the copied directory instead. No repository checkout is needed for
+the installed CLI. Contributors who prefer `uv run` can use the separate
+[development workflow](../DEVELOPMENT.md#set-up-the-workspace).
+
+## Connect your upstream
+
+Edit `proxy.yaml`. Replace the placeholder `base_url` with your
+model service or gateway's API base. For example:
+
+```yaml
+version: 1
+rails_configs:
+  - id: standard
+    config_path: ./rails
+providers:
+  - provider: openai
+    instance_id: local
+    base_url: https://api.openai.com/v1
+    operations: [chat_completions, responses]
+    rails_config_id: standard
+```
+
+For the reviewed LiteLLM bindings, add `dialect: litellm` to the provider entry.
+Changing a hostname or model name does not select a dialect. Check the binding's
+coverage against the requests your application sends.
+
+Keep credentials outside the manifest. The default transport forwards the
+caller's upstream authorization header; the proxy itself does not need an
+OpenAI or LiteLLM client SDK to generate responses. Rails that use external
+models or services have their own dependencies and credentials. The bundled
+regex example needs neither a detector model nor a detector API key.
+
+## Validate and start
+
+```bash
+guardrails-proxy validate proxy.yaml
+guardrails-proxy inspect proxy.yaml
+guardrails-proxy serve proxy.yaml
+```
+
+`validate` checks declaration data, paths, and routes. `inspect` shows selected
+bindings, profiles, and limits. Neither command initializes Rails or establishes
+upstream compatibility. `serve` loads every declared Rails configuration before
+accepting traffic at `http://127.0.0.1:8000`.
+
+The CLI also supports `--host` and `--port` on `serve`.
+`python -m guardrails_proxy` is equivalent to the installed console command.
+The listener does not add inbound authentication. Keep it local or configure
+access controls in your [deployment](deployment.mdx#credentials-and-access).
+
+## Send a buffered request
+
+In a second terminal, replace `YOUR_DEPLOYED_MODEL` with your upstream's model ID.
+If authorization is required, set `PROVIDER_API_KEY` to a key you manage locally.
+Omit the authorization header for an unauthenticated upstream.
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+The proxy checks the input, sends the original accepted request to your upstream,
+checks the selected response text, and returns the accepted response body.
+
+## Request a stream or use Responses
+
+For Chat streaming:
+
+```bash
+curl -N http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+```
+
+For Responses:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","input":"Hello!"}'
+```
+
+Responses also accepts `"stream": true` within its current binding. Streaming
+output is checked in windows; the example can hold short answers until
+completion. See [streaming windows](providers-and-streaming.mdx#streaming-windows)
+for tuning and release behavior.
+
+## See input blocking
+
+```bash
+curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Contact person@example.com"}]}'
+```
+
+This returns HTTP 400 with error code `content_blocked` before any generation
+request reaches the upstream. The same input rule applies to the selected
+Responses input text.
+
+The example also blocks matching output. For a deterministic output test, use
+an offline upstream fixture that returns `person@example.com`; asking a live
+model to emit it does not guarantee the test input. Buffered blocked output
+returns an error instead of the answer. A blocked stream withholds the pending
+window and emits a provider-format error; earlier approved windows may already
+have reached the caller. The existing
+[launcher tests](../tests/proxy_tests/test_proxy_launcher.py) exercise both cases.
+
+Regex checks illustrate configuration and ordering, not comprehensive PII
+protection. Edit `rails/config.yml` to choose supported checks and any required
+models or optional integrations. A binding determines which content those
+checks receive; it does not run every rail the library offers.
+
+## Troubleshoot the first request
+
+| Symptom | Check |
+| --- | --- |
+| Startup cannot find a Rails directory | `config_path` resolves relative to the manifest, not your shell directory. Copy the Rails directory with the manifest. |
+| Validation passes but startup fails | Rails contents, actions, dependencies, and engines load during startup. Declaration validation does not execute them. |
+| Upstream returns an authentication or model error | Use the upstream's model ID and authorization requirements. The proxy does not create models or credentials. |
+| A guarded request or response is rejected | Compare its shape with the selected binding and dialect. The upstream may support content that this binding does not yet inspect. |
+| Streaming output arrives late | Inspect the enabled Rails, streaming window size, and any gateway buffering. The final partial window is released only after it passes. |
+
+Next, [configure provider instances and Rails](configuration.mdx), or inspect the
+[guard contract](guard-contracts.mdx) describing the selected boundary.

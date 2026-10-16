@@ -1,0 +1,129 @@
+---
+title: "Understand Guard Contracts"
+sidebar-title: "Guard Contracts"
+description: "Review what a provider binding inspects, constrains, and passes through using contracts exported from its Python declarations."
+content:
+  type: "concept"
+---
+
+A guard contract makes an integration's inspection boundary visible. It answers
+which content reaches checks, which shapes are restricted, and which fields
+remain provider-owned metadata. Use it to review coverage or evaluate a provider
+change without reconstructing the boundary from implementation details.
+
+## Three different configurations
+
+| Artifact | What you use it for |
+| --- | --- |
+| Proxy manifest or Python application config | Select upstreams, operations, dialects, and Rails configurations. |
+| Rails configuration | Define the checks that run on selected content. |
+| Guard contract | Review the bound operation's content coverage and declared stream behavior. |
+
+Typed Python projections, bindings, and endpoint declarations are authoritative.
+The contract is exported from those bound declarations. The running proxy does
+not load it to create policy, and changing the YAML does not change execution.
+
+## Read the field policy
+
+| Classification | Meaning | Example |
+| --- | --- | --- |
+| Guarded | Content selected for checks, or a container leading to that content. | A user message's text. |
+| Constrained | A value or shape restricted for supported behavior or integrity. | A role fixed to `user`, or a choice index fixed to zero. |
+| Opaque | A reviewed field left under provider authority without inspection of its value or nested contents. | Usage accounting or a model identifier. |
+
+Disabled features are represented by constraints, often a null-only field with
+`gate: disabled`. Required presence, nullability, and replacement eligibility
+are separate declarations. Opaque means uninspected; it does not mean safe.
+
+For example, this is the current Chat export's
+`request.properties.messages.items.properties.content` declaration:
+
+```yaml
+minLength: 1
+type: string
+x-nemo-guardrails:
+  classification: guarded
+  subject:
+    kind: text
+    replaceable: true
+    role: user
+```
+
+It identifies the text and role used for checking. `replaceable: true` records
+subject eligibility, not a promise that the endpoint executes replacement
+outcomes. The current built-in integrations reject unsupported modifications.
+
+The current request's `model` declaration illustrates opaque metadata:
+
+```yaml
+x-nemo-guardrails:
+  classification: opaque
+```
+
+These are excerpts from an exported binding, not a complete editable contract.
+
+## Inspect a contract
+
+The package includes bound exports for
+[native Chat](../src/guardrails_proxy/contracts/openai/_generated/chat-completions.guard.yaml),
+[native Responses](../src/guardrails_proxy/contracts/openai/_generated/responses.guard.yaml),
+[LiteLLM Chat](../src/guardrails_proxy/contracts/openai/_generated/litellm-chat-completions.guard.yaml),
+and [LiteLLM Responses](../src/guardrails_proxy/contracts/openai/_generated/litellm-responses.guard.yaml).
+
+| Section | Describes |
+| --- | --- |
+| `version`, `operationId`, `profile` | Document format, provider operation, and payload capability. |
+| `request`, `response` | Payload shapes and their field policies. |
+| `stream` | Bound event payloads, selection roles, missing-text behavior, and framing declarations. |
+| `excluded_stream_events` | Explicit exclusions recorded by the binding. |
+| `integration.endpoint` | Endpoint identity, routes, errors, and descriptive implementation references. |
+
+The format revision, provider API revision, and capability profile are different
+version axes. A profile such as `single_text.v1` describes a current execution
+capability; it is not the permanent product boundary or a choice of Rails.
+
+## Export from an endpoint
+
+From the repository root, export the actual bound endpoint:
+
+```bash
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
+  guardrails_proxy.providers.openai.chat_completions.endpoint:CHAT_COMPLETIONS_ENDPOINT \
+  --output chat.guard.yaml
+```
+
+Check for drift without modifying the file:
+
+```bash
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
+  guardrails_proxy.providers.openai.chat_completions.endpoint:CHAT_COMPLETIONS_ENDPOINT \
+  --check chat.guard.yaml
+```
+
+Use `guardrails_proxy.providers.openai.responses.endpoint:RESPONSES_ENDPOINT`
+for Responses. With neither destination option, the command writes YAML to
+standard output. The endpoint reference imports Python, so use only trusted
+local declarations.
+
+The CLI validates the exported format. It rejects declarations it cannot
+represent faithfully, such as unsupported custom stream validators, rather
+than silently omitting them. Runtime bindings can have behavior beyond the
+standard export format.
+
+## What an export does not establish
+
+Stateful hooks, arbitrary Python validation, network transport behavior, and
+resource cleanup remain implementation behavior. Exporting does not activate a
+checker, enable new profiles, or prove compatibility with a deployed upstream.
+
+The document uses JSON Schema vocabulary with guard-specific annotations.
+Generic JSON Schema tools do not enforce every annotation, including selected
+array-variant cardinality, trusted unknown-field overrides, or case-alias
+rejection. JSON Schema also cannot distinguish an integer token from an integral
+floating-point token as strict Python validation can.
+
+See the [format reference](../src/guardrails_proxy/contracts/README.md) for exact
+keywords and limitations. When coverage changes, update the Python declarations,
+verify allowed and rejected exchanges, and regenerate the contract from the
+endpoint. Maintain one authoritative policy rather than editing a second YAML
+policy by hand.

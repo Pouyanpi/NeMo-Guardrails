@@ -1,0 +1,224 @@
+---
+title: "Compose and Extend in Python"
+sidebar-title: "Python Integration"
+description: "Build the proxy application, select Rails from trusted context, and extend HTTP dispatch or provider bindings."
+content:
+  type: "how_to"
+---
+
+Use Python when your deployment needs dynamic Rails selection, explicit provider
+bindings, or a custom HTTP transport. The Python interface and YAML launcher
+use the same route assembly and resource owners.
+
+## Create an application
+
+After copying the [quickstart example](quickstart.mdx), create `proxy_app.py` in
+the repository root:
+
+```python
+from pathlib import Path
+
+from guardrails_proxy.application import (
+    ConfigEntry,
+    ProviderConfig,
+    ProxyConfig,
+    create_proxy_application,
+)
+
+config = ProxyConfig(
+    rails_configs=(ConfigEntry("standard", Path("proxy-example/rails")),),
+    providers=(
+        ProviderConfig(
+            provider="openai",
+            instance_id="gateway",
+            base_url="https://gateway.example/v1",
+            operations=("chat_completions", "responses"),
+            rails_config_id="standard",
+        ),
+    ),
+)
+
+app = create_proxy_application(config)
+```
+
+Replace the example URL with your upstream and set `dialect="litellm"` if
+required. Then run:
+
+```bash
+uv run --locked --package guardrails-proxy uvicorn proxy_app:app --host 127.0.0.1 --port 8000
+```
+
+Python relative Rails paths resolve against the working directory during
+application construction. Use absolute paths when embedding or launching from
+another directory. YAML paths instead resolve against the manifest location.
+Application construction validates configuration and routes; lifespan startup
+initializes Rails and network owners.
+
+## Select Rails per request
+
+YAML requires a fixed Rails ID per provider. Python also supports a trusted
+callback. In the example below, provide both existing Rails directories, then
+select policy using the server-supplied operation identity:
+
+```python
+from guardrails_proxy.rails import ConfigContext
+
+config = ProxyConfig(
+    rails_configs=(
+        ConfigEntry("standard", Path("proxy-example/rails")),
+        ConfigEntry("strict", Path("strict-rails")),
+    ),
+    providers=(
+        ProviderConfig(
+            provider="openai",
+            instance_id="gateway",
+            base_url="https://gateway.example/v1",
+            operations=("chat_completions", "responses"),
+        ),
+    ),
+)
+
+
+def resolve_config(context: ConfigContext) -> str:
+    if context.operation_name == "responses.create":
+        return "strict"
+    return "standard"
+
+
+app = create_proxy_application(config, config_resolver=resolve_config)
+```
+
+The context also contains `provider_type`, `provider_instance_id`, and the
+original Starlette `request`. For tenant-based selection, authenticate the
+request first and use trusted identity or deliberately populated application
+state. Raw request headers are not authenticated policy facts.
+
+Fixed `rails_config_id` selections bypass the callback. Providers without a
+fixed ID require a callback, even with a one-entry `ProxyConfig` catalog. A
+callback may be synchronous or asynchronous and must return a registered ID.
+The runtime rejects failures, invalid values, and unknown IDs before dispatch.
+The callback owns authorization to select each registered configuration.
+
+All catalog entries are preloaded. This callback performs a selection among
+ready checkers, not configuration loading or compilation.
+
+## Customize outbound HTTP
+
+Supply an `http_transport_factory` returning a new `httpx.AsyncBaseTransport`
+for each application lifespan. The shared HTTP client uses it for all configured
+provider instances. Use it for controlled egress, custom TLS, fault injection,
+recording, or application-owned destination routing.
+
+For example, this offline transport simulates an upstream unavailable response:
+
+```python
+import httpx
+
+
+def unavailable(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+        503,
+        headers={"content-type": "application/json"},
+        stream=httpx.ByteStream(b'{"error":{"message":"Upstream unavailable"}}'),
+        request=request,
+    )
+
+
+app = create_proxy_application(
+    config,
+    config_resolver=resolve_config,
+    http_transport_factory=lambda: httpx.MockTransport(unavailable),
+)
+```
+
+The unread async response body matters: the proxy consumes upstream response
+bytes through HTTPX's raw streaming interface. A synthetic response constructed
+with `json=...` is already consumed and is not interchangeable here.
+
+For guarded operations, the transport is reached after input inspection and
+its returned content follows output inspection when enabled. It receives a
+complete outbound HTTP request, not the Rails resolver's context object.
+If it handles several logical hosts or protocols, dispatch them explicitly.
+
+A routing transport must preserve non-JSON upload streams, bound any JSON reads
+needed for selection, replace the logical base prefix deliberately, and preserve
+encoded suffix/query bytes. Select destinations and credentials from trusted
+configuration. The transport hook does not itself implement model balancing,
+retry semantics, or another provider's dialect.
+
+The runtime owns closing the returned transport. Your transport owns any network
+transport it creates and must implement cooperative, repeatable cleanup and the
+required streaming behavior. See the [transport reference](../src/guardrails_proxy/http-transport.md)
+for the ownership boundary.
+
+## Lifespan and embedding
+
+The factory returns a FastAPI application. When embedding it, run its lifespan
+from the actual parent application's lifespan, rather than assuming that a mount
+initializes its resources:
+
+```python
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+proxy = create_proxy_application(config, config_resolver=resolve_config)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    async with proxy.router.lifespan_context(proxy):
+        yield
+
+
+application = FastAPI(lifespan=lifespan)
+application.mount("/guarded", proxy)
+```
+
+This exposes the proxy beneath `/guarded`. Coordinate parent authentication,
+route ownership, startup failure, and shutdown with your application's other
+resources. An in-process ASGI transport can test wiring; socket/disconnect
+behavior needs network-level tests too.
+
+## Extend provider coverage
+
+The composition model separates provider field policy from reusable checking
+and HTTP execution. Extend or introduce a reviewed endpoint through Python:
+
+1. Declare the provider payload shapes and guarded, constrained, and opaque
+   fields in typed projections.
+2. Bind their coverage and text locations to the execution capability they
+   require. Add execution/checker support too when introducing a new capability.
+3. For streams, declare event selection and roles, and supply request-local
+   hooks for ordering, completion, and error framing.
+4. Compose the endpoint with provider error handling and trusted instance
+   settings. Supply explicit integrations to the application factory.
+5. Verify accepted/rejected exchanges, original-byte preservation, and the
+   [exported contract](guard-contracts.mdx) for representable declarations.
+
+For direct composition, bypass the built-in `ProxyConfig` selection while using
+the same factory:
+
+```python
+from guardrails_proxy.providers.openai.integration import create_openai_integration
+
+app = create_proxy_application(
+    providers=(
+        create_openai_integration(
+            instance_id="gateway",
+            base_url="https://gateway.example/v1",
+        ),
+    ),
+    rails_configs=(ConfigEntry("standard", Path("proxy-example/rails")),),
+)
+```
+
+Direct integrations can supply custom endpoints without a global registration
+system. In direct mode, one Rails entry with no resolver infers static selection;
+multiple entries require a resolver. An explicit resolver still runs with one
+entry. Do not mix `ProxyConfig` with direct provider, catalog, or limit arguments;
+callbacks remain separate keyword arguments in either mode.
+
+For implementation detail, start with the
+[typed Chat declarations](../src/guardrails_proxy/providers/openai/chat_completions/README.md)
+and [Responses declarations](../src/guardrails_proxy/providers/openai/responses/README.md).

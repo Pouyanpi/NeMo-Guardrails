@@ -1,5 +1,9 @@
 # Chat Completions projection policy
 
+For application usage and current coverage, see
+[providers and streaming](../../../../../docs/providers-and-streaming.mdx).
+This reference describes how the Chat binding is implemented and exported.
+
 The handwritten request and response projection models are the source of truth
 for the buffered field policy. Types express accepted values, annotations express
 guarded/constrained/disabled/opaque policy, and assignments express defaults:
@@ -14,7 +18,7 @@ The shared [projection policy module](../../../provider/projection_policy.py)
 provides the declaration helpers, runtime metadata derivation, and schema export.
 `ObjectPolicy` records object-level provider schema names, reviewed opaque fields, and
 unknown-field policy. It is not a deployment profile selector. The capability
-profile remains `single_text.v1`; the exported document format remains pre-release
+profile of this binding is currently `single_text.v1`; the exported document format is pre-release
 `1.0.0-alpha.1`.
 
 `ObjectPolicy` controls object closure. `PolicyModel` requires Pydantic
@@ -162,7 +166,7 @@ contract = export_guard_contract(CHAT_COMPLETIONS_ENDPOINT)
 Run the shared CLI from the repository root:
 
 ```bash
-uv run --locked python -m guardrails_proxy.provider.contract_export \
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
   guardrails_proxy.providers.openai.chat_completions.endpoint:CHAT_COMPLETIONS_ENDPOINT \
   --output guardrails-server/src/guardrails_proxy/contracts/openai/_generated/chat-completions.guard.yaml
 ```

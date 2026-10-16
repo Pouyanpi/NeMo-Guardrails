@@ -1,5 +1,9 @@
 # OpenAI Responses boundary
 
+For application usage, see [Python integration](../../../../../docs/python-integration.mdx).
+For profiles and streaming behavior, see
+[providers and streaming](../../../../../docs/providers-and-streaming.mdx).
+
 This integration guards foreground `POST /v1/responses` in
 buffered and SSE modes. Typed Python declarations are authoritative. The
 [exported contract](../../../contracts/openai/_generated/responses.guard.yaml)
@@ -84,7 +88,7 @@ Responses dialect from a compatible upstream URL.
 ```python
 from pathlib import Path
 
-from guardrails_proxy._application import create_proxy_application
+from guardrails_proxy.application import create_proxy_application
 from guardrails_proxy.providers.openai.integration import create_openai_integration
 from guardrails_proxy.rails import ConfigEntry
 
@@ -94,19 +98,19 @@ app = create_proxy_application(
 )
 ```
 
-This uses the existing application assembly and trusted Rails configuration
-directory, not a new launcher or configuration format. Server dependencies use
-the project's `server` extra. Provider generation is forwarded directly over
-HTTP, not delegated to a LangChain model. The caller supplies upstream
+This uses the proxy application assembly and a trusted Rails configuration
+directory. The `guardrails-proxy` package supplies its server dependencies;
+the library's `server` extra is not required. Provider generation is forwarded
+directly over HTTP. The caller supplies upstream
 authorization; any configured detectors have their own configuration and
 credential requirements. Other operations retain passthrough behavior and are
 not thereby guarded. Deployment authentication and socket-level acceptance
-belong to the application/example work, not these declarations.
+belong to application deployment, not these declarations.
 
 ## Contract export and verification
 
 ```bash
-uv run --locked python -m guardrails_proxy.provider.contract_export \
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
   guardrails_proxy.providers.openai.responses.endpoint:RESPONSES_ENDPOINT \
   --output guardrails-server/src/guardrails_proxy/contracts/openai/_generated/responses.guard.yaml
 ```

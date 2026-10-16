@@ -1,5 +1,8 @@
 # OpenAI Chat Completions contract
 
+For provider selection and profile concepts, see
+[providers and streaming](../../../../docs/providers-and-streaming.mdx).
+
 Operation `createChatCompletion` uses the `single_text.v1` capability profile
 for its guarded text boundary. This page summarizes that boundary and its
 provider source. Neither the summary nor the source pin enables runtime
