@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from guardrails_proxy._application import create_proxy_application
+from guardrails_proxy._provider_transport import _strip_mount_prefix
+from guardrails_proxy.application import create_proxy_application
 from guardrails_proxy.providers.openai.integration import create_openai_chat_integration
 from guardrails_proxy.rails import ConfigEntry, ConfigResolver
 
@@ -84,6 +85,8 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
         *,
         default_model: str,
         network_transport: httpx.AsyncBaseTransport | None = None,
+        logical_base_path: str = "/v1",
+        max_json_body_bytes: int = 1024 * 1024,
     ) -> None:
         if not routes or any(not isinstance(name, str) or not name for name in routes):
             raise ValueError("Model routes must use non-empty string names.")
@@ -101,14 +104,36 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
             raise ValueError(f"Aliases reference unknown models: {sorted(unknown_alias_targets)}")
         if network_transport is not None and not isinstance(network_transport, httpx.AsyncBaseTransport):
             raise TypeError("The model router network transport must be an httpx.AsyncBaseTransport.")
+        if (
+            not isinstance(logical_base_path, str)
+            or not logical_base_path.startswith("/")
+            or not logical_base_path.isascii()
+            or any(character in logical_base_path for character in "? #%")
+        ):
+            raise ValueError("The logical base path must be an absolute, unencoded ASCII path.")
+        if type(max_json_body_bytes) is not int or max_json_body_bytes <= 0:
+            raise ValueError("The JSON body limit must be a positive integer.")
         self._routes = dict(routes)
         self._aliases = dict(aliases)
         self._default_model = default_model
+        self._logical_base_path = logical_base_path.rstrip("/")
+        self._max_json_body_bytes = max_json_body_bytes
         self._network_transport = network_transport or httpx.AsyncHTTPTransport()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
-        original_body = await request.aread()
-        payload = self._parse_json_object(request, original_body)
+        """Buffer bounded JSON for model selection; relay other uploads incrementally."""
+
+        assert isinstance(request.stream, httpx.AsyncByteStream)
+        content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
+        original_body = None
+        if content_type == "application/json":
+            buffered = bytearray()
+            async for chunk in request.stream:
+                if len(chunk) > self._max_json_body_bytes - len(buffered):
+                    return self._routing_error(request, 413, "The JSON body exceeds the model-routing limit.")
+                buffered.extend(chunk)
+            original_body = bytes(buffered)
+        payload = self._parse_json_object(original_body) if original_body is not None else None
         requested_model = payload.get("model") if payload is not None else None
         if requested_model is not None and not isinstance(requested_model, str):
             return self._routing_error(request, 400, "The model field must be a string.")
@@ -130,7 +155,7 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
                     f"The selected route requires {route.api_key_environment_variable}.",
                 )
 
-        body = original_body
+        body = original_body if original_body is not None else request.stream
         body_modified = payload is not None and requested_model is not None and requested_model != route.upstream_model
         if body_modified:
             payload["model"] = route.upstream_model
@@ -142,6 +167,7 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
             headers=self._upstream_headers(
                 request.headers,
                 body_modified=body_modified,
+                body_buffered=original_body is not None,
                 api_key=api_key,
             ),
             content=body,
@@ -153,9 +179,10 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
         await self._network_transport.aclose()
 
     @staticmethod
-    def _parse_json_object(request: httpx.Request, body: bytes) -> dict[str, Any] | None:
-        content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()
-        if content_type != "application/json" or not body:
+    def _parse_json_object(body: bytes) -> dict[str, Any] | None:
+        """Read model metadata without interpreting unrelated provider payloads."""
+
+        if not body:
             return None
         try:
             payload = json.loads(body)
@@ -163,14 +190,13 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
             return None
         return payload if isinstance(payload, dict) else None
 
-    @staticmethod
-    def _upstream_url(base_url: httpx.URL, original_url: httpx.URL) -> httpx.URL:
+    def _upstream_url(self, base_url: httpx.URL, original_url: httpx.URL) -> httpx.URL:
+        """Replace the logical base while retaining encoded suffix and query bytes."""
+
         original_path, separator, query = original_url.raw_path.partition(b"?")
         base_path = base_url.raw_path.rstrip(b"/")
-        if base_path and (original_path == base_path or original_path.startswith(base_path + b"/")):
-            routed_path = original_path
-        else:
-            routed_path = base_path + b"/" + original_path.lstrip(b"/")
+        suffix = _strip_mount_prefix(original_url.path, original_path, self._logical_base_path)
+        routed_path = base_path + suffix
         if separator:
             routed_path += b"?" + query
         return base_url.copy_with(raw_path=routed_path)
@@ -180,13 +206,18 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
         headers: httpx.Headers,
         *,
         body_modified: bool,
+        body_buffered: bool,
         api_key: str | None,
     ) -> httpx.Headers:
+        """Use destination credentials and rebuild framing for buffered JSON."""
+
         result = httpx.Headers(headers)
         for name in ("host", "content-length", "authorization", "api-key", "x-api-key", "cookie"):
             result.pop(name, None)
         if api_key is not None:
             result["authorization"] = f"Bearer {api_key}"
+        if body_buffered:
+            result.pop("transfer-encoding", None)
         if body_modified:
             for name in ("content-digest", "content-md5", "digest", "signature", "signature-input"):
                 result.pop(name, None)
@@ -194,9 +225,13 @@ class ModelRoutingTransport(httpx.AsyncBaseTransport):
 
     @staticmethod
     def _routing_error(request: httpx.Request, status_code: int, message: str) -> httpx.Response:
+        """Return an unread async body for the proxy's raw response reader."""
+
+        body = json.dumps({"error": {"type": "model_routing_error", "message": message}}).encode()
         return httpx.Response(
             status_code,
-            json={"error": {"type": "model_routing_error", "message": message}},
+            headers={"content-type": "application/json", "content-length": str(len(body))},
+            stream=httpx.ByteStream(body),
             request=request,
         )
 
