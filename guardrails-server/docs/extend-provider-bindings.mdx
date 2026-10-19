@@ -1,0 +1,164 @@
+---
+title: "Add Provider Metadata to a Binding"
+sidebar-title: "Extend a Binding"
+description: "Declare a gateway metadata field, bind the extended response, test its boundary, and export the resulting contract."
+content:
+  type: "how_to"
+---
+
+Use this walkthrough when your gateway adds a field to an otherwise supported
+Chat Completions response. You will allow a root-level `gateway_trace_id` while
+keeping the existing assistant text checks and rejection of other unknown fields.
+
+First confirm that the field is diagnostic metadata, rather than generated
+content your checks should inspect. This example treats its value as opaque:
+the proxy preserves it without inspecting its contents. It extends buffered
+responses only; streaming continues to use the existing Chat event binding.
+New content channels need corresponding extraction and checking support.
+
+## Declare and bind the field
+
+Use the workspace environment from the [quickstart](quickstart.mdx). Save this
+as `gateway_binding.py` in the repository root:
+
+```python
+from dataclasses import replace
+from typing import ClassVar
+
+from guardrails_proxy.provider.projection_policy import (
+    ObjectPolicy,
+    payload_contract,
+    text_location,
+)
+from guardrails_proxy.providers.openai.chat_completions.endpoint import CHAT_COMPLETIONS_ENDPOINT
+from guardrails_proxy.providers.openai.chat_completions.response_projection import (
+    ChatCompletionsGuardedResponseProjection,
+)
+
+
+class GatewayResponseProjection(ChatCompletionsGuardedResponseProjection):
+    policy: ClassVar[ObjectPolicy] = replace(
+        ChatCompletionsGuardedResponseProjection.policy,
+        opaque=(*ChatCompletionsGuardedResponseProjection.policy.opaque, "gateway_trace_id"),
+    )
+
+
+class GatewayGuardedResponse(GatewayResponseProjection):
+    guarded_text_location = text_location(GatewayResponseProjection)
+    projection_contract = payload_contract(
+        GatewayResponseProjection,
+        projection_id="example.gateway.chat_completions.response.text.v1",
+        direction="response",
+    )
+
+
+GATEWAY_ENDPOINT = replace(
+    CHAT_COMPLETIONS_ENDPOINT,
+    contract_name="example_gateway_chat_completions",
+    guarded_response_model=GatewayGuardedResponse,
+)
+```
+
+The projection adds one allowed name. Rebuilding the payload contract and text
+location binds that policy to runtime extraction. The endpoint retains the
+existing request policy, route, error handling, and stream hooks.
+
+## Select the extended endpoint
+
+After copying `proxy-example` as described in the quickstart, create
+`gateway_app.py` in the repository root:
+
+```python
+from dataclasses import replace
+from pathlib import Path
+
+from guardrails_proxy.application import ConfigEntry, create_proxy_application
+from guardrails_proxy.providers.openai.integration import create_openai_chat_integration
+
+from gateway_binding import GATEWAY_ENDPOINT
+
+integration = replace(
+    create_openai_chat_integration(base_url="https://gateway.example/v1"),
+    endpoints=(GATEWAY_ENDPOINT,),
+)
+app = create_proxy_application(
+    providers=(integration,),
+    rails_configs=(ConfigEntry("standard", Path("proxy-example/rails")),),
+)
+```
+
+Replace the upstream URL, then run from the repository root:
+
+```bash
+uv run --locked --package guardrails-proxy uvicorn gateway_app:app --host 127.0.0.1 --port 8000
+```
+
+This selects the custom endpoint through direct Python composition. The YAML
+launcher's native and LiteLLM bindings remain unchanged. Use the
+[quickstart request](quickstart.mdx#send-a-buffered-request) to exercise your
+gateway with its model ID and authorization header. The proxy needs no gateway
+SDK; any configured detector services retain their own dependencies and keys.
+
+## Verify the boundary
+
+Save this as `test_gateway_binding.py` beside `gateway_binding.py`:
+
+```python
+from copy import deepcopy
+
+import pytest
+from pydantic import ValidationError
+
+from guardrails_proxy.provider.contract_export import export_guard_contract
+from guardrails_proxy.providers.openai.chat_completions.endpoint import CHAT_COMPLETIONS_ENDPOINT
+
+from gateway_binding import GATEWAY_ENDPOINT, GatewayGuardedResponse
+
+
+def test_gateway_metadata_boundary():
+    payload = {
+        "choices": [{"message": {"role": "assistant", "content": "Hello!"}}],
+        "gateway_trace_id": "trace-123",
+    }
+    GatewayGuardedResponse.model_validate(payload)
+    with pytest.raises(ValidationError):
+        CHAT_COMPLETIONS_ENDPOINT.guarded_response_model.model_validate(payload)
+    with pytest.raises(ValidationError):
+        GatewayGuardedResponse.model_validate({**payload, "another_field": "extra"})
+    unsupported = deepcopy(payload)
+    unsupported["choices"][0]["message"]["reasoning_content"] = "extra generated text"
+    with pytest.raises(ValidationError):
+        GatewayGuardedResponse.model_validate(unsupported)
+    contract = export_guard_contract(GATEWAY_ENDPOINT)
+    field = contract["response"]["properties"]["gateway_trace_id"]
+    assert field["x-nemo-guardrails"]["classification"] == "opaque"
+```
+
+Run the test from the repository root:
+
+```bash
+make test TEST=test_gateway_binding.py WORKERS=0 ARGS="-q --block-network"
+```
+
+This checks the declared acceptance boundary and export. Also exercise your
+actual gateway through the proxy: verify that accepted response bytes, including
+the metadata, arrive unchanged and that blocked assistant text is withheld.
+The [offline blocking recipe](quickstart.mdx#see-output-blocking-without-a-model)
+shows how to reproduce output blocking without a live model.
+
+## Export and check the contract
+
+Generate the contract from the endpoint you bound:
+
+```bash
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
+  gateway_binding:GATEWAY_ENDPOINT --output gateway.guard.yaml
+uv run --locked --package guardrails-proxy python -m guardrails_proxy.provider.contract_export \
+  gateway_binding:GATEWAY_ENDPOINT --check gateway.guard.yaml
+```
+
+The exported response includes `gateway_trace_id` as opaque; its guarded text
+location and stream policy retain their existing scope. Regenerate this artifact
+when you change the Python declaration. See [guard contracts](guard-contracts.mdx)
+for how to review it and the [Chat reference](../src/guardrails_proxy/providers/openai/chat_completions/README.md)
+for nested projections and stream extensions.

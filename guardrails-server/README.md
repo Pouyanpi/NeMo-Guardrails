@@ -31,8 +31,11 @@ Client ── request ──→ Input checks ──→ Model service
   same application in Python with custom integrations and transports.
 
 Built-in integrations include OpenAI Chat Completions and Responses, with explicit
-LiteLLM dialects. [Provider bindings](docs/providers-and-streaming.mdx) make their
-current content coverage explicit as integrations and capabilities evolve.
+LiteLLM dialects. The current bindings accept one user-message string for Chat
+Completions or one input string for Responses, with one assistant text target.
+Conversation histories, tools, and multimodal content are outside this guarded
+scope. Check [provider coverage](docs/providers-and-streaming.mdx#coverage-of-the-shipped-profiles)
+before connecting an existing application.
 
 ## Architecture
 
@@ -56,7 +59,7 @@ guardrails-proxy serve proxy.yaml
 The [quickstart](docs/quickstart.mdx) covers installation from this checkout and
 copying the bundled example into your own directory. Keep `proxy.yaml` and its
 sibling Rails directory together. Set `base_url` to your upstream's API base,
-including its path prefix; select `dialect: litellm` if you need that reviewed
+including its path prefix; select `dialect: litellm` if your upstream requires that
 dialect. The example enables Chat Completions and Responses with local regex
 rails that block email-address patterns in input and output.
 
@@ -84,7 +87,8 @@ Follow the [quickstart](docs/quickstart.mdx) for complete setup and examples.
 | Check provider coverage and understand streaming | [Providers and streaming](docs/providers-and-streaming.mdx) |
 | Understand what is inspected and review an export | [Guard contracts](docs/guard-contracts.mdx) |
 | Use multiple upstreams, replicas, or gateways | [Deployment](docs/deployment.mdx) |
-| Embed the application or extend its bindings and transport | [Python integration](docs/python-integration.mdx) |
+| Embed the application or customize HTTP dispatch | [Python integration](docs/python-integration.mdx) |
+| Add a provider metadata field and verify its boundary | [Extend a binding](docs/extend-provider-bindings.mdx) |
 
 Inspection applies to the content declared by a binding and the checks enabled
 in its Rails configuration. Other operations may pass through without content

@@ -78,9 +78,9 @@ and [LiteLLM Responses](../src/guardrails_proxy/contracts/openai/_generated/lite
 | `excluded_stream_events` | Explicit exclusions recorded by the binding. |
 | `integration.endpoint` | Endpoint identity, routes, errors, and descriptive implementation references. |
 
-The format revision, provider API revision, and capability profile are different
-version axes. A profile such as `single_text.v1` describes a current execution
-capability; it is not the permanent product boundary or a choice of Rails.
+Read these versions separately: the format revision identifies the document
+format, the provider revision identifies its source baseline, and the capability
+profile identifies supported content handling. Rails selects the checks.
 
 ## Export from an endpoint
 
@@ -110,20 +110,20 @@ represent faithfully, such as unsupported custom stream validators, rather
 than silently omitting them. Runtime bindings can have behavior beyond the
 standard export format.
 
-## What an export does not establish
+## Review a change
 
-Stateful hooks, arbitrary Python validation, network transport behavior, and
-resource cleanup remain implementation behavior. Exporting does not activate a
-checker, enable new profiles, or prove compatibility with a deployed upstream.
+Compare the request and response fields and stream declarations with the previous
+export. Pay particular attention to new opaque fields: their values bypass text
+inspection. Verify allowed and rejected exchanges against the deployed upstream,
+including streaming completion and failures.
 
-The document uses JSON Schema vocabulary with guard-specific annotations.
-Generic JSON Schema tools do not enforce every annotation, including selected
-array-variant cardinality, trusted unknown-field overrides, or case-alias
-rejection. JSON Schema also cannot distinguish an integer token from an integral
-floating-point token as strict Python validation can.
+Use the export alongside runtime tests. Stateful stream hooks, custom Python
+validation, transport behavior, and cleanup are implemented in code. Generic
+JSON Schema tools also omit guard-specific semantics; the
+[format reference](../src/guardrails_proxy/contracts/README.md#validation-and-stability)
+records the exact limitations.
 
-See the [format reference](../src/guardrails_proxy/contracts/README.md) for exact
-keywords and limitations. When coverage changes, update the Python declarations,
-verify allowed and rejected exchanges, and regenerate the contract from the
-endpoint. Maintain one authoritative policy rather than editing a second YAML
-policy by hand.
+When coverage changes, update the Python declarations, test the boundary, and
+regenerate the contract from the endpoint. The
+[binding walkthrough](extend-provider-bindings.mdx) shows this workflow for one
+additional metadata field.

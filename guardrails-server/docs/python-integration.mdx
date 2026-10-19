@@ -140,9 +140,11 @@ its returned content follows output inspection when enabled. It receives a
 complete outbound HTTP request, not the Rails resolver's context object.
 If it handles several logical hosts or protocols, dispatch them explicitly.
 
-A routing transport must preserve non-JSON upload streams, bound any JSON reads
-needed for selection, replace the logical base prefix deliberately, and preserve
-encoded suffix/query bytes. Select destinations and credentials from trusted
+The [model-routing example](../src/guardrails_proxy/examples/model_routing_transport.py)
+selects trusted destinations from model aliases. It preserves non-JSON upload
+streams and encoded URL suffixes, replaces the logical base path, and limits
+JSON reads to 1 MiB by default (`max_json_body_bytes`). Oversized JSON receives
+HTTP 413 before network dispatch. Select destinations and credentials from trusted
 configuration. The transport hook does not itself implement model balancing,
 retry semantics, or another provider's dialect.
 
@@ -183,7 +185,8 @@ behavior needs network-level tests too.
 ## Extend provider coverage
 
 The composition model separates provider field policy from reusable checking
-and HTTP execution. Extend or introduce a reviewed endpoint through Python:
+and HTTP execution. For a complete example, [add a gateway metadata field](extend-provider-bindings.mdx),
+verify its rejection boundary, and export its contract. For a new endpoint:
 
 1. Declare the provider payload shapes and guarded, constrained, and opaque
    fields in typed projections.

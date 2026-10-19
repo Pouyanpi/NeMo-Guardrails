@@ -1,7 +1,7 @@
 ---
 title: "Providers, Profiles, and Streaming"
 sidebar-title: "Providers and Streaming"
-description: "Understand provider bindings, evolving capability profiles, API compatibility, and how streamed output is checked."
+description: "Check supported request shapes, select a provider dialect, and tune streamed output checks."
 content:
   type: "concept"
 ---
@@ -18,11 +18,10 @@ It gives the binding and execution pipeline a shared, versioned description of
 what they can process. A profile is separate from a provider, dialect, model,
 and Rails configuration.
 
-For example, the shipped bindings currently use `single_text.v1` for payloads
-and `single_text_delta.v1` for streams. These are current capabilities, not the
-product's permanent scope. New content support requires appropriate binding,
-execution, and checking support; it can evolve through additional or revised
-profiles. A broader upstream API does not itself provide that support.
+The shipped bindings use `single_text.v1` for payloads and
+`single_text_delta.v1` for streams. Use the coverage table below to decide
+whether they fit your application. Supporting additional content requires
+matching binding, execution, and checking support.
 
 Use `guardrails-proxy inspect` to see the profiles of your selected bindings.
 The current manifest has no profile selector. Editing a guard-contract export,
@@ -36,9 +35,9 @@ changing Rails, or renaming a profile does not enable new content handling.
 | Responses | OpenAI | Explicit `dialect: litellm` | JSON | SSE |
 
 Select either operation or both through `operations`. Omit `dialect` for the
-native binding. LiteLLM is a reviewed variation of accepted wire shapes, not an
-SDK dependency or automatic backend detector. Its coverage is not a claim about
-every model, gateway version, or native/bridged backend route.
+native binding. The LiteLLM dialect accepts specific gateway field variations
+without requiring the LiteLLM SDK. Check the dialect's coverage against your
+deployed model route, including whether it uses a native or bridged API.
 
 ## Coverage of the shipped profiles
 
@@ -49,12 +48,12 @@ entire upstream API.
 | Area | Chat Completions | Responses |
 | --- | --- | --- |
 | Input | One nonempty user-message string. | One nonempty input string, foreground execution. |
-| Buffered output | One assistant choice; inspected string content, or reviewed no-text output. | One assistant message with one nonempty output-text part, optionally alongside reviewed reasoning metadata. |
-| Streamed text | At most one choice, index zero, with assistant content deltas. | Reviewed output-text delta events and consistent text snapshots for one assistant target. |
+| Buffered output | One assistant choice; string content, or empty/null message content with no other generated content. | One assistant message with one nonempty output-text part, optionally alongside reasoning metadata without plaintext reasoning. |
+| Streamed text | At most one choice, index zero, with assistant content deltas. | Supported output-text delta events and consistent text snapshots for one assistant target. |
 | Additional content | Conversation histories, additional roles, tools, audio, images, separate reasoning text, and token logprobs are not supported as guarded content in these profiles. | Input arrays/history, instructions, tools, background execution, plaintext reasoning summaries, citations, and token logprobs are not supported as guarded content in these profiles. |
 | Replacement | Replacement outcomes are not applied by the current integration. | Replacement outcomes are not applied by the current integration. |
 
-Reviewed opaque metadata can pass without inspection of its contents. For
+Declared opaque metadata can pass without inspection of its contents. For
 example, accounting metadata is different from another assistant text channel.
 Empty or null values have field-specific rules; an empty container is not
 universally interchangeable with null.
@@ -66,18 +65,17 @@ and [bound exports](guard-contracts.mdx#inspect-a-contract).
 
 ## Dialects and unknown fields
 
-Use an explicit dialect when the native binding does not describe your provider's
-reviewed wire behavior. The LiteLLM Chat dialect accounts for specific extension
-containers; the Responses dialect accounts for different metadata. Allowances
-from one operation do not automatically apply to another.
+Select a dialect that matches your upstream's fields. The LiteLLM
+[Chat dialect](../src/guardrails_proxy/providers/openai/dialects/litellm/README.md)
+accepts specific extension containers; its
+[Responses dialect](../src/guardrails_proxy/providers/openai/dialects/litellm/responses.md)
+accepts different metadata. Their allowances are operation-specific.
 
-Default projections reject unreviewed members. Some payload objects are explicitly
-configurable through trusted lower-level policy; closed objects remain closed,
-and constraints on declared members still apply. This is not a manifest switch
-to accept arbitrary content. Stream classification uses the closed default.
-Case aliases of reviewed fields remain rejected. See the
+By default, unknown fields and case aliases of declared fields are rejected.
+For an additional metadata field, [extend the binding](extend-provider-bindings.mdx)
+and test the resulting boundary. The
 [contract reference](../src/guardrails_proxy/contracts/README.md#object-and-stream-metadata)
-for those rules.
+describes lower-level unknown-field overrides and their limits.
 
 ## Streaming windows
 
@@ -115,15 +113,14 @@ output; the selected detector's own limitations still apply.
 
 ## Completion and errors
 
-Hooks enforce the selected protocol's terminal behavior. Chat uses its reviewed
-completion/error handling and `[DONE]` sentinel. Responses requires a native
-terminal event; an optional `[DONE]` is not a replacement for it. Responses
+Chat uses its completion/error handling and `[DONE]` sentinel. Responses requires
+a native terminal event; an optional `[DONE]` is not a replacement for it. Responses
 snapshots must agree with the accumulated text where declared.
 
 Before response headers are sent, a proxy failure can return an HTTP error.
 After streaming begins, failures use the operation's error-event format and
 withhold pending content. Already released windows remain delivered. Upstream
-HTTP errors and reviewed error events follow the provider-aware forwarding path.
+HTTP errors and supported error events follow the provider-aware forwarding path.
 
 A truncated guarded SSE event fails rather than releasing its unfinished bytes.
 Response parsing, framing, and completion checks apply to inspected streams;
@@ -140,5 +137,5 @@ inspection. Unsupported content on a checked guarded operation does not retry
 as pass-through. Route restrictions and enabled checks should both be part of
 your deployment review.
 
-For field-policy meaning, see [guard contracts](guard-contracts.mdx). For adding
-reviewed bindings, see [Python integration](python-integration.mdx#extend-provider-coverage).
+For field-policy meaning, see [guard contracts](guard-contracts.mdx). For extending
+bindings, see [Python integration](python-integration.mdx#extend-provider-coverage).

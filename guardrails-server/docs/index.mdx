@@ -25,7 +25,8 @@ inference using the bundled example. Then choose your next task:
 | Understand profiles, current provider coverage, and stream windows | [Providers and streaming](providers-and-streaming.mdx) |
 | Review or export the inspection boundary | [Guard contracts](guard-contracts.mdx) |
 | Choose mounts, replicas, gateways, or one-route routing | [Deployment](deployment.mdx) |
-| Embed the application or extend bindings and HTTP dispatch | [Python integration](python-integration.mdx) |
+| Embed the application or customize HTTP dispatch | [Python integration](python-integration.mdx) |
+| Add a provider metadata field, test it, and export its contract | [Extend a binding](extend-provider-bindings.mdx) |
 
 ## How the pieces fit
 
@@ -37,9 +38,10 @@ inference using the bundled example. Then choose your next task:
 | Guard contract | Make the bound inspection coverage reviewable as an export. |
 | HTTP transport | Perform the outbound exchange, with optional application-specific network policy. |
 
-Provider coverage and profiles can evolve without making deployment YAML a
-second provider-policy implementation. Current binding coverage is documented
-in the provider guide; extending it requires matching runtime/checking support.
+Check [provider coverage](providers-and-streaming.mdx#coverage-of-the-shipped-profiles)
+before connecting your application. The built-in bindings currently support a
+single user text input and one assistant text target; additional content needs
+matching binding and checking support.
 
 For builds, tests, package ownership, and compatibility work, see
 [Development](../DEVELOPMENT.md). For exact declaration details, follow the

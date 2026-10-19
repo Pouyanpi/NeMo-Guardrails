@@ -9,7 +9,9 @@ content:
 Use the bundled example to put input and output checks in front of a model
 service. The example selects Chat Completions and Responses and uses local regex
 rails to detect common email-address patterns. You can then replace those rails
-with the checks your application needs.
+with the checks your application needs. The current bindings accept one user
+text input and one assistant text target; conversation histories, tools, and
+multimodal content are outside their [guarded scope](providers-and-streaming.mdx#coverage-of-the-shipped-profiles).
 
 ## Install from source
 
@@ -58,7 +60,7 @@ providers:
     rails_config_id: standard
 ```
 
-For the reviewed LiteLLM bindings, add `dialect: litellm` to the provider entry.
+For a LiteLLM upstream, add `dialect: litellm` to the provider entry.
 Changing a hostname or model name does not select a dialect. Check the binding's
 coverage against the requests your application sends.
 
@@ -140,18 +142,67 @@ This returns HTTP 400 with error code `content_blocked` before any generation
 request reaches the upstream. The same input rule applies to the selected
 Responses input text.
 
-The example also blocks matching output. For a deterministic output test, use
-an offline upstream fixture that returns `person@example.com`; asking a live
-model to emit it does not guarantee the test input. Buffered blocked output
-returns an error instead of the answer. A blocked stream withholds the pending
-window and emits a provider-format error; earlier approved windows may already
-have reached the caller. The existing
-[launcher tests](../tests/proxy_tests/test_proxy_launcher.py) exercise both cases.
+## See output blocking without a model
 
-Regex checks illustrate configuration and ordering, not comprehensive PII
-protection. Edit `rails/config.yml` to choose supported checks and any required
-models or optional integrations. A binding determines which content those
-checks receive; it does not run every rail the library offers.
+Use the bundled local fixture to reproduce output blocking. It always returns
+`Contact person@example.com` as assistant text, in buffered or streamed Chat
+format. This is a demonstration upstream, not an inference service; it needs no
+model, provider SDK, or API key.
+
+Stop the proxy. From the deployment directory, copy `proxy.yaml` to
+`proxy-offline.yaml` and change the copy's provider entry to:
+
+```yaml
+  - provider: openai
+    instance_id: local
+    base_url: http://127.0.0.1:9000/v1
+    operations: [chat_completions]
+    rails_config_id: standard
+```
+
+Keep its existing `rails_configs` entry and Rails directory. Use the native
+binding by omitting `dialect`. With the installed environment active, start
+the fixture in one terminal:
+
+```bash
+uvicorn guardrails_proxy.examples.offline_upstream:app --host 127.0.0.1 --port 9000
+```
+
+Start the proxy from the deployment directory in another terminal:
+
+```bash
+guardrails-proxy validate proxy-offline.yaml
+guardrails-proxy serve proxy-offline.yaml
+```
+
+Send a harmless input from a third terminal:
+
+```bash
+curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+Expect HTTP 400 and error code `content_blocked`. The input passes; the fixture's
+assistant text is blocked and is absent from the returned body.
+
+Repeat with streaming:
+
+```bash
+curl -N -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+```
+
+Expect HTTP 200 followed by an SSE error containing `content_blocked`, without
+the email address. The HTTP stream has already started when the output check
+blocks its pending window. In longer streams, earlier approved windows may
+already have reached the caller.
+
+Stop both processes after the demonstration. Restart with `proxy.yaml` to use
+your real upstream again. Regex checks illustrate configuration and ordering;
+they are not comprehensive PII protection. Edit `rails/config.yml` to choose
+supported checks and any required models or optional integrations.
 
 ## Troubleshoot the first request
 
