@@ -34,6 +34,14 @@ Built-in integrations include OpenAI Chat Completions and Responses, with explic
 LiteLLM dialects. [Provider bindings](docs/providers-and-streaming.mdx) make their
 current content coverage explicit as integrations and capabilities evolve.
 
+## Architecture
+
+Start with the [architecture overview](docs/architecture.mdx) for system
+boundaries, inspection coverage, and design tradeoffs. Follow the
+[request lifecycle](docs/architecture-requests.mdx) for buffered and streaming
+execution, or [framework internals](docs/architecture-internals.mdx) for
+extension boundaries, trusted policy selection, and resource ownership.
+
 ## Try it
 
 With the package installed and its environment active, run these commands from
@@ -70,6 +78,7 @@ Follow the [quickstart](docs/quickstart.mdx) for complete setup and examples.
 
 | You want to… | Read |
 | --- | --- |
+| Understand the system and its extension points | [Architecture](docs/architecture.mdx) |
 | Run the proxy and see a guardrail execute | [Quickstart](docs/quickstart.mdx) |
 | Choose upstreams, operations, and Rails configurations | [Configuration](docs/configuration.mdx) |
 | Check provider coverage and understand streaming | [Providers and streaming](docs/providers-and-streaming.mdx) |

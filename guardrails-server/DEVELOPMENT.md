@@ -6,6 +6,11 @@ library alone does not install the proxy, and the library's existing API server
 remains separate. The proxy has its own `guardrails-proxy` command and equivalent
 `python -m guardrails_proxy` entry point.
 
+Start with the [architecture overview](docs/architecture.mdx), then follow
+[framework internals](docs/architecture-internals.mdx) for dependency boundaries,
+request-local state, and implementation/test locations. The
+[request lifecycle](docs/architecture-requests.mdx) explains execution and cleanup.
+
 ## Set up the workspace
 
 From the repository root:

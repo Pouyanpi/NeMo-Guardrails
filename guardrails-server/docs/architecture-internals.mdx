@@ -1,0 +1,164 @@
+---
+title: "Framework Internals"
+sidebar-title: "Framework Internals"
+description: "Understand provider-neutral execution, composition hooks, trusted policy selection, and ownership when extending the proxy."
+content:
+  type: "concept"
+---
+
+This page is for framework authors and application integrators who extend the
+proxy. Read the [architecture overview](architecture.mdx) for system context and
+the [request lifecycle](architecture-requests.mdx) for execution behavior.
+
+## Application assembly
+
+The YAML launcher parses a manifest into `ProxyConfig`. Python can supply that
+configuration or explicit `ProviderIntegration` declarations. Both paths call
+`create_proxy_application` and use the same route assembly and lifespan owners.
+
+Construction validates declarations and routes. Lifespan startup creates network
+resources and preloads the Rails catalog. Requests then use those ready owners.
+Keeping these phases separate prevents request-time configuration loading and
+ensures initialization failures prevent readiness.
+
+| Artifact | Authority and use |
+| --- | --- |
+| Manifest or Python application configuration | Select provider instances, upstreams, operations, dialects, limits, and Rails entries. Python also supplies callbacks and explicit integrations. |
+| Typed projections, bindings, and endpoints | Define field coverage, selected content, capability profiles, stream events, and provider operation semantics. |
+| Rails configurations | Define enabled checks, their dependencies, and streaming settings. All registered entries load at startup. |
+| Exported guard contracts | Derived from typed declarations for review. The runtime does not load these exports as policy. |
+
+Guard-contract derivation runs from typed declarations to exported YAML. Editing
+an export does not change execution. Stateful hooks, arbitrary Python validation,
+and transport behavior require review beyond the export. See
+[guard contracts](guard-contracts.mdx) for the exact boundary.
+
+## Execution dependencies
+
+This dependency view is scoped to one proxy process. Rectangles are components
+or declarations; hexagons are internal callable/protocol interfaces. Solid arrows
+show invocation; dotted arrows describe declaration, protocol, and implementation
+dependencies. Interfaces describe dependencies, not extra runtime services.
+
+```mermaid
+flowchart TB
+    Decl["Provider declarations: projections, endpoints, stream binding, errors"]
+    Pipeline["Guarded HTTP pipeline: buffered and streaming execution"]
+    Checker{{"ContentChecker protocol"}}
+    Adapter["Rails adapter"]
+    Library["NVIDIA NeMo Guardrails library"]
+    Dispatch{{"Injected HTTP dispatch callable"}}
+    Transport["ProviderTransport"]
+    Client["Shared HTTPX client and outbound transport"]
+    Pass["Pass-through router"]
+    Decl -.->|"Bind projection, event, and error behavior"| Pipeline
+    Pipeline -.->|"Requires checker methods"| Checker
+    Adapter -.->|"Implements"| Checker
+    Pipeline -->|"Invoke input/output checks"| Adapter
+    Adapter -->|"Call check_async"| Library
+    Pipeline -->|"Invoke supplied dispatch"| Dispatch
+    Transport -.->|"Supplies bound dispatch methods"| Dispatch
+    Pass -->|"Forward unrelated operations"| Transport
+    Transport -->|"Build and send outbound request"| Client
+```
+
+The execution kernels receive a checker and dispatch callable instead of
+importing a provider implementation or constructing the Rails engine. Route
+assembly supplies those dependencies. Provider declarations carry the API
+semantics; reusable kernels control check outcomes and byte release. This lets
+tests exercise execution with deterministic checkers and dispatch functions.
+
+`ProviderTransport` adapts outbound HTTP requests and applies forwarding and
+representation rules. The HTTPX transport performs the final exchange. A custom
+HTTP transport does not select a new provider binding or Rails policy after
+inspection.
+
+## Composition hooks and internal interfaces
+
+The package is experimental. Distinguish documented application composition from
+the private interfaces used to implement it:
+
+| Boundary | Intended use |
+| --- | --- |
+| `create_proxy_application`, `ProxyConfig`, `ProviderConfig`, `ConfigEntry` | Assemble an application through `guardrails_proxy.application`. |
+| Explicit `ProviderIntegration` declarations | Compose reviewed endpoints through Python using the factory's direct mode. |
+| `config_resolver` | Select one registered Rails ID from trusted context. It does not return a path or load configuration. |
+| `http_transport_factory` | Supply a new application-wide HTTPX transport for each lifespan; own any transports it creates. |
+| Private `ContentChecker` and dispatch interfaces | Maintainer boundaries used by execution and its tests. The application factory does not expose a custom-checker plugin argument. |
+
+Use the [Python integration guide](python-integration.mdx) for supported
+composition examples and the [transport reference](../src/guardrails_proxy/http-transport.md)
+for streaming and cleanup requirements.
+
+## Trusted Rails selection
+
+This view shows per-request selection for declarative `ProxyConfig` providers
+against a catalog that is already ready. Solid arrows describe selection. The
+dotted arrow supplies the preloaded checker catalog. Authentication is
+application-owned; receiving a request header does not make that value an
+authorized policy choice.
+
+```mermaid
+flowchart TB
+    Request["Guarded request and server-supplied operation identity"]
+    Mode{"Provider has fixed Rails ID?"}
+    Fixed["Use configured ID and bypass user resolver"]
+    Identity["Application authentication supplies trusted identity/state"]
+    Resolver["Trusted Python resolver selects an ID"]
+    Lookup["Verify registered ID and look up ready checker"]
+    Catalog["All Rails catalog entries initialized at startup"]
+    Failure["Provider-shaped resolution error before dispatch"]
+    Execution["Continue guarded execution with the ready checker"]
+    Request -->|"Read application configuration"| Mode
+    Mode -->|"Yes"| Fixed
+    Fixed -->|"Fixed ID"| Lookup
+    Mode -->|"No: dynamic selection"| Resolver
+    Identity -->|"Trusted facts when identity affects policy"| Resolver
+    Resolver -->|"Selected ID"| Lookup
+    Resolver -->|"Failure or invalid result"| Failure
+    Catalog -.->|"Ready checkers keyed by ID"| Lookup
+    Lookup -->|"Unknown ID"| Failure
+    Lookup -->|"Registered ID"| Execution
+```
+
+YAML requires fixed per-provider IDs. `ProxyConfig` providers without fixed IDs
+require a resolver, including with a one-entry catalog. Direct Python composition
+can infer static selection from one entry when no resolver is supplied; an
+explicit resolver still runs in direct mode. These assembly rules differ, while
+request-time lookup uses the same preloaded repository.
+
+The callback owns authorization for its selection. Use trusted identity or
+deliberately populated application state rather than raw caller headers. The
+catalog contains trusted Rails directories and is fixed for a lifespan. Model
+routing remains independent of Rails selection. See
+[configuration resolution](../src/guardrails_proxy/configuration-resolution.md)
+for examples and failure behavior.
+
+## State and resource ownership
+
+| Scope | Owner and invariant |
+| --- | --- |
+| Bound declarations | Reusable projection models, endpoint declarations, and event-classification definitions describe coverage. |
+| Application lifespan | The runtime owns one shared HTTP client/transport and the Rails repository. Different Rails IDs own independent engines, even for the same directory. |
+| Per request | A stream binding creates a fresh adapter and protocol hooks. Ordering, snapshots, terminal state, and error framing must not leak between requests. |
+| Upstream response | Dispatch owns acquired response resources until handoff; the returned response owner handles completion, disconnect, and failure before body iteration. |
+
+Classifiers describe events; hooks enforce stateful protocol behavior. Factories
+must return independent hook instances for each request. The
+[stream binding](../src/guardrails_proxy/provider/stream.py) encodes that boundary,
+and the [provider composition tests](../tests/proxy_tests/test_provider_composition.py)
+check request-local state. See [streaming errors and cleanup](architecture-requests.mdx#streaming-errors-and-cleanup)
+for response ownership and cooperative cleanup limits.
+
+## Where to make a change
+
+| Change | Start here | Verify with |
+| --- | --- | --- |
+| Provider operation or reviewed dialect | [Chat declarations](../src/guardrails_proxy/providers/openai/chat_completions/README.md), [Responses declarations](../src/guardrails_proxy/providers/openai/responses/README.md), and [integration assembly](../src/guardrails_proxy/providers/openai/integration.py). | [Buffered integration tests](../tests/proxy_tests/test_openai_chat_integration.py), [composition tests](../tests/proxy_tests/test_provider_composition.py), and [contract exports](../tests/proxy_tests/test_contract_export.py). |
+| Event selection and streaming protocol behavior | [Event classifier declarations](../src/guardrails_proxy/providers/openai/chat_completions/stream_classifier.py) and [request-local hooks](../src/guardrails_proxy/providers/openai/chat_completions/stream_hooks.py). | [Stream classifier tests](../tests/proxy_tests/test_stream_classifier.py) and [Chat streaming tests](../tests/proxy_tests/test_openai_chat_streaming_integration.py). |
+| New content capability | Matching projection, [buffered execution](../src/guardrails_proxy/_buffered_kernel.py), [streaming execution](../src/guardrails_proxy/_guarded_stream.py), and [checker semantics](../src/guardrails_proxy/_content_checker.py). | Accepted/rejected payloads, both execution modes, byte preservation, and representable exports. Profile metadata alone cannot extend support. |
+| Egress, TLS, or trusted destination routing | [HTTP transport composition](python-integration.mdx#customize-outbound-http) and the [routing example](../src/guardrails_proxy/examples/model_routing_transport.py). | [Application transport tests](../tests/proxy_tests/test_application_http_transport.py) and [routing transport tests](../tests/proxy_tests/test_model_routing_transport.py). |
+
+Keep changes aligned with the [current content profiles](providers-and-streaming.mdx#coverage-of-the-shipped-profiles).
+Follow [Development](../DEVELOPMENT.md) for validation commands and release
+compatibility requirements.
