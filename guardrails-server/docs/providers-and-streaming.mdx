@@ -11,22 +11,6 @@ It identifies request and response text, accounts for other fields, and describe
 stream events. You choose that binding independently of the upstream URL and
 the Rails configuration that checks its content.
 
-## Capability profiles
-
-A capability profile names the content-handling capability a binding requires.
-It gives the binding and execution pipeline a shared, versioned description of
-what they can process. A profile is separate from a provider, dialect, model,
-and Rails configuration.
-
-The shipped bindings use `single_text.v1` for payloads and
-`single_text_delta.v1` for streams. Use the coverage table below to decide
-whether they fit your application. Supporting additional content requires
-matching binding, execution, and checking support.
-
-Use `guardrails-proxy inspect` to see the profiles of your selected bindings.
-The current manifest has no profile selector. Editing a guard-contract export,
-changing Rails, or renaming a profile does not enable new content handling.
-
 ## Built-in operation bindings
 
 | Operation | Native binding | LiteLLM dialect | Buffered | Streaming |
@@ -62,6 +46,22 @@ For exact accepted fields and nullability, consult the
 [Chat boundary](../src/guardrails_proxy/contracts/openai/README.md#guarded-boundary),
 [Responses boundary](../src/guardrails_proxy/providers/openai/responses/README.md#supported-content),
 and [bound exports](guard-contracts.mdx#inspect-a-contract).
+
+## Capability profiles
+
+A capability profile names the content-handling capability a binding requires.
+It gives the binding and execution pipeline a shared, versioned description of
+what they can process. A profile is separate from a provider, dialect, model,
+and Rails configuration.
+
+The shipped bindings use `single_text.v1` for payloads and
+`single_text_delta.v1` for streams. Use the coverage table above to decide
+whether they fit your application. Supporting additional content requires
+matching binding, execution, and checking support.
+
+Use `guardrails-proxy inspect` to see the profiles of your selected bindings.
+The current manifest has no profile selector. Editing a guard-contract export,
+changing Rails, or renaming a profile does not enable new content handling.
 
 ## Dialects and unknown fields
 

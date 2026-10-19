@@ -140,11 +140,96 @@ Run the test from the repository root:
 make test TEST=test_gateway_binding.py WORKERS=0 ARGS="-q --block-network"
 ```
 
-This checks the declared acceptance boundary and export. Also exercise your
-actual gateway through the proxy: verify that accepted response bytes, including
-the metadata, arrive unchanged and that blocked assistant text is withheld.
-The [offline blocking recipe](quickstart.mdx#see-output-blocking-without-a-model)
-shows how to reproduce output blocking without a live model.
+This checks the declared acceptance boundary and export. The next test exercises
+the endpoint through the application with real local Rails checks.
+
+## Verify forwarding and blocking together
+
+Save this as `test_gateway_exchange.py` beside `gateway_binding.py`. It creates
+its own local regex Rails configuration and uses an in-process upstream, so no
+provider credentials or network service are needed. The test covers the buffered
+response extension; the streaming binding is unchanged.
+
+```python
+import json
+from dataclasses import replace
+
+import httpx
+import pytest
+
+from guardrails_proxy.application import ConfigEntry, create_proxy_application
+from guardrails_proxy.providers.openai.integration import create_openai_chat_integration
+
+from gateway_binding import GATEWAY_ENDPOINT
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("text,blocked", [("Hello!", False), ("Contact person@example.com", True)])
+async def test_gateway_exchange_preserves_bytes_or_blocks(tmp_path, text, blocked):
+    (tmp_path / "config.yml").write_text(
+        "models: []\nrails:\n  config:\n    regex_detection:\n"
+        "      output:\n        patterns: ['person@example.com']\n"
+        "  output:\n    flows: [regex check output]\n",
+        encoding="utf-8",
+    )
+    upstream_body = json.dumps(
+        {
+            "choices": [{"message": {"role": "assistant", "content": text}}],
+            "gateway_trace_id": "person@example.com",
+        },
+        indent=2,
+    ).encode()
+    received = []
+
+    def upstream(request):
+        received.append(request.content)
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            stream=httpx.ByteStream(upstream_body),
+            request=request,
+        )
+
+    integration = replace(
+        create_openai_chat_integration(base_url="https://gateway.example/v1"),
+        endpoints=(GATEWAY_ENDPOINT,),
+    )
+    app = create_proxy_application(
+        providers=(integration,),
+        rails_configs=(ConfigEntry("test", tmp_path),),
+        http_transport_factory=lambda: httpx.MockTransport(upstream),
+    )
+    request_body = b'{ "model": "test", "messages": [{"role": "user", "content": "Hello!"}] }'
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://proxy") as client:
+            response = await client.post(
+                "/v1/chat/completions",
+                content=request_body,
+                headers={"content-type": "application/json"},
+            )
+    assert received == [request_body]
+    if blocked:
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "content_blocked"
+        assert text.encode() not in response.content
+        assert "choices" not in response.json()
+    else:
+        assert response.status_code == 200
+        assert response.content == upstream_body
+```
+
+Run both tests from the repository root:
+
+```bash
+make test TEST="test_gateway_binding.py test_gateway_exchange.py" WORKERS=0 ARGS="-q --block-network"
+```
+
+The allowed case asserts exact request and response bytes, including JSON
+whitespace. The metadata deliberately contains the detector's matching text:
+acceptance demonstrates that the field remains opaque. The blocked case puts
+the same text in the assistant content and verifies that the answer is withheld.
+These in-process tests establish the binding and checking behavior; exercise your
+actual gateway separately to verify its wire format and network behavior.
 
 ## Export and check the contract
 

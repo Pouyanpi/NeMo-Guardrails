@@ -15,8 +15,9 @@ multimodal content are outside their [guarded scope](providers-and-streaming.mdx
 
 ## Install from source
 
-You need Python 3.10–3.13, [uv](https://docs.astral.sh/uv/), and an upstream that
-matches one of the [built-in bindings](providers-and-streaming.mdx).
+You need Python 3.10–3.13 and [uv](https://docs.astral.sh/uv/). You can start with
+the local demonstration upstream or connect a service matching one of the
+[built-in bindings](providers-and-streaming.mdx).
 The proxy is not yet published to PyPI. From this checkout's repository root:
 
 ```bash
@@ -41,6 +42,16 @@ environment, [copy its bundled example](../DEVELOPMENT.md#build-and-install-loca
 and enter the copied directory instead. No repository checkout is needed for
 the installed CLI. Contributors who prefer `uv run` can use the separate
 [development workflow](../DEVELOPMENT.md#set-up-the-workspace).
+
+## Choose how to try it
+
+| Path | What you need | Start here |
+| --- | --- | --- |
+| Try blocking locally | The installed environment and copied example; no model or API key | [Run the offline demonstration](#see-output-blocking-without-a-model). Skip the real-upstream setup below. |
+| Connect your upstream | A compatible model service and any required provider credentials | [Configure your upstream](#connect-your-upstream), then send accepted and blocked requests. |
+
+Both paths use the same proxy and local regex checks. The offline fixture returns
+fixed assistant text so you can observe buffered and streaming output blocking.
 
 ## Connect your upstream
 
@@ -149,7 +160,8 @@ Use the bundled local fixture to reproduce output blocking. It always returns
 format. This is a demonstration upstream, not an inference service; it needs no
 model, provider SDK, or API key.
 
-Stop the proxy. From the deployment directory, copy `proxy.yaml` to
+If a proxy is already running, stop it. From the copied `proxy-example`
+deployment directory, copy `proxy.yaml` to
 `proxy-offline.yaml` and change the copy's provider entry to:
 
 ```yaml
@@ -199,8 +211,9 @@ the email address. The HTTP stream has already started when the output check
 blocks its pending window. In longer streams, earlier approved windows may
 already have reached the caller.
 
-Stop both processes after the demonstration. Restart with `proxy.yaml` to use
-your real upstream again. Regex checks illustrate configuration and ordering;
+Stop both processes after the demonstration. To use a real model service,
+[configure your upstream](#connect-your-upstream) in `proxy.yaml` and restart
+the proxy with that manifest. Regex checks illustrate configuration and ordering;
 they are not comprehensive PII protection. Edit `rails/config.yml` to choose
 supported checks and any required models or optional integrations.
 
@@ -213,6 +226,9 @@ supported checks and any required models or optional integrations.
 | Upstream returns an authentication or model error | Use the upstream's model ID and authorization requirements. The proxy does not create models or credentials. |
 | A guarded request or response is rejected | Compare its shape with the selected binding and dialect. The upstream may support content that this binding does not yet inspect. |
 | Streaming output arrives late | Inspect the enabled Rails, streaming window size, and any gateway buffering. The final partial window is released only after it passes. |
+
+For error codes, disconnects, and cleanup warnings, use the
+[operator troubleshooting guide](troubleshooting.mdx).
 
 Next, [configure provider instances and Rails](configuration.mdx), or inspect the
 [guard contract](guard-contracts.mdx) describing the selected boundary.

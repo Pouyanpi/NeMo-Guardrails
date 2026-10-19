@@ -12,8 +12,9 @@ use the same route assembly and resource owners.
 
 ## Create an application
 
-After copying the [quickstart example](quickstart.mdx), create `proxy_app.py` in
-the repository root:
+Each recipe below is a separate application. After copying the
+[quickstart example](quickstart.mdx), return to the repository root and save
+this shared configuration as `proxy_config.py`:
 
 ```python
 from pathlib import Path
@@ -22,7 +23,6 @@ from guardrails_proxy.application import (
     ConfigEntry,
     ProviderConfig,
     ProxyConfig,
-    create_proxy_application,
 )
 
 config = ProxyConfig(
@@ -37,12 +37,20 @@ config = ProxyConfig(
         ),
     ),
 )
+```
+
+Replace the upstream URL in that file. Create `proxy_app.py` beside it:
+
+```python
+from guardrails_proxy.application import create_proxy_application
+
+from proxy_config import config
 
 app = create_proxy_application(config)
 ```
 
-Replace the example URL with your upstream and set `dialect="litellm"` if
-required. Then run:
+Set `dialect="litellm"` in `proxy_config.py` if required. Run from the
+repository root:
 
 ```bash
 uv run --locked --package guardrails-proxy uvicorn proxy_app:app --host 127.0.0.1 --port 8000
@@ -57,10 +65,14 @@ initializes Rails and network owners.
 ## Select Rails per request
 
 YAML requires a fixed Rails ID per provider. Python also supports a trusted
-callback. In the example below, provide both existing Rails directories, then
-select policy using the server-supplied operation identity:
+callback. Replace `proxy_app.py` with the complete recipe below, set its upstream
+URL, and provide both Rails directories. This recipe builds its own catalog and
+selects policy using the server-supplied operation identity:
 
 ```python
+from pathlib import Path
+
+from guardrails_proxy.application import ConfigEntry, ProviderConfig, ProxyConfig, create_proxy_application
 from guardrails_proxy.rails import ConfigContext
 
 config = ProxyConfig(
@@ -109,10 +121,16 @@ for each application lifespan. The shared HTTP client uses it for all configured
 provider instances. Use it for controlled egress, custom TLS, fault injection,
 recording, or application-owned destination routing.
 
-For example, this offline transport simulates an upstream unavailable response:
+Replace `proxy_app.py` with this recipe to simulate an upstream unavailable
+response. It imports the fixed-policy configuration from `proxy_config.py`;
+it does not require the dynamic-selection recipe:
 
 ```python
 import httpx
+
+from guardrails_proxy.application import create_proxy_application
+
+from proxy_config import config
 
 
 def unavailable(request: httpx.Request) -> httpx.Response:
@@ -126,7 +144,6 @@ def unavailable(request: httpx.Request) -> httpx.Response:
 
 app = create_proxy_application(
     config,
-    config_resolver=resolve_config,
     http_transport_factory=lambda: httpx.MockTransport(unavailable),
 )
 ```
@@ -157,14 +174,19 @@ for the ownership boundary.
 
 The factory returns a FastAPI application. When embedding it, run its lifespan
 from the actual parent application's lifespan, rather than assuming that a mount
-initializes its resources:
+initializes its resources. Save this complete recipe as `embedded_app.py`
+beside `proxy_config.py`:
 
 ```python
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-proxy = create_proxy_application(config, config_resolver=resolve_config)
+from guardrails_proxy.application import create_proxy_application
+
+from proxy_config import config
+
+proxy = create_proxy_application(config)
 
 
 @asynccontextmanager
@@ -177,7 +199,9 @@ application = FastAPI(lifespan=lifespan)
 application.mount("/guarded", proxy)
 ```
 
-This exposes the proxy beneath `/guarded`. Coordinate parent authentication,
+Run `uv run --locked --package guardrails-proxy uvicorn embedded_app:application`
+from the repository root. This exposes the proxy beneath `/guarded`. Coordinate
+parent authentication,
 route ownership, startup failure, and shutdown with your application's other
 resources. An in-process ASGI transport can test wiring; socket/disconnect
 behavior needs network-level tests too.
@@ -200,9 +224,13 @@ verify its rejection boundary, and export its contract. For a new endpoint:
    [exported contract](guard-contracts.mdx) for representable declarations.
 
 For direct composition, bypass the built-in `ProxyConfig` selection while using
-the same factory:
+the same factory. This can also replace `proxy_app.py`; supply the real upstream
+URL and keep the copied Rails directory:
 
 ```python
+from pathlib import Path
+
+from guardrails_proxy.application import ConfigEntry, create_proxy_application
 from guardrails_proxy.providers.openai.integration import create_openai_integration
 
 app = create_proxy_application(

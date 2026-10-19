@@ -88,6 +88,7 @@ Follow the [quickstart](docs/quickstart.mdx) for complete setup and examples.
 | Understand what is inspected and review an export | [Guard contracts](docs/guard-contracts.mdx) |
 | Use multiple upstreams, replicas, or gateways | [Deployment](docs/deployment.mdx) |
 | Embed the application or customize HTTP dispatch | [Python integration](docs/python-integration.mdx) |
+| Diagnose startup, checking, streaming, and cleanup failures | [Troubleshooting](docs/troubleshooting.mdx) |
 | Add a provider metadata field and verify its boundary | [Extend a binding](docs/extend-provider-bindings.mdx) |
 
 Inspection applies to the content declared by a binding and the checks enabled
