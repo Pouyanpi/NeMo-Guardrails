@@ -22,6 +22,7 @@ is_output_safe to control verdicts.
 
 import asyncio
 import logging
+from dataclasses import replace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -35,12 +36,19 @@ from nemoguardrails.guardrails.iorails import (
     IORails,
     _determine_rails_from_messages,
     _get_last_content_by_role,
+    _rewrite_last_assistant_message,
 )
 from nemoguardrails.guardrails.rail_guard import rail_error_outcome
 from nemoguardrails.rails.llm.config import RailsConfig
 from nemoguardrails.rails.llm.options import RailStatus, RailType, ToolViolationType
 from tests.guardrails.async_helpers import started_iorails
-from tests.guardrails.rail_stubs import bot_message_rewrite, rail_failure, user_message_rewrite
+from tests.guardrails.rail_stubs import (
+    bot_message_rewrite,
+    declare_masking_rails,
+    failed_mask,
+    rail_failure,
+    user_message_rewrite,
+)
 from tests.guardrails.test_data import NEMOGUARDS_CONFIG, TOPIC_SAFETY_CONFIG
 from tests.guardrails.test_tool_rails_iorails import (
     CONFIG_TOOLS_CONFIG,
@@ -766,6 +774,35 @@ class TestCheckHelpers:
         """content=None on the matched message is normalized to ''."""
         assert _get_last_content_by_role([{"role": "user", "content": None}], "user") == ""
 
+    def test_rewrite_last_assistant_message_rewrites_only_the_last(self):
+        """Only the last assistant message is rewritten, the one output rails checked."""
+        messages = [
+            {"role": "assistant", "content": "first"},
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "second"},
+        ]
+
+        rewritten = _rewrite_last_assistant_message(messages, "masked")
+
+        assert rewritten == [
+            {"role": "assistant", "content": "first"},
+            {"role": "user", "content": "question"},
+            {"role": "assistant", "content": "masked"},
+        ]
+
+    def test_rewrite_last_assistant_message_leaves_the_input_unchanged(self):
+        """The rewrite copies the list and the message rather than editing the caller's."""
+        messages = [{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}]
+
+        _rewrite_last_assistant_message(messages, "masked")
+
+        assert messages == [{"role": "user", "content": "question"}, {"role": "assistant", "content": "answer"}]
+
+    def test_rewrite_last_assistant_message_raises_without_an_assistant_message(self):
+        """With no assistant message there is nothing a rewrite could apply to, so it fails loudly."""
+        with pytest.raises(ValueError, match="no assistant message"):
+            _rewrite_last_assistant_message([{"role": "user", "content": "question"}], "masked")
+
 
 USER_TEXT = "my ssn is 123-45-6789"
 MASKED_USER_TEXT = "my ssn is <SSN>"
@@ -834,6 +871,199 @@ class TestCheckWithRewritingRails:
         assert result.status == RailStatus.BLOCKED
         assert result.content == REFUSAL_MESSAGE
         assert result.rail == "content safety check output"
+
+
+@pytest.mark.asyncio
+class TestCheckContentCaptureRecordsMaskedMessages:
+    """Capture records the checked messages as the rails masked them, so the request span cannot carry what a mask removed."""
+
+    async def test_an_input_mask_is_captured_masked(self, iorails):
+        """The captured user message is the one the input rails masked."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=user_message_rewrite(MASKED_USER_TEXT))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[1] == [{"role": "user", "content": MASKED_USER_TEXT}]
+
+    async def test_an_output_mask_is_captured_masked(self, iorails):
+        """The captured assistant message is the one the output rails masked."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_output_safe = AsyncMock(return_value=bot_message_rewrite(MASKED_BOT_TEXT))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION, rail_types=[RailType.OUTPUT])
+
+        assert capture.call_args.args[1] == [
+            {"role": "user", "content": USER_TEXT},
+            {"role": "assistant", "content": MASKED_BOT_TEXT},
+        ]
+
+    async def test_both_masks_are_captured_masked(self, iorails):
+        """With both directions masked, neither raw text reaches the span."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=user_message_rewrite(MASKED_USER_TEXT))
+        iorails.rails_manager.is_output_safe = AsyncMock(return_value=bot_message_rewrite(MASKED_BOT_TEXT))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION)
+
+        assert capture.call_args.args[1] == [
+            {"role": "user", "content": MASKED_USER_TEXT},
+            {"role": "assistant", "content": MASKED_BOT_TEXT},
+        ]
+
+    async def test_an_input_mask_is_captured_masked_when_the_output_blocks(self, iorails):
+        """A block after an input mask still captures the masked user message."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=user_message_rewrite(MASKED_USER_TEXT))
+        iorails.rails_manager.is_output_safe = AsyncMock(return_value=_unsafe("content safety check output"))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION)
+
+        assert capture.call_args.args[1] == [
+            {"role": "user", "content": MASKED_USER_TEXT},
+            {"role": "assistant", "content": BOT_TEXT},
+        ]
+
+    async def test_an_input_mask_is_captured_masked_when_the_input_blocks(self, iorails):
+        """A block behind the input mask still captures the user message as the mask left it."""
+        iorails._content_capture_enabled = True
+        blocked = replace(_unsafe("content safety check input"), rewrite_before_block=MASKED_USER_TEXT)
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=blocked)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[1] == [{"role": "user", "content": MASKED_USER_TEXT}]
+
+    async def test_an_output_mask_is_captured_masked_when_the_output_blocks(self, iorails):
+        """A block behind the output mask still captures the checked response as the mask left it."""
+        iorails._content_capture_enabled = True
+        blocked = replace(_unsafe("content safety check output"), rewrite_before_block=MASKED_BOT_TEXT)
+        iorails.rails_manager.is_output_safe = AsyncMock(return_value=blocked)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION, rail_types=[RailType.OUTPUT])
+
+        assert capture.call_args.args[1] == [
+            {"role": "user", "content": USER_TEXT},
+            {"role": "assistant", "content": MASKED_BOT_TEXT},
+        ]
+
+    async def test_an_unmasked_check_is_captured_as_it_arrived(self, iorails):
+        """With no rewrite, the span records the messages the caller sent."""
+        iorails._content_capture_enabled = True
+        _mock_rails(iorails)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION)
+
+        assert capture.call_args.args[1] == CONVERSATION
+
+    async def test_an_output_mask_leaves_the_callers_messages_unchanged(self, iorails):
+        """Masking for the span copies the conversation rather than editing the caller's list."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_output_safe = AsyncMock(return_value=bot_message_rewrite(MASKED_BOT_TEXT))
+        messages = [dict(message) for message in CONVERSATION]
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content"):
+            await iorails.check_async(messages, rail_types=[RailType.OUTPUT])
+
+        assert messages == CONVERSATION
+
+
+@pytest.mark.asyncio
+class TestCheckCaptureWithholdsWhatNoMaskReached:
+    """With masking rails configured, the request span records a check's text only once every mask has decided on it."""
+
+    async def test_a_failed_input_mask_withholds_the_input(self, iorails):
+        """The mask raised, so the user's message is still as sent and the span records no input."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=failed_mask("gliner mask pii on input"))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[1] is None
+
+    async def test_a_failed_input_mask_still_records_the_block_message(self, iorails):
+        """The block's own message carries none of the caller's text, so the span keeps it."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=failed_mask("gliner mask pii on input"))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[2] == INTERNAL_ERROR_MESSAGE
+
+    async def test_an_input_block_withholds_a_response_no_output_mask_reached(self, iorails):
+        """The output mask never ran on the checked response, so the span records no input."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.OUTPUT)
+        _mock_rails(iorails, input_result=_unsafe("content safety check input"))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION)
+
+        assert capture.call_args.args[1] is None
+
+    async def test_skipping_the_input_rails_withholds_a_user_message_no_mask_reached(self, iorails):
+        """A check of the response alone leaves the configured input mask unrun on the user's message."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+        _mock_rails(iorails)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION, rail_types=[RailType.OUTPUT])
+
+        assert capture.call_args.args[1] is None
+
+    async def test_skipping_the_input_rails_still_records_the_response_it_reports(self, iorails):
+        """The reported response belongs to the output side, which no configured mask guards, so the span keeps it."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+        _mock_rails(iorails)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async(CONVERSATION, rail_types=[RailType.OUTPUT])
+
+        assert capture.call_args.args[2] == BOT_TEXT
+
+    async def test_a_check_running_no_rails_withholds_what_it_reports(self, iorails):
+        """An empty rail_types reports the user's message as sent, so the span records neither side."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}], rail_types=[])
+
+        assert capture.call_args.args[1:] == (None, None)
+
+    async def test_a_mask_that_decided_still_records_the_masked_input(self, iorails):
+        """Masks that ran leave the span the masked text, as without any pending mask."""
+        iorails._content_capture_enabled = True
+        declare_masking_rails(iorails, RailDirection.INPUT)
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=user_message_rewrite(MASKED_USER_TEXT))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[1] == [{"role": "user", "content": MASKED_USER_TEXT}]
+
+    async def test_without_masking_rails_a_failed_rail_records_the_input(self, iorails):
+        """With nothing configured to mask there is nothing to protect, so the span records the message."""
+        iorails._content_capture_enabled = True
+        iorails.rails_manager.is_input_safe = AsyncMock(return_value=rail_failure("content safety check input"))
+
+        with patch("nemoguardrails.guardrails.iorails.set_request_content") as capture:
+            await iorails.check_async([{"role": "user", "content": USER_TEXT}])
+
+        assert capture.call_args.args[1] == [{"role": "user", "content": USER_TEXT}]
 
 
 class TestUnsatisfiableRailTypes:

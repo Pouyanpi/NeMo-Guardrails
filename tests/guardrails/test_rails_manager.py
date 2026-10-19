@@ -1888,6 +1888,49 @@ class TestRailsThatRewrite:
         assert result.triggered_rail == "topic safety check input"
         assert len(result.records) == 2
 
+    async def test_a_block_behind_a_rewrite_keeps_the_rewrite_for_the_record(self, nemoguards_rails_manager):
+        """The block is the verdict, but the masked text still reaches whoever records the request."""
+        self._install_input_pair(
+            nemoguards_rails_manager,
+            StubRail(_mask_user_message(MASKED)),
+            StubRail(RailOutcome.block(reason="off topic")),
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=INPUT_PAIR)
+
+        assert result.rewrite_before_block == MASKED
+
+    async def test_an_output_block_behind_a_rewrite_keeps_the_rewritten_response(self, nemoguards_rails_manager):
+        """The output direction keeps the response as the rails ahead of the block rewrote it."""
+        second_flow = "mask pii on output"
+        self._install(
+            nemoguards_rails_manager,
+            RailDirection.OUTPUT,
+            {
+                CONTENT_SAFETY_OUTPUT_FLOW: StubRail(_mask_bot_message("call me on <PHONE>")),
+                second_flow: StubRail(RailOutcome.block(reason="unsafe")),
+            },
+        )
+
+        result = await nemoguards_rails_manager._run_rails_sequential(
+            [CONTENT_SAFETY_OUTPUT_FLOW, second_flow], RailDirection.OUTPUT, SSN_MESSAGES, "call me on 555-0100"
+        )
+
+        assert result.is_safe is False
+        assert result.rewrite_before_block == "call me on <PHONE>"
+
+    async def test_a_block_with_no_rewrite_ahead_keeps_nothing(self, nemoguards_rails_manager):
+        """With nothing rewritten before the block, there is no rewrite for the record to keep."""
+        self._install_input_pair(
+            nemoguards_rails_manager,
+            StubRail(RailOutcome.allow()),
+            StubRail(RailOutcome.block(reason="off topic")),
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=INPUT_PAIR)
+
+        assert result.rewrite_before_block is None
+
     async def test_a_rewrite_leaves_the_callers_messages_untouched(self, nemoguards_rails_manager):
         """The caller's list arrives by identity, so masking must not edit the conversation it owns."""
         messages = [{"role": "user", "content": "my ssn is 123-45-6789"}]
@@ -1940,6 +1983,108 @@ class TestRailsThatRewrite:
 
         assert result.is_safe is False
         assert recorder.seen_messages == []
+
+
+def _failing_mask(direction: SurfaceDirection) -> StubRail:
+    """A rail free to rewrite that raised instead of deciding, as a masking rail with a failed endpoint does."""
+    target = TransformTarget.USER_MESSAGE if direction is SurfaceDirection.INPUT else TransformTarget.BOT_MESSAGE
+    return StubRail(RailOutcome.failure(reason="gliner error"), transform_target=target)
+
+
+@pytest.mark.asyncio
+class TestARewriteThatNeverLanded:
+    """A result says when a rail free to rewrite gave no verdict, so a record of the request can withhold the text."""
+
+    async def test_a_failing_masking_rail_leaves_its_rewrite_pending(self, nemoguards_rails_manager):
+        """The mask raised rather than deciding, so the text it guards is still as the caller sent it."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = _failing_mask(
+            SurfaceDirection.INPUT
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=["content safety check input"])
+
+        assert result.is_safe is False
+        assert result.rewrite_pending is True
+
+    async def test_a_masking_rail_that_blocks_leaves_its_rewrite_pending(self, nemoguards_rails_manager):
+        """A block from the mask itself rewrites nothing either, whatever its reason."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = StubRail(
+            RailOutcome.block(reason="refused"), transform_target=TransformTarget.USER_MESSAGE
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=["content safety check input"])
+
+        assert result.rewrite_pending is True
+
+    async def test_a_block_behind_every_mask_leaves_nothing_pending(self, nemoguards_rails_manager):
+        """Every mask ran before the judge refused, so a record can carry the masked text."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = rewriting_stub(
+            MASKED, SurfaceDirection.INPUT
+        )
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, TOPIC_SAFETY_INPUT_FLOW)] = StubRail(
+            RailOutcome.block(reason="off topic")
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=INPUT_PAIR)
+
+        assert result.is_safe is False
+        assert result.rewrite_pending is False
+
+    async def test_a_mask_that_found_nothing_to_rewrite_leaves_nothing_pending(self, nemoguards_rails_manager):
+        """A mask allowing the text as it was still decided, so nothing it guards went unchecked."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = declared_rewriter(
+            SurfaceDirection.INPUT
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=["content safety check input"])
+
+        assert result.is_safe is True
+        assert result.rewrite_pending is False
+
+    async def test_a_mask_the_request_turned_off_leaves_its_rewrite_pending(self, nemoguards_rails_manager):
+        """A caller can switch a masking rail off for one request, and the text then goes unmasked."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = rewriting_stub(
+            MASKED, SurfaceDirection.INPUT
+        )
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, TOPIC_SAFETY_INPUT_FLOW)] = StubRail()
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=["topic safety check input"])
+
+        assert result.is_safe is True
+        assert result.rewrite_pending is True
+
+    async def test_turning_every_rail_off_leaves_a_configured_mask_pending(self, nemoguards_rails_manager):
+        """With the direction's rails all off, a configured mask has still not seen the text."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = rewriting_stub(
+            MASKED, SurfaceDirection.INPUT
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=False)
+
+        assert result.rewrite_pending is True
+
+    async def test_a_failing_output_mask_leaves_its_rewrite_pending(self, nemoguards_rails_manager):
+        """The output direction reports a mask that never reached the response the same way."""
+        nemoguards_rails_manager._rails[(RailDirection.OUTPUT, CONTENT_SAFETY_OUTPUT_FLOW)] = _failing_mask(
+            SurfaceDirection.OUTPUT
+        )
+
+        result = await nemoguards_rails_manager.is_output_safe(
+            SSN_MESSAGES, "call me on 555-0100", enabled=["content safety check output"]
+        )
+
+        assert result.rewrite_pending is True
+
+    async def test_without_a_mask_a_failing_rail_leaves_nothing_pending(self, nemoguards_rails_manager):
+        """With no rail free to rewrite, there is no mask a record of the request could be missing."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = StubRail(
+            RailOutcome.failure(reason="content safety error")
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=["content safety check input"])
+
+        assert result.is_safe is False
+        assert result.rewrite_pending is False
 
 
 class TestRewritingFlows:
@@ -2144,7 +2289,7 @@ class TestResultAfterRewrites:
 
     def test_unchanged_text_is_a_plain_allow(self):
         """Rails that rewrote nothing, or rewrote and restored, leave the request as it arrived."""
-        result = _result_after_rewrites(RailDirection.INPUT, "hello", "hello", self.RECORDS)
+        result = _result_after_rewrites(RailDirection.INPUT, "hello", "hello", self.RECORDS, rewrite_pending=False)
 
         assert result.outcome.is_transform is False
         assert result.is_safe is True
@@ -2152,7 +2297,9 @@ class TestResultAfterRewrites:
 
     def test_an_input_rewrite_names_the_user_message(self):
         """The caller learns which variable to replace, not just that something changed."""
-        result = _result_after_rewrites(RailDirection.INPUT, "my ssn is 123-45-6789", MASKED, self.RECORDS)
+        result = _result_after_rewrites(
+            RailDirection.INPUT, "my ssn is 123-45-6789", MASKED, self.RECORDS, rewrite_pending=False
+        )
 
         assert result.outcome.transform_text == {"user_message": MASKED}
         assert result.is_safe is True
@@ -2160,19 +2307,21 @@ class TestResultAfterRewrites:
 
     def test_an_output_rewrite_names_the_bot_message(self):
         """The output direction reports against the variable its rails checked."""
-        result = _result_after_rewrites(RailDirection.OUTPUT, "call me on 555-0100", "call me on <PHONE>", ())
+        result = _result_after_rewrites(
+            RailDirection.OUTPUT, "call me on 555-0100", "call me on <PHONE>", (), rewrite_pending=False
+        )
 
         assert result.outcome.transform_text == {"bot_message": "call me on <PHONE>"}
 
     def test_a_rewrite_to_empty_text_is_still_a_rewrite(self):
         """Redacting a response to nothing is a change, and must not read as leaving it alone."""
-        result = _result_after_rewrites(RailDirection.OUTPUT, "my ssn is 123-45-6789", "", ())
+        result = _result_after_rewrites(RailDirection.OUTPUT, "my ssn is 123-45-6789", "", (), rewrite_pending=False)
 
         assert result.outcome.transform_text == {"bot_message": ""}
 
     def test_a_rewrite_keeps_every_rail_that_ran(self):
         """The log covers the whole direction, not only the rail that rewrote."""
-        result = _result_after_rewrites(RailDirection.INPUT, "before", "after", self.RECORDS)
+        result = _result_after_rewrites(RailDirection.INPUT, "before", "after", self.RECORDS, rewrite_pending=False)
 
         assert result.records == self.RECORDS
 
@@ -2499,3 +2648,29 @@ class TestARewriteWithNoTurnToLandOn:
         )
 
         assert len(result.records) == 1
+
+    async def test_the_rewrite_already_applied_is_kept_for_the_record(self, nemoguards_rails_manager):
+        """The block keeps the text the rails ahead of it left, so the record of the request keeps their mask."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = StubRail(
+            _mask_user_message("")
+        )
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, TOPIC_SAFETY_INPUT_FLOW)] = StubRail(
+            _mask_user_message(MASKED)
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(SSN_MESSAGES, enabled=INPUT_PAIR)
+
+        assert result.is_safe is False
+        assert result.rewrite_before_block == ""
+
+    async def test_the_rewrite_that_missed_stays_pending(self, nemoguards_rails_manager):
+        """The mask landed on no turn, so a record of the request has no mask to rely on."""
+        nemoguards_rails_manager._rails[(RailDirection.INPUT, CONTENT_SAFETY_INPUT_FLOW)] = rewriting_stub(
+            MASKED, SurfaceDirection.INPUT
+        )
+
+        result = await nemoguards_rails_manager.is_input_safe(
+            [{"role": "assistant", "content": "hello"}], enabled=["content safety check input"]
+        )
+
+        assert result.rewrite_pending is True

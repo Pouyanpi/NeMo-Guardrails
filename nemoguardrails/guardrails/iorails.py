@@ -27,7 +27,7 @@ import time
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import nullcontext, suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Union
 
 from nemoguardrails.actions.rail_outcome import TransformTarget
@@ -55,6 +55,7 @@ from nemoguardrails.guardrails.guardrails_types import (
     RailResult,
     TimedLLMResponse,
     client_reason,
+    current_user_turn_index,
     display_reason,
     get_request_id,
     rewrite_user_message,
@@ -588,6 +589,30 @@ def _reports_assistant_content(rails_to_run: list[str]) -> bool:
     return "tool_call" in rails_to_run and "input" not in rails_to_run
 
 
+def _rewrite_last_assistant_message(messages: LLMMessages, text: str) -> LLMMessages:
+    """Return a copy of *messages* with the last assistant message's content rewritten to *text*."""
+    for index in range(len(messages) - 1, -1, -1):
+        if messages[index].get("role") == "assistant":
+            rewritten = list(messages)
+            rewritten[index] = {**messages[index], "content": text}
+            return rewritten
+    raise ValueError("no assistant message to rewrite")
+
+
+def _apply_input_rewrite_before_block(messages: LLMMessages, blocked: RailResult) -> LLMMessages:
+    """Return *messages* with the user turn as the input rails rewrote it before one of them blocked."""
+    if blocked.rewrite_before_block is None:
+        return messages
+    return rewrite_user_message(messages, blocked.rewrite_before_block)
+
+
+def _apply_output_rewrite_before_block(messages: LLMMessages, blocked: RailResult) -> LLMMessages:
+    """Return *messages* with the checked response as the output rails rewrote it before one of them blocked."""
+    if blocked.rewrite_before_block is None:
+        return messages
+    return _rewrite_last_assistant_message(messages, blocked.rewrite_before_block)
+
+
 def _blocked_message(result: RailResult) -> str:
     """The text a blocked turn returns, which says whether the rail broke or fired."""
     if result.failed:
@@ -624,19 +649,77 @@ class _TurnConversation:
     """
 
     messages: LLMMessages
+    # The directions whose configured masks have yet to decide on their text, which the request
+    # span then withholds. Seeded before any rail runs, so an exit nobody foresaw withholds the
+    # text rather than records it unmasked.
+    masks_pending: set[RailDirection] = field(default_factory=set)
+    # Whose text a check reports back, and so which direction's masks its content waits on.
+    reported_direction: Optional[RailDirection] = None
+
+    def record_masks(self, direction: RailDirection, *, pending: bool) -> None:
+        """Note whether *direction*'s masks have all decided on its text, as its rails reported."""
+        if pending:
+            self.masks_pending.add(direction)
+        else:
+            self.masks_pending.discard(direction)
+
+    def withhold(self, direction: RailDirection) -> None:
+        """Keep *direction*'s text off the span, whatever its own masks decide on it later."""
+        self.masks_pending.add(direction)
+
+
+def _carries_text_to_mask(messages: LLMMessages, direction: RailDirection) -> bool:
+    """Whether *messages* hold the text *direction*'s rails check: a user turn, or a response."""
+    if direction is RailDirection.INPUT:
+        return current_user_turn_index(messages) is not None
+    return bool(_get_last_content_by_role(messages, "assistant"))
+
+
+def _generation_input_for_capture(conversation: _TurnConversation) -> Optional[LLMMessages]:
+    """A generation's messages for the span, or None while an input mask has yet to decide on the user turn."""
+    if RailDirection.INPUT in conversation.masks_pending:
+        return None
+    return conversation.messages
+
+
+def _generation_output_for_capture(conversation: _TurnConversation, text: Optional[str]) -> Optional[str]:
+    """The response text for the span, or None when it went out with a configured output mask unrun."""
+    if RailDirection.OUTPUT in conversation.masks_pending:
+        return None
+    return text
+
+
+def _check_input_for_capture(conversation: _TurnConversation) -> Optional[LLMMessages]:
+    """A check's messages for the span, or None while a mask has yet to decide on text in them."""
+    # A check's messages carry the checked response as well as the user turn, so either side pending withholds them.
+    if conversation.masks_pending:
+        return None
+    return conversation.messages
+
+
+def _check_output_for_capture(result: RailsResult, conversation: _TurnConversation) -> Optional[str]:
+    """A check's content for the span, or None while it is text a configured mask has yet to decide on."""
+    # A block's content is IORails' own message, which carries none of the caller's text.
+    if result.status == RailStatus.BLOCKED:
+        return result.content
+    if conversation.reported_direction in conversation.masks_pending:
+        return None
+    return result.content
 
 
 @dataclass(frozen=True, slots=True)
 class _GeneratedTurn:
-    """The main model's response and the messages it read, or no response when the rails blocked.
+    """The main model's response and the messages it read, or on a block no response and the messages the rails left.
 
     ``blocked_by`` carries the verdict that stopped the turn, because the caller renders the
     message from it and a rail that broke reads differently from one that fired.
+    ``input_rewrite_pending`` says a configured input mask never decided on the user turn.
     """
 
     response: Optional[LLMResponse]
     messages: LLMMessages
     blocked_by: Optional[RailResult] = None
+    input_rewrite_pending: bool = False
 
 
 def _compile_only_deps(config: RailsConfig) -> RailDependencies:
@@ -832,6 +915,18 @@ class IORails(BaseGuardrails):
             from nemoguardrails.telemetry import RailsEngineEnum, report_usage
 
             report_usage(config, deployment_type="library", rails_engine=RailsEngineEnum.IORAILS.value)
+
+    def _masks_awaiting(self, messages: LLMMessages, directions: tuple[RailDirection, ...]) -> set[RailDirection]:
+        """Which of *directions* have configured masks yet to decide on text *messages* carry."""
+        if not self._content_capture_enabled:
+            return set()
+        # Malformed entries are left for the request itself to reject, inside its span and its error log.
+        well_formed = [message for message in messages if isinstance(message, dict)]
+        return {
+            direction
+            for direction in directions
+            if self.rails_manager.transform_flows[direction] and _carries_text_to_mask(well_formed, direction)
+        }
 
     def _speculative_generation_allowed(self, config: RailsConfig) -> bool:
         """Whether input rails may race the main call, which a rewriting input rail rules out.
@@ -1030,7 +1125,10 @@ class IORails(BaseGuardrails):
         lifecycle scope by ``generate_async``, not here.
         """
         tracer = self._tracer if self._tracing_enabled else None
-        conversation = _TurnConversation(messages=messages)
+        # A generation's messages carry no response to mask, only the user turn.
+        conversation = _TurnConversation(
+            messages=messages, masks_pending=self._masks_awaiting(messages, (RailDirection.INPUT,))
+        )
         with traced_request(tracer) as (request_span, req_id):
             t0 = time.monotonic()
             try:
@@ -1042,10 +1140,15 @@ class IORails(BaseGuardrails):
                 log.error("[%s] generate_async failed time=%.1fms", req_id, elapsed_ms, exc_info=True)
                 raise
             # Captured at the traced_request boundary, so a future early-return in _do_generate
-            # is covered. The messages are the ones the model read: a span carrying the text a
-            # mask removed would defeat the mask.
+            # is covered. The messages are the ones the rails left, which the model read unless a
+            # rail blocked: a span carrying the text a mask removed would defeat the mask, and
+            # text a configured mask never decided on is withheld rather than recorded as sent.
             if self._content_capture_enabled:
-                set_request_content(request_span, conversation.messages, _response_content_for_capture(result))
+                set_request_content(
+                    request_span,
+                    _generation_input_for_capture(conversation),
+                    _generation_output_for_capture(conversation, _response_content_for_capture(result)),
+                )
             elapsed_ms = (time.monotonic() - t0) * 1000
             log.info("[%s] generate_async completed time=%.1fms", req_id, elapsed_ms)
             return result
@@ -1128,6 +1231,10 @@ class IORails(BaseGuardrails):
                 messages, req_id, llm_kwargs, input_enabled=input_enabled, records_out=records
             )
 
+        # Before the blocked return, so a block behind a mask still records the masked messages.
+        if conversation is not None:
+            conversation.messages = turn.messages
+            conversation.record_masks(RailDirection.INPUT, pending=turn.input_rewrite_pending)
         if turn.blocked_by is not None:
             return _blocked_return(turn.blocked_by)
 
@@ -1139,8 +1246,6 @@ class IORails(BaseGuardrails):
             # generation bug to the caller as a guardrail decision.
             raise RuntimeError("generation returned no response without naming a blocking rail")
         messages = turn.messages
-        if conversation is not None:
-            conversation.messages = messages
 
         # Log raw content before reasoning extraction and think-token removal
         log.debug("[%s] Raw LLM response: %s", req_id, truncate(response.content))
@@ -1179,6 +1284,9 @@ class IORails(BaseGuardrails):
                 if self._metrics_enabled:
                     record_request_blocked(RailDirection.OUTPUT)
                 return _blocked_return(output_result)
+            # The model read a turn the input mask never decided on, so its response may repeat it.
+            if conversation is not None and (turn.input_rewrite_pending or output_result.rewrite_pending):
+                conversation.withhold(RailDirection.OUTPUT)
 
             rewritten = _rewritten_bot_message(output_result)
             if rewritten is not None:
@@ -1194,6 +1302,9 @@ class IORails(BaseGuardrails):
         # reasoning_content field and keeps the message content clean.
         if reasoning_content:
             response_text = f"<think>{reasoning_content}</think>\n" + response_text
+            # The output masks ran on the answer alone, so the text returned holds reasoning none of them saw.
+            if conversation is not None and self.rails_manager.transform_flows[RailDirection.OUTPUT]:
+                conversation.withhold(RailDirection.OUTPUT)
 
         return _build_assistant_message(response_text, response.tool_calls)
 
@@ -1231,7 +1342,13 @@ class IORails(BaseGuardrails):
             log.info("[%s] Input blocked: %s", req_id, display_reason(input_result))
             if self._metrics_enabled:
                 record_request_blocked(RailDirection.INPUT)
-            return _GeneratedTurn(response=None, messages=messages, blocked_by=input_result)
+            rewritten_messages = _apply_input_rewrite_before_block(messages, input_result)
+            return _GeneratedTurn(
+                response=None,
+                messages=rewritten_messages,
+                blocked_by=input_result,
+                input_rewrite_pending=input_result.rewrite_pending,
+            )
 
         rewritten = _rewritten_user_message(input_result)
         if rewritten is not None:
@@ -1244,7 +1361,11 @@ class IORails(BaseGuardrails):
             provider = self.engine_registry.provider_name("main")
             prompt = serialize_prompt(messages)
             records_out.append(_make_generation_record(timed_llm_response, provider, prompt))
-        return _GeneratedTurn(response=timed_llm_response.response, messages=messages)
+        return _GeneratedTurn(
+            response=timed_llm_response.response,
+            messages=messages,
+            input_rewrite_pending=input_result.rewrite_pending,
+        )
 
     async def _do_generate_speculative(
         self,
@@ -1344,7 +1465,12 @@ class IORails(BaseGuardrails):
                 set_speculative_span_attrs(
                     request_span, first_completed, GuardrailsAttributes.SPECULATIVE_FIRST_COMPLETED_INPUT_RAILS
                 )
-                return _GeneratedTurn(response=None, messages=messages, blocked_by=input_result)
+                return _GeneratedTurn(
+                    response=None,
+                    messages=messages,
+                    blocked_by=input_result,
+                    input_rewrite_pending=input_result.rewrite_pending,
+                )
 
             # Rails passed — wait for generation to finish
             timed = await gen_task
@@ -1365,13 +1491,20 @@ class IORails(BaseGuardrails):
                 set_speculative_span_attrs(
                     request_span, first_completed, GuardrailsAttributes.SPECULATIVE_FIRST_COMPLETED_INPUT_RAILS
                 )
-                return _GeneratedTurn(response=None, messages=messages, blocked_by=input_result)
+                return _GeneratedTurn(
+                    response=None,
+                    messages=messages,
+                    blocked_by=input_result,
+                    input_rewrite_pending=input_result.rewrite_pending,
+                )
 
             set_speculative_span_attrs(request_span, first_completed, "none")
 
         log.debug("[%s] Main LLM response: %s", req_id, truncate(timed.response.content))
         _record_generation(timed)
-        return _GeneratedTurn(response=timed.response, messages=messages)
+        return _GeneratedTurn(
+            response=timed.response, messages=messages, input_rewrite_pending=input_result.rewrite_pending
+        )
 
     def check(
         self,
@@ -1462,16 +1595,27 @@ class IORails(BaseGuardrails):
     ) -> RailsResult:
         """Queue-worker entry for ``check_async``: wrap the rails in a request span."""
         tracer = self._tracer if self._tracing_enabled else None
+        conversation = _TurnConversation(
+            messages=messages,
+            masks_pending=self._masks_awaiting(messages, (RailDirection.INPUT, RailDirection.OUTPUT)),
+        )
         with traced_request(tracer) as (request_span, req_id):
             t0 = time.monotonic()
             try:
-                result = await self._do_check(messages, rail_types, req_id, tools=tools)
+                result = await self._do_check(messages, rail_types, req_id, tools=tools, conversation=conversation)
             except Exception:
                 elapsed_ms = (time.monotonic() - t0) * 1000
                 log.error("[%s] check failed time=%.1fms", req_id, elapsed_ms, exc_info=True)
                 raise
+            # The messages as the rails masked them, as _run_generate captures them. A check's
+            # messages carry the checked response too, so an output mask must reach them as well,
+            # and text a configured mask never decided on is withheld rather than recorded as sent.
             if self._content_capture_enabled:
-                set_request_content(request_span, messages, result.content)
+                set_request_content(
+                    request_span,
+                    _check_input_for_capture(conversation),
+                    _check_output_for_capture(result, conversation),
+                )
             elapsed_ms = (time.monotonic() - t0) * 1000
             log.info(
                 "[%s] check completed time=%.1fms status=%s",
@@ -1488,6 +1632,7 @@ class IORails(BaseGuardrails):
         req_id: str,
         *,
         tools: Optional[list[dict]] = None,
+        conversation: "_TurnConversation",
     ) -> RailsResult:
         """Core check pipeline: run the requested input, output and tool rails on messages."""
         log.info("[%s] check called", req_id)
@@ -1509,8 +1654,10 @@ class IORails(BaseGuardrails):
         reports_output = _reports_assistant_content(rails_to_run)
         if reports_output:
             pass_content = _get_last_content_by_role(messages, "assistant")
+            conversation.reported_direction = RailDirection.OUTPUT
         else:
             pass_content = _get_last_content_by_role(messages, "user")
+            conversation.reported_direction = RailDirection.INPUT
         original_content = pass_content
 
         if "tool_result" in rails_to_run:
@@ -1525,15 +1672,18 @@ class IORails(BaseGuardrails):
             if user_content:
                 log.info("[%s] Running input rails", req_id)
                 input_result = await self.rails_manager.is_input_safe(messages)
+                conversation.record_masks(RailDirection.INPUT, pending=input_result.rewrite_pending)
                 if not input_result.is_safe:
                     log.info("[%s] Input blocked: %s", req_id, display_reason(input_result))
                     if self._metrics_enabled:
                         record_request_blocked(RailDirection.INPUT)
+                    conversation.messages = _apply_input_rewrite_before_block(messages, input_result)
                     return _blocked_check_result(input_result)
                 rewritten = _rewritten_user_message(input_result)
                 if rewritten is not None:
                     log.info("[%s] Input rails rewrote the user message", req_id)
                     messages = rewrite_user_message(messages, rewritten)
+                    conversation.messages = messages
                     if not reports_output:
                         pass_content = rewritten
             else:
@@ -1551,15 +1701,19 @@ class IORails(BaseGuardrails):
             if bot_response:
                 log.info("[%s] Running output rails", req_id)
                 output_result = await self.rails_manager.is_output_safe(messages, bot_response)
+                conversation.record_masks(RailDirection.OUTPUT, pending=output_result.rewrite_pending)
                 if not output_result.is_safe:
                     log.info("[%s] Output blocked: %s", req_id, display_reason(output_result))
                     if self._metrics_enabled:
                         record_request_blocked(RailDirection.OUTPUT)
+                    conversation.messages = _apply_output_rewrite_before_block(messages, output_result)
                     return _blocked_check_result(output_result)
                 rewritten = _rewritten_bot_message(output_result)
                 if rewritten is not None:
                     log.info("[%s] Output rails rewrote the response", req_id)
                     pass_content = rewritten
+                    messages = _rewrite_last_assistant_message(messages, rewritten)
+                    conversation.messages = messages
             else:
                 log.info("[%s] Output rails requested but no assistant content to check; skipping", req_id)
 
@@ -1684,7 +1838,9 @@ class IORails(BaseGuardrails):
         streaming_handler = StreamingHandler(include_metadata=include_metadata)
         # The output-rail wrapper is built before the generation task runs, so it cannot be handed
         # the messages by value: an input rail may rewrite them after that point.
-        conversation = _TurnConversation(messages=messages)
+        conversation = _TurnConversation(
+            messages=messages, masks_pending=self._masks_awaiting(messages, (RailDirection.INPUT,))
+        )
         # Tool calls assembled by the stream: _generation_task rebinds this (via
         # nonlocal) to the engine's finalized list and _wrapped_iterator reads it
         # after the content stream drains. The engine emits the complete list once
@@ -1730,6 +1886,11 @@ class IORails(BaseGuardrails):
                     log.info("[%s] Input blocked: %s", req_id, display_reason(input_result))
                     if self._metrics_enabled:
                         record_request_blocked(RailDirection.INPUT)
+                    # The request span records ``conversation`` once the stream ends, so a mask applied
+                    # ahead of the block has to reach it before the caller can see the stream close.
+                    messages = _apply_input_rewrite_before_block(messages, input_result)
+                    conversation.messages = messages
+                    conversation.record_masks(RailDirection.INPUT, pending=input_result.rewrite_pending)
                     await streaming_handler.push_chunk(
                         self._guardrails_violation_payload(
                             f"Blocked by input rails: {client_reason(input_result)}", "input_rails"
@@ -1745,6 +1906,10 @@ class IORails(BaseGuardrails):
                     log.info("[%s] Input rails rewrote the user message", req_id)
                     messages = rewrite_user_message(messages, rewritten)
                 conversation.messages = messages
+                conversation.record_masks(RailDirection.INPUT, pending=input_result.rewrite_pending)
+                # The model reads a turn the input mask never decided on, so its response may repeat it.
+                if input_result.rewrite_pending:
+                    conversation.withhold(RailDirection.OUTPUT)
 
                 # Step 2: Stream main LLM content from structured response.
                 # delta_content is forwarded as text chunks; delta_tool_calls are
@@ -1946,9 +2111,14 @@ class IORails(BaseGuardrails):
                                 # stream still records whatever reached the caller.
                                 # Empty `delivered` -> output_text=None so we don't
                                 # falsely claim an "" assistant message was produced.
+                                # Text a configured mask never decided on is withheld.
                                 if self._content_capture_enabled:
                                     output_text = "".join(delivered) if delivered else None
-                                    set_request_content(request_span, messages, output_text)
+                                    set_request_content(
+                                        request_span,
+                                        _generation_input_for_capture(conversation),
+                                        _generation_output_for_capture(conversation, output_text),
+                                    )
                 finally:
                     self._stream_semaphore.release()
 
@@ -2018,6 +2188,9 @@ class IORails(BaseGuardrails):
                 )
                 yield _frame_for_stream(violation, include_metadata)
                 return
+            if output_result.rewrite_pending:
+                # This batch goes out with a configured mask unrun, and a later batch cannot take that back.
+                conversation.withhold(RailDirection.OUTPUT)
 
             rewritten = _rewritten_bot_message(output_result)
             if rewritten is not None and stream_first:
