@@ -83,7 +83,7 @@ the private interfaces used to implement it:
 | `create_proxy_application`, `ProxyConfig`, `ProviderConfig`, `ConfigEntry` | Assemble an application through `guardrails_proxy.application`. |
 | Explicit `ProviderIntegration` declarations | Compose reviewed endpoints through Python using the factory's direct mode. |
 | `config_resolver` | Select one registered Rails ID from trusted context. It does not return a path or load configuration. |
-| `http_transport_factory` | Supply a new application-wide HTTPX transport for each lifespan; own any transports it creates. |
+| `http_transport_factory` | Supply a new application-wide HTTPX transport for each lifespan. The runtime closes the returned transport; a custom transport owns any child transports it creates. |
 | Private `ContentChecker` and dispatch interfaces | Maintainer boundaries used by execution and its tests. The application factory does not expose a custom-checker plugin argument. |
 
 Use the [Python integration guide](python-integration.mdx) for supported
@@ -93,7 +93,9 @@ for streaming and cleanup requirements.
 ## Trusted Rails selection
 
 This view shows per-request selection for declarative `ProxyConfig` providers
-against a catalog that is already ready. Solid arrows describe selection. The
+against a catalog that is already ready. Rectangles represent selection steps or
+inputs; the diamond branches on application configuration. Solid arrows describe
+selection. The
 dotted arrow supplies the preloaded checker catalog. Authentication is
 application-owned; receiving a request header does not make that value an
 authorized policy choice.
@@ -140,7 +142,7 @@ for examples and failure behavior.
 | --- | --- |
 | Bound declarations | Reusable projection models, endpoint declarations, and event-classification definitions describe coverage. |
 | Application lifespan | The runtime owns one shared HTTP client/transport and the Rails repository. Different Rails IDs own independent engines, even for the same directory. |
-| Per request | A stream binding creates a fresh adapter and protocol hooks. Ordering, snapshots, terminal state, and error framing must not leak between requests. |
+| Per request | A stream binding creates a fresh adapter and protocol hooks; the kernel keeps snapshot history and pending windows per execution. Ordering, snapshots, terminal state, and error framing must not leak between requests. |
 | Upstream response | Dispatch owns acquired response resources until handoff; the returned response owner handles completion, disconnect, and failure before body iteration. |
 
 Classifiers describe events; hooks enforce stateful protocol behavior. Factories

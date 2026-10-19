@@ -12,6 +12,26 @@ Guardrails library runs configured checks, and the upstream service generates
 the answer. The proxy preserves accepted provider JSON bodies and server-sent
 events (SSE) while applying its HTTP path and header forwarding rules.
 
+## What changes in your application
+
+Point your provider client's base URL at the chosen proxy mount, including its
+API prefix; the [quickstart](quickstart.mdx) shows the request URL. Continue to
+send the selected provider operation's JSON shape. Check the
+[shipped coverage](providers-and-streaming.mdx#coverage-of-the-shipped-profiles)
+first: a working upstream request can still be outside the proxy's guarded
+profile, such as a Chat request containing conversation history or tools.
+
+For a supported Chat request, the binding selects the user message string for
+input checks. It constrains the message role and shape, while metadata such as
+`model` remains opaque. Output checks receive the selected assistant text and
+that user input as context. The original JSON bytes travel to the provider or
+caller only when the relevant validation and checks allow them.
+
+Handle proxy errors as well as upstream errors. A blocked input prevents the
+inference call; a blocked buffered output withholds the answer. During streaming,
+a later error can follow already delivered text, so consume the stream's error
+format as well as its HTTP status. See [caller-visible outcomes](architecture-requests.mdx#caller-visible-outcomes).
+
 ## Choose a reading path
 
 | You are | Read |
@@ -23,8 +43,9 @@ events (SSE) while applying its HTTP path and header forwarding rules.
 ## System context
 
 This view shows the proxy as one software system and its external interactions.
-Solid arrows describe provider traffic; dotted arrows describe optional
-checking-service calls. Access controls belong to your application or gateway.
+Rectangles represent systems or application-owned responsibilities. Solid
+arrows describe provider traffic; dotted arrows describe optional checking-service
+calls. Access controls belong to your application or gateway.
 
 ```mermaid
 flowchart TB
@@ -35,11 +56,12 @@ flowchart TB
     Services["Optional configured checking services"]
     Client -->|"Provider API request"| Access
     Access -->|"Authorized request"| Proxy
-    Proxy <-->|"Inference HTTP exchange"| Upstream
+    Proxy -->|"Inference<br/>request"| Upstream
+    Upstream -->|"Inference<br/>response"| Proxy
     Proxy -->|"Provider response or guardrail error"| Access
     Access -->|"Return response"| Client
-    Proxy -.->|"Selected content"| Services
-    Services -.->|"Check result"| Proxy
+    Proxy -.->|"Selected<br/>content"| Services
+    Services -.->|"Check<br/>result"| Proxy
 ```
 
 The access-controls box represents a responsibility, not a required extra
@@ -63,8 +85,10 @@ their release. It does not serialize an accepted response from a validation
 model.
 
 This diagram shows a successful upstream response containing guarded text, with
-output inspection enabled. Solid arrows carry original bytes or the response
-chosen for the caller. Dotted arrows carry projected content or check decisions.
+output inspection enabled. Rectangles are processing steps or retained data;
+the diamond is a release decision. Solid arrows carry original bytes or the
+response chosen for the caller. Dotted arrows carry projected content or check
+decisions.
 
 ```mermaid
 flowchart TB
@@ -126,12 +150,12 @@ for a concrete window example.
 
 Construction, startup, request handling, and shutdown have different owners:
 
-| Phase | What happens |
-| --- | --- |
-| Application construction | Validate declarations, configuration paths, and route composition. No upstream calls or Rails initialization. |
-| Lifespan startup | Create the shared HTTP client/transport and initialize every declared Rails configuration before readiness. |
-| Request handling | Select a ready checker; create request-local stream hooks/adapters and acquire upstream response resources as needed. |
-| Failed startup or shutdown | Attempt checker cleanup and HTTP cleanup independently with bounded, shielded cooperative budgets. |
+| Phase | Owner | What happens |
+| --- | --- | --- |
+| Application construction | Factory, invoked by the launcher or Python host | Validate declarations, configuration paths, and route composition. No upstream calls or Rails initialization. |
+| Lifespan startup | Runtime and Rails repository | Create the shared HTTP client/transport and initialize every declared Rails configuration before readiness. |
+| Request handling | Guarded route and response owner | Select a ready checker; create request-local stream hooks/adapters and acquire upstream response resources as needed. |
+| Failed startup or shutdown | Runtime and Rails repository; host drives the lifespan | Attempt checker cleanup and HTTP cleanup independently with bounded, shielded cooperative budgets. |
 
 Timeouts do not establish that uncooperative owners released all resources.
 Embedding applications must explicitly enter the proxy lifespan; mounting alone
@@ -147,7 +171,11 @@ can be combined:
 | Destination routing | Use a fixed upstream, an inference gateway, distinct provider mounts, or a trusted application transport. The selected upstream must match the bound operation/dialect. |
 | Replication | Equivalent replicas each own independent client pools and Rails engines. An established stream stays with its handling replica. Replicas can front either a fixed upstream or a gateway. |
 | Placement | Run a standalone service, local companion, or embedded ASGI application. Embedding transfers lifespan coordination to the host application. |
-| Access and credentials | Your application/gateway owns inbound authentication and authorization. Destination-aware routing must apply credentials appropriate to the destination. |
+| Access and credentials | Your application/gateway owns inbound authentication and authorization. The default transport forwards caller upstream credentials under its header rules. Destination-aware routing must remove inappropriate caller credentials and supply credentials for the selected destination. |
+
+For example, a standalone proxy can use an inference gateway as its fixed
+upstream and run as several equivalent replicas behind an ingress. Choosing a
+gateway does not determine replica count or require embedding.
 
 Several provider mounts in one process share its HTTP client/transport and do
 not provide process isolation. The [deployment guide](deployment.mdx) supplies

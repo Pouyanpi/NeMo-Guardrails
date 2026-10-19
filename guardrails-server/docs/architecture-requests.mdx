@@ -16,7 +16,10 @@ enable output inspection with buffering before release.
 The sequence is scoped to one buffered provider operation. The binding validates
 provider shapes and locates selected text. The runtime selects a preloaded
 checker and validates its policy. Request and response bodies retain their
-original bytes on accepted paths.
+original bytes on accepted paths. Client and Upstream are external participants;
+the other lifelines are responsibilities inside the proxy process. Solid arrows
+are calls or requests; dashed arrows are returns. The `alt` frames show mutually
+exclusive paths, and `opt` marks conditional output checking.
 
 ```mermaid
 sequenceDiagram
@@ -68,6 +71,28 @@ the selected path; see [configuration](configuration.mdx#set-limits).
 For an executable example of byte preservation and input/output checking, see
 the [Chat integration tests](../tests/proxy_tests/test_openai_chat_integration.py).
 
+## Caller-visible outcomes
+
+For the shipped OpenAI bindings, these representative outcomes distinguish a
+policy block from a check that could not complete. HTTP statuses below apply
+before downstream response headers are committed.
+
+| Outcome | Caller sees | Inference and content release |
+| --- | --- | --- |
+| Input check blocks | HTTP 400, `content_blocked` | No inference call. |
+| Buffered output check blocks | HTTP 400, `content_blocked` | Inference ran; its answer is withheld. |
+| Input or buffered output check fails | HTTP 502, `guardrails_input_check_failed` or `guardrails_output_check_failed` | Input failure prevents dispatch; output failure withholds the answer. |
+| Checker requests replacement | HTTP 422, `request_content_not_replaceable`, or HTTP 502, `response_content_not_replaceable` | Input replacement prevents dispatch; output replacement withholds the answer. |
+| Upstream returns an HTTP error | Upstream error response under forwarding rules | No output inspection; this is an upstream outcome. |
+| Inspected stream fails after headers | Provider-shaped SSE error, if the connection is writable | Pending content is withheld; released content remains delivered. HTTP status cannot change. |
+
+The [error mapping](../src/guardrails_proxy/providers/openai/errors.py) defines
+additional validation, routing, and limit failures. The
+[Chat integration tests](../tests/proxy_tests/test_openai_chat_integration.py)
+assert blocked and replacement outcomes. Provider-shaped errors describe a wire
+format; applications must still handle these proxy-specific codes. In particular,
+an HTTP success status alone does not establish that a stream completed.
+
 ## Streaming inspection
 
 Streaming uses the same prepared input and input check. With output inspection
@@ -78,7 +103,8 @@ Request-local hooks enforce provider ordering, completion, and error framing.
 
 The example uses `chunk_size: 2` and `context_size: 1`. Each numbered delta is a
 nonempty provider text delta. Sizes count deltas, not tokens, bytes, or all SSE
-events. Solid arrows show processing/release; the dotted arrow carries retained
+events. Rectangles represent pending data or processing steps; the diamond
+is a check decision. Solid arrows show processing/release; the dotted arrow carries retained
 text context into the next check.
 
 ```mermaid
@@ -123,7 +149,9 @@ for release ordering and withheld content.
 ## Streaming errors and cleanup
 
 This state view is scoped to an output-inspected stream. Arrows are lifecycle
-transitions, not data dependencies. The response-header transition determines
+transitions, not data dependencies. Rounded boxes are states, and the filled
+circles mark entry and exit. The two cleanup states represent the same ownership
+obligation on different response paths. The response-header transition determines
 whether a subsequent failure can change the HTTP status.
 
 ```mermaid
@@ -132,6 +160,7 @@ stateDiagram-v2
     state "Headers sent: check pending windows" as Streaming
     state "Choose HTTP error response" as HttpError
     state "Emit SSE error and withhold pending bytes" as StreamError
+    state "Attempt acquired response cleanup" as PreCleanup
     state "Attempt upstream response cleanup" as Cleanup
     state "Response handling finished" as Finished
     [*] --> Preparing
@@ -140,7 +169,8 @@ stateDiagram-v2
     Streaming --> Streaming: Allow and release window
     Streaming --> StreamError: Block or processing/upstream failure
     Streaming --> Cleanup: Complete or disconnect/cancel
-    HttpError --> Cleanup: Close any acquired owner
+    HttpError --> PreCleanup: Close any acquired owner
+    PreCleanup --> Finished: Attempts finish or time out
     StreamError --> Cleanup: Stop release
     Cleanup --> Finished: Attempts finish or time out
     Finished --> [*]
