@@ -23,7 +23,7 @@ from typing import Any, cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, Request
-from starlette.convertors import FloatConvertor, IntegerConvertor, StringConvertor, UUIDConvertor
+from starlette._utils import get_route_path
 from starlette.responses import Response
 from starlette.routing import compile_path
 
@@ -44,7 +44,18 @@ from nemoguardrails.server.experimental._content_checker import (
     validate_content_checker,
 )
 from nemoguardrails.server.experimental._guarded_operation import BufferedGuardedOperation, UnsupportedGuardedPayload
-from nemoguardrails.server.experimental._http_paths import HTTP_METHODS, GuardedOperationPath
+from nemoguardrails.server.experimental._http_paths import (
+    HTTP_METHODS,
+    GuardedOperationPath,
+    HttpRouteOwnership,
+    HttpRouteRejected,
+    HttpRouteRejectionKind,
+    _normalized_route_path,
+    _route_path_candidates,
+    _route_shape,
+    _routes_overlap,
+    _strip_mount_prefix,
+)
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
 DEFAULT_MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
@@ -82,22 +93,6 @@ class HttpDispatchFailed(Exception):
 
 class InvalidRequestPath(ValueError):
     """Reject paths that a sender could reinterpret as a different destination."""
-
-
-class HttpRouteRejectionKind(str, Enum):
-    """Classify proxy-owned route rejections before provider dispatch."""
-
-    METHOD_NOT_ALLOWED = "method_not_allowed"
-    NON_CANONICAL_PATH = "non_canonical_path"
-    INVALID_REQUEST_PATH = "invalid_request_path"
-
-
-@dataclass(frozen=True, slots=True)
-class HttpRouteRejected:
-    """Carry a route rejection and its allowed methods to the response mapping."""
-
-    kind: HttpRouteRejectionKind
-    allowed_methods: frozenset[str] = frozenset()
 
 
 class HttpFailureKind(str, Enum):
@@ -191,63 +186,6 @@ OutcomeRenderer = Callable[
 ]
 
 
-def _route_shape(path: str) -> str:
-    """Normalize route parameter names for duplicate detection."""
-
-    _, path_format, convertors = compile_path(path)
-    for name, convertor in convertors.items():
-        path_format = path_format.replace(f"{{{name}}}", f"{{{type(convertor).__name__}}}")
-    return path_format
-
-
-def _route_boundaries_overlap(left: str, right: str) -> bool:
-    """Compare the fixed prefix and suffix of two compiled route formats."""
-
-    left_prefix, right_prefix = left.split("{", 1)[0], right.split("{", 1)[0]
-    if not (left_prefix.startswith(right_prefix) or right_prefix.startswith(left_prefix)):
-        return False
-    left_suffix, right_suffix = left.rsplit("}", 1)[-1], right.rsplit("}", 1)[-1]
-    return left_suffix.endswith(right_suffix) or right_suffix.endswith(left_suffix)
-
-
-def _route_segments_overlap(left: str, right: str) -> bool:
-    """Return whether two segments may overlap."""
-
-    left_regex, left_format, left_convertors = compile_path(f"/{left}")
-    right_regex, right_format, right_convertors = compile_path(f"/{right}")
-    if not left_convertors:
-        return right_regex.fullmatch(f"/{left}") is not None
-    if not right_convertors:
-        return left_regex.fullmatch(f"/{right}") is not None
-    return _route_boundaries_overlap(left_format, right_format)
-
-
-def _routes_overlap(left: str, right: str) -> bool:
-    """Conservatively reject routes unless their segments prove disjoint.
-
-    Custom converters may span segments, so only whole-route literal boundaries
-    can prove two dynamic routes using them disjoint.
-    """
-
-    left_regex, left_format, left_convertors = compile_path(left)
-    right_regex, right_format, right_convertors = compile_path(right)
-    if not left_convertors:
-        return right_regex.fullmatch(left) is not None
-    if not right_convertors:
-        return left_regex.fullmatch(right) is not None
-    segment_convertors = (StringConvertor, IntegerConvertor, FloatConvertor, UUIDConvertor)
-    if any(
-        type(convertor) not in segment_convertors
-        for convertor in (*left_convertors.values(), *right_convertors.values())
-    ):
-        return _route_boundaries_overlap(left_format, right_format)
-    left_segments, right_segments = left.split("/"), right.split("/")
-    return len(left_segments) == len(right_segments) and all(
-        _route_segments_overlap(left_segment, right_segment)
-        for left_segment, right_segment in zip(left_segments, right_segments)
-    )
-
-
 def _validate_operations(
     operations: Collection[GuardedHttpOperation],
 ) -> tuple[GuardedHttpOperation, ...]:
@@ -277,33 +215,17 @@ def _validate_operations(
 
 
 def _request_path(request: Request) -> bytes:
-    """Return the raw request path or reconstruct its ASCII encoding."""
+    """Return the application-relative raw path without reencoding its suffix."""
 
     raw_path = request.scope.get("raw_path")
-    if isinstance(raw_path, bytes):
-        return raw_path
-    return quote(request.scope["path"], safe="/").encode("ascii")
-
-
-def _normalized_route_path(path: str) -> str:
-    """Normalize ownership checks without changing the forwarded path."""
-
-    segments = []
-    for segment in path.split("/"):
-        if not segment or segment == ".":
-            continue
-        if segment == "..":
-            if segments:
-                segments.pop()
-        else:
-            segments.append(segment)
-    return "/" + "/".join(segments)
-
-
-def _route_path_candidates(path: str) -> frozenset[str]:
-    """Account for decoded delimiters being reparsed by an injected sender."""
-
-    return frozenset(_normalized_route_path(candidate) for candidate in (path, re.split(r"[?#]", path, maxsplit=1)[0]))
+    if not isinstance(raw_path, bytes):
+        raw_path = quote(request.scope["path"], safe="/").encode("ascii")
+    if get_route_path(request.scope) != request.scope["path"]:
+        try:
+            raw_path = _strip_mount_prefix(request.scope["path"], raw_path, request.scope["root_path"])
+        except ValueError as failure:
+            raise InvalidRequestPath("The encoded request path does not match the application mount.") from failure
+    return raw_path
 
 
 def _validate_request_path(request: Request) -> None:
@@ -376,7 +298,7 @@ async def _buffer_request(request: Request, max_body_bytes: int) -> BufferedHttp
         raise InvalidContentLength("Content-Length must match the buffered request body.")
     return BufferedHttpRequest(
         method=request.method,
-        path=request.scope["path"],
+        path=get_route_path(request.scope),
         raw_path=_request_path(request),
         query=request.scope.get("query_string", b""),
         headers=tuple(request.scope.get("headers", ())),
@@ -504,7 +426,8 @@ def _guarded_handler(
     async def handle(request: Request) -> Response:
         """Buffer, check, dispatch, and render one guarded request."""
 
-        if _normalized_route_path(request.scope["path"]) != request.scope["path"]:
+        route_path = get_route_path(request.scope)
+        if _normalized_route_path(route_path) != route_path:
             return _render_failure(
                 HttpRouteRejected(HttpRouteRejectionKind.NON_CANONICAL_PATH), render_outcome, request.method
             )
@@ -582,6 +505,9 @@ def create_http_proxy_router(
     dispatch: HttpDispatch,
     render_outcome: OutcomeRenderer,
     reserved_routes: Mapping[str, Collection[str]] | None = None,
+    operation_ids: Mapping[str, str] | None = None,
+    guarded_path_prefix: str = "",
+    route_ownership: HttpRouteOwnership | None = None,
     max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
     max_response_body_bytes: int = DEFAULT_MAX_RESPONSE_BODY_BYTES,
 ) -> APIRouter:
@@ -589,18 +515,35 @@ def create_http_proxy_router(
 
     Application-owned routes must be registered before this router because its
     catch-all owns every path not handled by an earlier route.
+    Route ownership classifies local and mapped paths before body reads.
     """
 
     resolved_operations = _validate_operations(operations)
     if any(type(limit) is not int or limit <= 0 for limit in (max_request_body_bytes, max_response_body_bytes)):
         raise ValueError("Buffered HTTP body limits must be positive integers.")
+    resolved_operation_ids = dict(operation_ids or {})
+    operation_names = {operation.operation.name for operation in resolved_operations}
+    if resolved_operation_ids.keys() - operation_names:
+        raise ValueError("HTTP operation ids must refer to declared guarded operations.")
+    normalized_guarded_prefix = guarded_path_prefix.rstrip("/")
+    if normalized_guarded_prefix and not normalized_guarded_prefix.startswith("/"):
+        raise ValueError("A guarded path prefix must be empty or absolute.")
     validated_checker = validate_content_checker(checker)
-    guarded_matchers = []
+    ownership = (
+        route_ownership
+        if route_ownership is not None
+        else HttpRouteOwnership(
+            local_paths=tuple(
+                replace(operation_path, route_path=f"{normalized_guarded_prefix}{operation_path.route_path}")
+                for declaration in resolved_operations
+                for operation_path in declaration.guarded_operation_paths
+            )
+        )
+    )
     reserved_matchers = _validate_reserved_routes(reserved_routes or {})
     router = APIRouter()
 
     for declaration in resolved_operations:
-        guarded_matchers.extend(declaration.guarded_operation_paths)
         router.add_api_route(
             declaration.operation_path.route_path,
             _guarded_handler(
@@ -613,7 +556,7 @@ def create_http_proxy_router(
             ),
             methods=sorted(declaration.operation_path.methods),
             name=declaration.operation.name,
-            operation_id=declaration.operation.name,
+            operation_id=resolved_operation_ids.get(declaration.operation.name, declaration.operation.name),
             response_class=Response,
             responses=declaration.documented_responses,
             openapi_extra=declaration.openapi_extra,
@@ -629,7 +572,8 @@ def create_http_proxy_router(
             return _render_failure(
                 HttpRouteRejected(HttpRouteRejectionKind.INVALID_REQUEST_PATH), render_outcome, request.method
             )
-        candidates = _route_path_candidates(f"/{path}")
+        ownership_path = get_route_path(request.scope) if normalized_guarded_prefix else f"/{path}"
+        candidates = _route_path_candidates(ownership_path)
         reserved_methods = next(
             (
                 methods
@@ -644,22 +588,9 @@ def create_http_proxy_router(
                 render_outcome,
                 request.method,
             )
-        matched_methods = {
-            method
-            for operation_path in guarded_matchers
-            if any(operation_path.matches(candidate) for candidate in candidates)
-            for method in operation_path.methods
-        }
-        if matched_methods:
-            if request.method not in matched_methods:
-                return _render_failure(
-                    HttpRouteRejected(HttpRouteRejectionKind.METHOD_NOT_ALLOWED, frozenset(matched_methods)),
-                    render_outcome,
-                    request.method,
-                )
-            return _render_failure(
-                HttpRouteRejected(HttpRouteRejectionKind.NON_CANONICAL_PATH), render_outcome, request.method
-            )
+        rejection = ownership.reject_passthrough(request.method, ownership_path, _request_path(request))
+        if rejection is not None:
+            return _render_failure(rejection, render_outcome, request.method)
         try:
             buffered_request = await _buffer_request(request, max_request_body_bytes)
             response = await dispatch(buffered_request)

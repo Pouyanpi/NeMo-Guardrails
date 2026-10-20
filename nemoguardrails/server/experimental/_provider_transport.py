@@ -16,7 +16,7 @@
 """Send guarded proxy exchanges through an application-owned HTTP client."""
 
 import math
-from urllib.parse import unquote_to_bytes
+from collections.abc import Collection
 
 import httpx
 
@@ -28,6 +28,7 @@ from nemoguardrails.server.experimental._http_kernel import (
     HttpHeaders,
     ResponseBodyTooLarge,
 )
+from nemoguardrails.server.experimental._http_paths import _strip_mount_prefix
 from nemoguardrails.server.experimental._httpx_response import _HttpxResponseBody
 from nemoguardrails.server.experimental._streaming_http import StreamingHttpResponse
 
@@ -58,12 +59,13 @@ def _connection_tokens(headers: HttpHeaders) -> set[bytes]:
     return tokens
 
 
-def _request_headers(headers: HttpHeaders) -> list[tuple[bytes, bytes]]:
-    """Remove connection-specific headers and let HTTPX rebuild host and framing."""
+def _request_headers(headers: HttpHeaders, control_headers: frozenset[bytes]) -> list[tuple[bytes, bytes]]:
+    """Remove connection and proxy-control headers; let HTTPX rebuild host and framing."""
 
     excluded = (
         _HOP_BY_HOP_HEADERS
         | _connection_tokens(headers)
+        | control_headers
         | {
             b"host",
             b"content-length",
@@ -78,35 +80,6 @@ def _response_headers(headers: httpx.Headers) -> HttpHeaders:
     raw = tuple(headers.raw)
     excluded = _HOP_BY_HOP_HEADERS | _connection_tokens(raw)
     return tuple((name.lower(), value) for name, value in raw if name.lower() not in excluded)
-
-
-def _strip_mount_prefix(path: str, raw_path: bytes, mount_path: str) -> bytes:
-    """Match the mount using ASGI's decoded path and preserve its raw suffix.
-
-    The mount and its following decoded slash are replaced by one literal
-    upstream separator. Percent escapes in the remaining suffix are untouched.
-    """
-
-    if path == mount_path:
-        raw_mount = mount_path.encode("ascii")
-    elif path.startswith(mount_path + "/"):
-        raw_mount = (mount_path + "/").encode("ascii")
-    else:
-        raise ValueError("The outbound request path is outside the configured mount path.")
-    offset = 0
-    for character in raw_mount:
-        token = raw_path[offset : offset + 1]
-        width = 1
-        if token == b"%":
-            decoded = unquote_to_bytes(raw_path[offset : offset + 3])
-            if len(decoded) == 1:
-                token, width = decoded, 3
-        if token != bytes((character,)):
-            raise ValueError("The encoded outbound path does not match the configured mount path.")
-        offset += width
-    if path == mount_path and offset != len(raw_path):
-        raise ValueError("The encoded outbound path does not match the configured mount path.")
-    return b"/" + raw_path[offset:]
 
 
 class ProviderTransport:
@@ -124,6 +97,7 @@ class ProviderTransport:
         *,
         base_url: str,
         mount_path: str = "",
+        control_headers: Collection[str] = (),
         max_response_body_bytes: int = DEFAULT_MAX_RESPONSE_BODY_BYTES,
         timeout: float = DEFAULT_OUTBOUND_TIMEOUT,
     ):
@@ -141,6 +115,11 @@ class ProviderTransport:
         normalized_mount = mount_path.rstrip("/")
         if normalized_mount and (not normalized_mount.startswith("/") or not normalized_mount.isascii()):
             raise ValueError("The outbound mount path must be an absolute ASCII path.")
+        if any(
+            not isinstance(name, str) or not name or not name.isascii() or name != name.strip().lower()
+            for name in control_headers
+        ):
+            raise ValueError("Outbound control header names must be non-empty, lowercase ASCII strings.")
         if (
             type(max_response_body_bytes) is not int
             or max_response_body_bytes <= 0
@@ -153,22 +132,26 @@ class ProviderTransport:
         self._http_client = http_client
         self._base_url = parsed_base_url
         self._mount_path = normalized_mount
+        self._control_headers = frozenset(name.encode("ascii") for name in control_headers)
         self._max_response_body_bytes = max_response_body_bytes
         self._timeout = float(timeout)
 
-    def _upstream_url(self, request: BufferedHttpRequest) -> httpx.URL:
+    def upstream_url(self, path: str, raw_path: bytes, query: bytes = b"") -> httpx.URL:
         """Apply the base and mount mapping without reencoding suffix or query bytes."""
 
-        path = request.path
-        raw_path = request.raw_path
         if not path.startswith("/") or not raw_path.startswith(b"/") or b"?" in raw_path:
             raise ValueError("An outbound request must contain an absolute path without a query.")
         if self._mount_path:
             raw_path = _strip_mount_prefix(path, raw_path, self._mount_path)
-        base_path = self._base_url.raw_path.rstrip(b"/")
-        upstream_path = base_path + raw_path
-        if request.query:
-            upstream_path += b"?" + request.query
+            path = path[len(self._mount_path) :] or "/"
+        base_path = self._base_url.path.rstrip("/")
+        if base_path and (path == base_path or path.startswith(base_path + "/")):
+            upstream_path = raw_path
+        else:
+            raw_base_path = self._base_url.raw_path.rstrip(b"/")
+            upstream_path = raw_base_path + raw_path
+        if query:
+            upstream_path += b"?" + query
         return self._base_url.copy_with(raw_path=upstream_path)
 
     async def _open(self, request: BufferedHttpRequest) -> httpx.Response:
@@ -181,8 +164,8 @@ class ProviderTransport:
 
         upstream_request = httpx.Request(
             request.method,
-            self._upstream_url(request),
-            headers=_request_headers(request.headers),
+            self.upstream_url(request.path, request.raw_path, request.query),
+            headers=_request_headers(request.headers, self._control_headers),
             content=request.body,
             extensions={"timeout": httpx.Timeout(self._timeout).as_dict()},
         )
