@@ -15,17 +15,31 @@
 
 """Own application-lifespan resources for the private provider proxy."""
 
+import inspect
 import logging
+import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from http.cookiejar import Cookie, CookieJar, DefaultCookiePolicy
 from typing import Any
 
 import anyio
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+
+from nemoguardrails.server.experimental._content_checker import ContentChecker
+from nemoguardrails.server.experimental.rails import ConfigContext, ConfigEntry, ConfigResolver
+from nemoguardrails.server.experimental.rails._repository import GuardrailsRepository
 
 log = logging.getLogger(__name__)
+DEFAULT_CONFIG_RESOLUTION_TIMEOUT = 5.0
 _HTTP_SHUTDOWN_TIMEOUT_SECONDS = 5.0
+
+
+def _validate_config_resolution_timeout(timeout: float) -> float:
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("The config resolution timeout must be a finite positive number of seconds.")
+    return float(timeout)
 
 
 async def _close_http_resource(resource: httpx.AsyncClient | httpx.AsyncBaseTransport) -> None:
@@ -48,34 +62,81 @@ class _NoCookiePersistence(DefaultCookiePolicy):
 
 
 @dataclass(slots=True)
-class ProxyRuntime:
+class ServerRuntime:
     """Group outbound resources shared by one application instance."""
 
     http_client: httpx.AsyncClient
+    content_checkers: GuardrailsRepository
+    config_resolver: ConfigResolver | None
+    config_resolution_timeout: float = DEFAULT_CONFIG_RESOLUTION_TIMEOUT
 
     @classmethod
     def create(
         cls,
+        entries: Sequence[ConfigEntry],
+        resolver: ConfigResolver | None,
         *,
         http_transport: httpx.AsyncBaseTransport | None = None,
-    ) -> "ProxyRuntime":
+        config_resolution_timeout: float = DEFAULT_CONFIG_RESOLUTION_TIMEOUT,
+    ) -> "ServerRuntime":
+        config_resolution_timeout = _validate_config_resolution_timeout(config_resolution_timeout)
         return cls(
             http_client=httpx.AsyncClient(
                 follow_redirects=False,
                 trust_env=False,
                 transport=http_transport,
                 cookies=CookieJar(policy=_NoCookiePersistence()),
-            )
+            ),
+            content_checkers=GuardrailsRepository(entries),
+            config_resolver=resolver,
+            config_resolution_timeout=config_resolution_timeout,
         )
 
+    async def startup(self) -> None:
+        await self.content_checkers.startup()
+
+    @property
+    def has_pending_cleanup(self) -> bool:
+        return self.content_checkers.has_pending_cleanup
+
+    async def resolve_content_checker(
+        self,
+        request: Request,
+        provider_type: str,
+        provider_instance_id: str,
+        operation_name: str,
+    ) -> ContentChecker:
+        """Resolve a declared config and return its application-owned checker."""
+
+        if self.config_resolver is None:
+            raise ValueError("No Rails config is configured.")
+        context = ConfigContext(
+            request=request,
+            provider_type=provider_type,
+            provider_instance_id=provider_instance_id,
+            operation_name=operation_name,
+        )
+        with anyio.fail_after(self.config_resolution_timeout):
+            config_id = self.config_resolver(context)
+            if inspect.isawaitable(config_id):
+                config_id = await config_id
+        if not isinstance(config_id, str) or not config_id:
+            raise TypeError("The config resolver must return a non-empty config id.")
+        return self.content_checkers.get(config_id)
+
     async def close(self) -> None:
-        await _close_http_resource(self.http_client)
+        """Attempt checker and HTTP cleanup independently during shutdown."""
+
+        try:
+            await self.content_checkers.close()
+        finally:
+            await _close_http_resource(self.http_client)
 
 
-def get_runtime(application: FastAPI) -> ProxyRuntime:
+def get_runtime(application: FastAPI) -> ServerRuntime:
     """Return the runtime initialized by the application's active lifespan."""
 
     runtime = getattr(application.state, "proxy_runtime", None)
-    if not isinstance(runtime, ProxyRuntime):
+    if not isinstance(runtime, ServerRuntime):
         raise RuntimeError("The experimental proxy runtime is not available.")
     return runtime

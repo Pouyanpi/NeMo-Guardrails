@@ -15,6 +15,8 @@
 
 """Create transparent HTTP proxy routes for buffered provider operations."""
 
+import inspect
+import logging
 import re
 from collections.abc import Awaitable, Callable, Collection, Mapping
 from dataclasses import dataclass, replace
@@ -40,6 +42,10 @@ from nemoguardrails.server.experimental._buffered_kernel import (
 )
 from nemoguardrails.server.experimental._content_checker import (
     ContentChecker,
+    ContentCheckerConfigurationUnsupported,
+    ContentCheckerResolutionFailed,
+    ContentCheckerResolver,
+    UnsupportedContentCheckerConfiguration,
     _ResolvedContentChecker,
     validate_content_checker,
 )
@@ -56,6 +62,8 @@ from nemoguardrails.server.experimental._http_paths import (
     _routes_overlap,
     _strip_mount_prefix,
 )
+
+log = logging.getLogger(__name__)
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 1024 * 1024
 DEFAULT_MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
@@ -173,9 +181,12 @@ class GuardedHttpOperation:
 
 
 HttpDispatch = Callable[[BufferedHttpRequest], Awaitable[BufferedHttpResponse]]
+PolicyHttpDispatch = Callable[[BufferedHttpRequest, bool], Awaitable[BufferedHttpResponse]]
 OutcomeRenderer = Callable[
     [
-        OperationBlocked
+        ContentCheckerConfigurationUnsupported
+        | ContentCheckerResolutionFailed
+        | OperationBlocked
         | OperationCheckFailed
         | OperationModificationUnsupported
         | OperationProjectionFailed
@@ -296,13 +307,15 @@ async def _buffer_request(request: Request, max_body_bytes: int) -> BufferedHttp
         body.extend(chunk)
     if parsed_content_length is not None and parsed_content_length != len(body):
         raise InvalidContentLength("Content-Length must match the buffered request body.")
+    buffered_body = bytes(body)
+    request._body = buffered_body
     return BufferedHttpRequest(
         method=request.method,
         path=get_route_path(request.scope),
         raw_path=_request_path(request),
         query=request.scope.get("query_string", b""),
         headers=tuple(request.scope.get("headers", ())),
-        body=bytes(body),
+        body=buffered_body,
     )
 
 
@@ -381,12 +394,16 @@ def _request_identity_encoding(headers: HttpHeaders) -> HttpHeaders:
 
 
 def _render_failure(
-    failure: OperationBlocked
-    | OperationCheckFailed
-    | OperationModificationUnsupported
-    | OperationProjectionFailed
-    | HttpOperationFailed
-    | HttpRouteRejected,
+    failure: (
+        ContentCheckerConfigurationUnsupported
+        | ContentCheckerResolutionFailed
+        | OperationBlocked
+        | OperationCheckFailed
+        | OperationModificationUnsupported
+        | OperationProjectionFailed
+        | HttpOperationFailed
+        | HttpRouteRejected
+    ),
     render_outcome: OutcomeRenderer,
     request_method: str | None = None,
 ) -> Response:
@@ -400,28 +417,17 @@ def _render_failure(
 
 def _guarded_handler(
     declaration: GuardedHttpOperation,
-    checker: _ResolvedContentChecker,
+    checker: _ResolvedContentChecker | None,
+    resolve_checker: ContentCheckerResolver | None,
+    provider_type: str,
+    provider_instance_id: str,
     dispatch: HttpDispatch,
+    policy_dispatch: PolicyHttpDispatch | None,
     render_outcome: OutcomeRenderer,
     max_request_body_bytes: int,
     max_response_body_bytes: int,
 ) -> Callable[[Request], Awaitable[Response]]:
     """Create the HTTP handler for one guarded operation."""
-
-    async def bounded_dispatch(request: Any) -> BufferedHttpResponse:
-        """Dispatch one request and enforce the response body limit."""
-
-        forwarded = (
-            declaration.forward_request(request)
-            if declaration.forward_request is not None
-            else cast(BufferedHttpRequest, request)
-        )
-        if checker.policy.inspect_output:
-            forwarded = replace(forwarded, headers=_request_identity_encoding(forwarded.headers))
-        response = await dispatch(forwarded)
-        if len(response.body) > max_response_body_bytes:
-            raise ResponseBodyTooLarge
-        return response
 
     async def handle(request: Request) -> Response:
         """Buffer, check, dispatch, and render one guarded request."""
@@ -445,9 +451,37 @@ def _guarded_handler(
                     render_outcome,
                     request.method,
                 )
+            resolved_checker = checker
+            if resolve_checker is not None:
+                try:
+                    candidate = resolve_checker(
+                        request,
+                        provider_type,
+                        provider_instance_id,
+                        declaration.operation.name,
+                    )
+                    if inspect.isawaitable(candidate):
+                        candidate = await candidate
+                    resolved_checker = validate_content_checker(candidate)
+                except UnsupportedContentCheckerConfiguration as failure:
+                    return _render_failure(
+                        ContentCheckerConfigurationUnsupported(failure),
+                        render_outcome,
+                    )
+                except Exception as failure:
+                    log.warning(
+                        "Rails config resolution failed for %s.%s (%s): %s",
+                        provider_instance_id,
+                        declaration.operation.name,
+                        provider_type,
+                        type(failure).__name__,
+                    )
+                    return _render_failure(ContentCheckerResolutionFailed(failure), render_outcome)
+            if resolved_checker is None:
+                raise AssertionError("A guarded operation requires a resolved content checker.")
             prepared = await prepare_operation_input(
                 declaration.operation,
-                checker,
+                resolved_checker,
                 operation_request,
             )
             if not isinstance(prepared, PreparedOperationInput):
@@ -458,6 +492,23 @@ def _guarded_handler(
                     return _render_response(response, request.method)
                 if response is not None:
                     return response
+
+            async def bounded_dispatch(operation_request: Any) -> BufferedHttpResponse:
+                forwarded = (
+                    declaration.forward_request(operation_request)
+                    if declaration.forward_request is not None
+                    else cast(BufferedHttpRequest, operation_request)
+                )
+                if prepared.resolved.policy.inspect_output:
+                    forwarded = replace(forwarded, headers=_request_identity_encoding(forwarded.headers))
+                if policy_dispatch is None:
+                    response = await dispatch(forwarded)
+                else:
+                    response = await policy_dispatch(forwarded, prepared.resolved.policy.inspect_output)
+                if len(response.body) > max_response_body_bytes:
+                    raise ResponseBodyTooLarge
+                return response
+
             outcome = await execute_prepared_buffered_operation(
                 declaration.operation,
                 prepared,
@@ -501,8 +552,12 @@ def _guarded_handler(
 def create_http_proxy_router(
     *,
     operations: Collection[GuardedHttpOperation],
-    checker: ContentChecker,
+    checker: ContentChecker | None = None,
+    resolve_checker: ContentCheckerResolver | None = None,
+    provider_type: str = "",
+    provider_instance_id: str = "",
     dispatch: HttpDispatch,
+    policy_dispatch: PolicyHttpDispatch | None = None,
     render_outcome: OutcomeRenderer,
     reserved_routes: Mapping[str, Collection[str]] | None = None,
     operation_ids: Mapping[str, str] | None = None,
@@ -529,7 +584,11 @@ def create_http_proxy_router(
     normalized_guarded_prefix = guarded_path_prefix.rstrip("/")
     if normalized_guarded_prefix and not normalized_guarded_prefix.startswith("/"):
         raise ValueError("A guarded path prefix must be empty or absolute.")
-    validated_checker = validate_content_checker(checker)
+    if (checker is None) == (resolve_checker is None):
+        raise ValueError("Exactly one static checker or request checker resolver is required.")
+    if resolve_checker is not None and (not provider_type or not provider_instance_id):
+        raise ValueError("Resolved checkers require provider type and instance identities.")
+    validated_checker = validate_content_checker(checker) if checker is not None else None
     ownership = (
         route_ownership
         if route_ownership is not None
@@ -550,7 +609,11 @@ def create_http_proxy_router(
             _guarded_handler(
                 declaration,
                 validated_checker,
+                resolve_checker,
+                provider_type,
+                provider_instance_id,
                 dispatch,
+                policy_dispatch,
                 render_outcome,
                 max_request_body_bytes,
                 max_response_body_bytes,
