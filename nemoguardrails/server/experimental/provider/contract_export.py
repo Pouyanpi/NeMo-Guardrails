@@ -62,6 +62,10 @@ from nemoguardrails.server.experimental.provider.stream_classifier import (
 from nemoguardrails.server.experimental.provider.stream_policy import build_policy_stream_classifier
 
 
+def _validator_function(validator: Any) -> Any:
+    return getattr(validator, "__func__", validator)
+
+
 def _validate_stream_model(model: type[PolicyModel]) -> None:
     """Reject custom stream validation that cannot be described by field policy."""
 
@@ -74,7 +78,11 @@ def _validate_stream_model(model: type[PolicyModel]) -> None:
                 "function-wrap",
                 "function-plain",
             }:
-                if node["function"]["function"] is not PolicyModel.reject_unreviewed_fields:
+                function = node["function"]["function"]
+                if _validator_function(function) not in {
+                    _validator_function(PolicyModel.reject_unreviewed_fields),
+                    _validator_function(PolicyModel.reject_coerced_variant_discriminators),
+                }:
                     raise ValueError("Custom stream validators cannot be represented by the contract")
             for name, child in node.items():
                 if isinstance(kind, str) and name in {"metadata", "default", "config", "function"}:
@@ -85,7 +93,7 @@ def _validate_stream_model(model: type[PolicyModel]) -> None:
                 visit(child)
 
     for nested in model_graph(model).values():
-        if nested.model_validate.__func__ is not PolicyModel.model_validate.__func__:
+        if _validator_function(nested.model_validate) is not _validator_function(PolicyModel.model_validate):
             raise ValueError("Custom stream validators cannot be represented by the contract")
         if any(field.default_factory is not None for field in nested.model_fields.values()):
             raise ValueError("Stream default factories cannot be represented by the contract")
@@ -202,8 +210,12 @@ def _validate_stream_selector(model: type[GuardedRequestModel]) -> None:
     decorators = model.__pydantic_decorators__
     if any(selector in item.info.fields or "*" in item.info.fields for item in decorators.field_validators.values()):
         raise ValueError("Custom stream selector validators cannot be represented by the contract")
-    allowed = {PolicyModel.reject_unreviewed_fields, GuardedPayloadModel.validate_guarded_text_target}
-    if any(item.func not in allowed for item in decorators.model_validators.values()):
+    allowed = {
+        _validator_function(PolicyModel.reject_unreviewed_fields),
+        _validator_function(PolicyModel.reject_coerced_variant_discriminators),
+        _validator_function(GuardedPayloadModel.validate_guarded_text_target),
+    }
+    if any(_validator_function(item.func) not in allowed for item in decorators.model_validators.values()):
         raise ValueError("Custom response-mode validation cannot be represented by the declared stream selector")
     if field.default_factory is not None:
         raise ValueError("A stream selector default factory cannot be represented by the contract")

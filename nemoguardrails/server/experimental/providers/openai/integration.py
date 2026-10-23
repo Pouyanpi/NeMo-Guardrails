@@ -13,10 +13,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compose the buffered OpenAI Chat route and provider-native errors."""
+"""Compose explicit OpenAI operation sets and provider-native errors."""
 
 import os
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import replace
+from typing import Literal
 
 from fastapi import APIRouter
 
@@ -35,21 +37,49 @@ from nemoguardrails.server.experimental.providers.openai.chat_completions.endpoi
     CHAT_COMPLETIONS_ENDPOINT,
 )
 from nemoguardrails.server.experimental.providers.openai.errors import OPENAI_ERROR_MAPPING
+from nemoguardrails.server.experimental.providers.openai.responses.endpoint import RESPONSES_ENDPOINT
+
+OpenAIOperation = Literal["chat_completions", "responses"]
+"""Built-in operation names accepted by the OpenAI integration factory."""
 
 
-def create_openai_chat_integration(
+def create_openai_integration(
     *,
     instance_id: str = "openai",
     base_url: str | None = None,
     mount_path: str = "",
-    endpoint: GuardedJsonEndpoint | None = None,
+    operations: Sequence[OpenAIOperation] = ("chat_completions", "responses"),
 ) -> ProviderIntegration:
-    """Create an OpenAI-protocol instance with an explicitly reviewed endpoint.
+    """Create an OpenAI instance with the selected built-in guard bindings.
 
-    Omitting ``endpoint`` retains the strict OpenAI Chat boundary. A trusted
-    application may instead supply an OpenAI-wire-compatible dialect endpoint;
-    it must use the OpenAI error mapping. Other instances are unaffected.
+    ``operations`` is a nonempty sequence of unique names, in binding order.
+    The fixed default selects Chat Completions and Responses; it does not mean
+    all operations a future version might support. A bare string is invalid.
+
+    Selection installs guard bindings, not a route allowlist. Unselected routes
+    retain the application's passthrough behavior and are not thereby guarded.
+    These are strict OpenAI boundaries: an upstream URL does not select a
+    dialect. Trusted applications can customize explicit endpoint bindings.
+
+    Raises:
+        TypeError: ``operations`` is not a sequence of operation names.
+        ValueError: The selection is empty, unknown, or contains duplicates.
     """
+
+    if isinstance(operations, (str, bytes)) or not isinstance(operations, Sequence):
+        raise TypeError("operations must be a sequence of operation names, not a bare string")
+    selected = tuple(operations)
+    if not selected:
+        raise ValueError("operations must select at least one OpenAI operation")
+    endpoints: dict[OpenAIOperation, GuardedJsonEndpoint] = {
+        "chat_completions": CHAT_COMPLETIONS_ENDPOINT,
+        "responses": RESPONSES_ENDPOINT,
+    }
+    for operation in selected:
+        if not isinstance(operation, str) or operation not in endpoints:
+            raise ValueError(f"Unsupported OpenAI operation: {operation!r}; expected chat_completions or responses")
+    if len(set(selected)) != len(selected):
+        raise ValueError("operations must not contain duplicate names")
 
     resolved_base_url = (
         base_url
@@ -61,9 +91,30 @@ def create_openai_chat_integration(
         instance_id=instance_id,
         upstream=UpstreamSettings(base_url=resolved_base_url, mount_path=mount_path),
         display_name="OpenAI",
-        endpoints=(CHAT_COMPLETIONS_ENDPOINT if endpoint is None else endpoint,),
+        endpoints=tuple(endpoints[operation] for operation in selected),
         errors=OPENAI_ERROR_MAPPING,
     )
+
+
+def create_openai_chat_integration(
+    *,
+    instance_id: str = "openai",
+    base_url: str | None = None,
+    mount_path: str = "",
+    endpoint: GuardedJsonEndpoint | None = None,
+) -> ProviderIntegration:
+    """Create a Chat-only OpenAI instance with an explicitly reviewed endpoint.
+
+    Omitting ``endpoint`` selects the strict OpenAI Chat boundary through
+    :func:`create_openai_integration`. A trusted application may instead supply
+    an OpenAI-wire-compatible dialect endpoint; it must use the OpenAI error
+    mapping. Other instances are unaffected. Unselected routes retain the
+    application's passthrough behavior.
+    """
+    integration = create_openai_integration(
+        instance_id=instance_id, base_url=base_url, mount_path=mount_path, operations=("chat_completions",)
+    )
+    return integration if endpoint is None else replace(integration, endpoints=(endpoint,))
 
 
 def create_openai_chat_router(

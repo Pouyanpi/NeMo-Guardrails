@@ -51,6 +51,23 @@ arbitrary Python validation. For example, the runtime rejects choice index
 [export guide](../../providers/openai/chat_completions/README.md#contract-export)
 for generation, drift checks, and limitations.
 
+## Responses
+
+The [Responses boundary](../../providers/openai/responses/README.md) supports one
+foreground input string, one assistant output message alongside reviewed
+reasoning metadata, and buffered or SSE output. Python models, derived bindings,
+event rules, and handwritten protocol hooks are authoritative. Its
+[exported contract](_generated/responses.guard.yaml) records payload policy and
+the bound stream classifier, including heterogeneous-array selection; hooks
+remain runtime code rather than serialized policy.
+
+Use `create_openai_integration(operations=("chat_completions", "responses"))`
+to guard both operations, or select either name alone. The default remains
+both; selection installs guard bindings rather than disabling other routes.
+Unselected routes retain the application's passthrough behavior. The existing
+`create_openai_chat_integration` factory remains Chat-only. Neither factory
+establishes compatibility with every server exposing an OpenAI-shaped API.
+
 ## Provider provenance
 
 [source.yaml](source.yaml) records the OpenAPI document's immutable revision,
