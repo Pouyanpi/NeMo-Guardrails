@@ -909,9 +909,10 @@ def _violations_in_request_positions(
 async def guardrail_check(body: GuardrailCheckRequest, request: Request):
     """Guardrail check request.
 
-    Returns 422 when ``rail_types`` includes a type with no configured flows, or when
+    Returns 422 when ``rail_types`` includes a type with no configured flows, when
     the serving engine cannot run a tool check it was asked for: a tool rail type, or
-    ``tools``, on a config the IORails engine does not serve.
+    ``tools``, on a config the IORails engine does not serve, or when ``tools`` holds an
+    entry that isn't a function tool.
     """
     api_request_headers.set(request.headers)
 

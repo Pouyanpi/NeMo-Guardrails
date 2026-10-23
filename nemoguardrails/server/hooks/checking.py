@@ -21,6 +21,7 @@ from typing import Any, Literal, Optional
 
 from nemoguardrails.rails.llm.options import RailsResult, RailStatus, ToolViolation, ToolViolationType
 from nemoguardrails.server.hooks.schemas import HookErrorCode
+from nemoguardrails.server.hooks.tool_policy import ToolPolicy
 
 _UNSPECIFIED_DENY_REASON = "tool call blocked"
 
@@ -53,6 +54,24 @@ def check_messages(call: ToolInvocation) -> list[dict]:
     if call.call_id is not None:
         tool_call["id"] = call.call_id
     return [{"role": "assistant", "content": None, "tool_calls": [tool_call]}]
+
+
+def check_tools(call: ToolInvocation, policy: ToolPolicy) -> list[dict]:
+    """A compatibility declaration of the tool *call* names, as `check_async()` takes `tools`, for per-tool rails."""
+    # Per-tool rails run behind `@tool_call_validation`, which needs the called tool declared, and a hook carries no list
+    # of the agent's tools. This declaration only meets that prerequisite: it isn't evidence that the agent offered the
+    # tool, nor the tool's real schema, only the arguments the policy, applied before this, allows.
+    arguments = policy.allowed_arguments(call.name)
+    if arguments is None:
+        # `{"type": "object"}` alone would declare a tool that takes no arguments.
+        parameters: dict[str, Any] = {"type": "object", "additionalProperties": True}
+    else:
+        parameters = {
+            "type": "object",
+            "properties": {argument: {} for argument in arguments},
+            "additionalProperties": False,
+        }
+    return [{"type": "function", "function": {"name": call.name, "parameters": parameters}}]
 
 
 @dataclass(frozen=True, slots=True)

@@ -278,6 +278,14 @@ class LLMRails(BaseGuardrails):
             verbose: Whether the logging should be verbose or not.
         """
         self.config = config
+        ignored_settings = _iorails_only_tool_settings(config)
+        if ignored_settings:
+            warnings.warn(
+                f"LLMRails ignores {', '.join(ignored_settings)}, which only the IORails engine runs; use Guardrails "
+                "to run them, or set NEMO_GUARDRAILS_IORAILS_ENGINE=true for nemoguardrails server.",
+                UserWarning,
+                stacklevel=2,
+            )
         if llm is not None and not isinstance(llm, LLMModel):
             self.llm = _wrap_legacy_llm(llm)
         else:
@@ -2166,6 +2174,16 @@ def _reject_tools(tools: Optional[List[dict]]) -> None:
             "LLMRails check() does not run tool rails, so it does not take tools; "
             "tool_call checks run on the IORails engine only."
         )
+
+
+def _iorails_only_tool_settings(config: RailsConfig) -> List[str]:
+    """The tool rail settings *config* sets that only the IORails engine runs."""
+    settings = []
+    if any(config.rails.tool_call.per_tool.values()):
+        settings.append("rails.tool_call.per_tool")
+    if any(config.rails.tool_result.per_tool.values()):
+        settings.append("rails.tool_result.per_tool")
+    return settings
 
 
 def _reject_tool_rail_types(rail_types: List[RailType]) -> None:

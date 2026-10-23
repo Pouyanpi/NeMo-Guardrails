@@ -482,6 +482,22 @@ def test_check_with_unread_tools_returns_422_under_iorails_alias(tool_rails_alia
     stubbed_main_model.assert_not_awaited()
 
 
+def test_check_with_a_tools_entry_that_is_not_a_function_tool_returns_422_under_iorails_alias(
+    tool_rails_alias, stubbed_main_model
+):
+    """/v1/checks answers 422 naming a `tools` entry in the Responses API's flat shape, rather than dropping it."""
+    flat_weather_tool = {"type": "function", "name": "get_weather", "parameters": {"type": "object"}}
+
+    response = _post_check(tool_call_turn(wire_tool_call()), ["tool_call"], tools=[flat_weather_tool])
+
+    assert response.status_code == 422
+    assert response.json()["error"]["message"] == (
+        "tools entry 0 isn't a Chat Completions function tool: "
+        "a function tool needs a `function` object with a non-empty `name`"
+    )
+    stubbed_main_model.assert_not_awaited()
+
+
 # A Colang input rail, which LLMRails runs through its own runtime: the config the server holds when
 # NEMO_GUARDRAILS_IORAILS_ENGINE is unset.
 INPUT_RAIL_COLANG = """

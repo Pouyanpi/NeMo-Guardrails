@@ -27,16 +27,7 @@ from nemoguardrails.cli import app
 runner = CliRunner()
 
 HOOKS_CONFIG_YML = """
-models:
-  - type: main
-    engine: nim
-    model: meta/llama-3.3-70b-instruct
-    parameters:
-      tools:
-        - type: function
-          function:
-            name: Bash
-            parameters: {type: object, additionalProperties: true}
+models: []
 rails:
   tool_call:
     per_tool:
@@ -521,13 +512,13 @@ class TestHooksServerCommand:
 
     @patch("uvicorn.run")
     def test_hooks_server_exits_on_a_config_it_cannot_serve(self, mock_uvicorn, tmp_path):
-        """A config without tool-call rails exits 1 with the reason, before binding."""
+        """A config that can deny no tool call exits 1 with the reason, before binding."""
         config_yml = "models:\n  - type: main\n    engine: nim\n    model: meta/llama-3.3-70b-instruct\n"
 
         result = runner.invoke(app, ["hooks-server", f"--config={self._config_dir(tmp_path, config_yml)}"])
 
         assert result.exit_code == 1
-        assert "The hooks server needs tool-call rails and a `main` model." in result.output
+        assert "The hooks server needs a tool policy in the hooks_server section, or per-tool rails" in result.output
         mock_uvicorn.assert_not_called()
 
     @patch("uvicorn.run")
@@ -550,6 +541,18 @@ class TestHooksServerCommand:
 
         assert result.exit_code == 1
         assert "exactly one --config" in result.output
+        mock_uvicorn.assert_not_called()
+
+    @patch("uvicorn.run")
+    def test_hooks_server_exits_on_a_config_that_sets_hooks_server_twice(self, mock_uvicorn, tmp_path):
+        """A config with two files that set hooks_server exits 1 with the loader's message, before binding."""
+        config = self._config_dir(tmp_path, HOOKS_CONFIG_YML + "hooks_server:\n  blocked_tools: [WebFetch]\n")
+        (tmp_path / "extra.yml").write_text("hooks_server:\n  allowed_tools: [Read]\n")
+
+        result = runner.invoke(app, ["hooks-server", f"--config={config}"])
+
+        assert result.exit_code == 1
+        assert "The hooks_server section is set in more than one file of this config" in result.output
         mock_uvicorn.assert_not_called()
 
     def test_hooks_server_without_the_server_extra_prints_the_install_hint(self, tmp_path, monkeypatch):

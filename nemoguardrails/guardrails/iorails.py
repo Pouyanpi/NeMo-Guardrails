@@ -63,6 +63,7 @@ from nemoguardrails.guardrails.guardrails_types import (
     serialize_prompt,
     truncate,
 )
+from nemoguardrails.guardrails.model_engine import _parse_tools_openai
 from nemoguardrails.guardrails.rails_manager import RailsManager
 from nemoguardrails.guardrails.telemetry import (
     are_metrics_enabled,
@@ -560,6 +561,12 @@ def _rail_type_configured(config: RailsConfig, rail_type: RailType) -> bool:
     return bool(section.flows)
 
 
+def _main_model_tools(config: RailsConfig) -> Optional[list]:
+    """The tools the `main` model's parameters declare, or None without a `main` model."""
+    main = next((model for model in config.models if model.type == "main"), None)
+    return None if main is None else main.parameters.get("tools")
+
+
 def _reject_unread_tools(rail_types: Optional[list[RailType]], tools: Optional[list[dict]]) -> None:
     """Raise when *tools* is passed to a check that runs no tool_call rails, which would leave it unread."""
     # Refused rather than ignored, so a caller who expected its tool calls validated learns they were not.
@@ -570,6 +577,24 @@ def _reject_unread_tools(rail_types: Optional[list[RailType]], tools: Optional[l
     raise InvalidCheckRequestError(
         "tools is read only by a tool_call check; include tool_call in rail_types or leave tools out"
     )
+
+
+def _reject_unreadable_tools(tools: Optional[list[dict]]) -> None:
+    """Raise when *tools* holds entries a check can't read as Chat Completions function tools, which it would drop."""
+    # Refused rather than dropped: a dropped entry would turn the caller's tool into "not an allowed tool".
+    if tools is None:
+        return
+    if not isinstance(tools, list):
+        raise InvalidCheckRequestError("tools must be a list of Chat Completions function tools")
+    # Entries are reported by position only: their content is the caller's, and can be large.
+    unreadable = [str(index) for index, entry in enumerate(tools) if not _parse_tools_openai([entry])]
+    if not unreadable:
+        return
+    if len(unreadable) == 1:
+        which = f"tools entry {unreadable[0]} isn't a Chat Completions function tool"
+    else:
+        which = f"tools entries {', '.join(unreadable)} aren't Chat Completions function tools"
+    raise InvalidCheckRequestError(f"{which}: a function tool needs a `function` object with a non-empty `name`")
 
 
 def _has_tool_traffic(messages: LLMMessages) -> bool:
@@ -860,12 +885,6 @@ class IORails(BaseGuardrails):
         """Return why ``check_async()`` refuses to run *rail_type* on *config*, or None when it can run it."""
         if not _rail_type_configured(config, rail_type):
             return f"Requested rail type '{rail_type.value}' has no configured rails."
-        # The engine registry holds one engine per configured model type, so this is its `main` engine.
-        if rail_type in TOOL_RAIL_TYPES and not any(model.type == "main" for model in config.models):
-            return (
-                f"Requested rail type '{rail_type.value}' needs a `main` model: its engine selects the "
-                "tool wire format and supplies config-declared tools."
-            )
         return None
 
     def __init__(self, config: RailsConfig, *, _report_usage: bool = True) -> None:
@@ -1550,8 +1569,7 @@ class IORails(BaseGuardrails):
 
         Raises:
             RailTypeNotConfiguredError: If a requested rail type has no
-                configured rails, or a tool rail type is requested on a config
-                with no ``main`` model.
+                configured rails.
         """
         if check_sync_call_from_async_loop():
             raise RuntimeError(
@@ -1588,9 +1606,10 @@ class IORails(BaseGuardrails):
         rails and returns PASSED.
 
         ``tools`` declares the tools a ``tool_call`` check validates calls
-        against, in the main model's wire format. It replaces the tools declared
-        on the main model's parameters, rather than adding to them; ``[]``
-        declares none.
+        against, in the Chat Completions format. It replaces the tools declared
+        on the ``main`` model's parameters, rather than adding to them; ``[]``
+        declares none. Tool checks read messages and tools as Chat Completions,
+        whatever the ``main`` model is, and need no ``main`` model.
 
         Submitted through the same admission queue as ``generate_async`` so the
         check path shares non-streaming concurrency limits, request metrics, and
@@ -1598,13 +1617,14 @@ class IORails(BaseGuardrails):
 
         Raises:
             InvalidCheckRequestError: If ``tools`` is given but ``rail_types``
-                does not include ``RailType.TOOL_CALL``.
+                does not include ``RailType.TOOL_CALL``, or ``tools`` holds an
+                entry that isn't a Chat Completions function tool.
             RailTypeNotConfiguredError: If a requested rail type has no
-                configured rails, or a tool rail type is requested on a config
-                with no ``main`` model.
+                configured rails.
         """
         # Before queueing: a request the check cannot serve takes no queue slot and is not logged as a failed check.
         _reject_unread_tools(rail_types, tools)
+        _reject_unreadable_tools(tools)
         if rail_types is not None:
             self._validate_requested_rail_types(rail_types)
         await self.start()
@@ -1753,7 +1773,7 @@ class IORails(BaseGuardrails):
         return RailsResult(status=RailStatus.PASSED, content=pass_content)
 
     def _validate_requested_rail_types(self, rail_types: list[RailType]) -> None:
-        """Raise when a requested rail type has no rails to run, or a tool rail type has no main model."""
+        """Raise when a requested rail type has no rails to run."""
         for rail_type in rail_types:
             reason = self.unconfigured_rail_type_reason(self.config, rail_type)
             if reason is not None:
@@ -1772,7 +1792,7 @@ class IORails(BaseGuardrails):
     async def _check_tool_results(self, messages: LLMMessages, req_id: str) -> Optional[RailsResult]:
         """Run the tool-result rails, returning the blocked check result or None to continue."""
         log.info("[%s] Running tool result rails", req_id)
-        result = await self.rails_manager.are_tool_results_safe(messages)
+        result = await self.rails_manager.are_tool_results_safe(messages, model_type=None)
         if result.is_safe:
             return None
         log.info("[%s] Tool results blocked: %s", req_id, display_reason(result))
@@ -1785,7 +1805,7 @@ class IORails(BaseGuardrails):
     ) -> Optional[RailsResult]:
         """Run the tool-call rails on the last assistant turn, returning the blocked check result or None."""
         log.info("[%s] Running tool call rails", req_id)
-        llm_params = {"tools": tools} if tools is not None else None
+        llm_params = {"tools": tools if tools is not None else _main_model_tools(self.config)}
         result = await self.rails_manager.are_latest_tool_calls_safe(messages, llm_params)
         if result.is_safe:
             return None

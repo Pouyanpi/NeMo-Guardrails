@@ -435,6 +435,77 @@ class ActionRails(BaseModel):
     )
 
 
+class ToolEntry(BaseModel):
+    """A tool in `hooks_server.allowed_tools` or `blocked_tools`, named with the arguments its entry is about."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(description="The tool's name, exactly as a tool call spells it.")
+    arguments: List[str] = Field(
+        min_length=1,
+        description="Argument names. In `allowed_tools`, a call may pass only these; "
+        "in `blocked_tools`, a call that passes any of them is blocked.",
+    )
+
+    @field_validator("arguments")
+    @classmethod
+    def check_arguments_are_unique(cls, arguments: List[str]) -> List[str]:
+        """Refuse an entry that names an argument twice."""
+        repeated = sorted({argument for argument in arguments if arguments.count(argument) > 1})
+        if repeated:
+            raise ValueError(f"arguments names {repeated} more than once; list each argument once")
+        return arguments
+
+
+class HooksServerConfig(BaseModel):
+    """The tool policy `nemoguardrails hooks-server` applies to each hook's call; no engine reads it."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    allowed_tools: List[Union[str, ToolEntry]] = Field(
+        default_factory=list,
+        description="Tools a call may use: a name, which allows any arguments, or a `{name, arguments}` entry, "
+        "which allows only those arguments.",
+    )
+    blocked_tools: List[Union[str, ToolEntry]] = Field(
+        default_factory=list,
+        description="Tools a call may not use: a name, which blocks every call to the tool, or a `{name, arguments}` "
+        "entry, which blocks a call that passes any of those arguments.",
+    )
+    allow_unlisted_tools: bool = Field(
+        default=True,
+        description="Whether a call to a tool `allowed_tools` doesn't name is allowed.",
+    )
+
+    @model_validator(mode="after")
+    def check_tool_lists(self) -> "HooksServerConfig":
+        """Refuse tool lists that name a tool twice, or that allow a tool they block by name."""
+        for list_name in ("allowed_tools", "blocked_tools"):
+            repeated = _first_repeated_tool_name(getattr(self, list_name))
+            if repeated is not None:
+                raise InvalidRailsConfigurationError(
+                    f"hooks_server.{list_name} names tool '{repeated}' more than once; list each tool once."
+                )
+        blocked_by_name = {entry for entry in self.blocked_tools if isinstance(entry, str)}
+        contradicted = [
+            _tool_entry_name(entry) for entry in self.allowed_tools if _tool_entry_name(entry) in blocked_by_name
+        ]
+        if contradicted:
+            raise InvalidRailsConfigurationError(
+                f"hooks_server.allowed_tools allows tool '{contradicted[0]}', which hooks_server.blocked_tools blocks "
+                "by name; remove it from one of the two lists."
+            )
+        return self
+
+    @property
+    def can_deny(self) -> bool:
+        """Whether the policy can deny a call: it blocks something, denies unlisted tools, or limits a tool's arguments."""
+        # Bare names in allowed_tools deny nothing while unlisted tools are allowed.
+        if self.blocked_tools or not self.allow_unlisted_tools:
+            return True
+        return any(isinstance(entry, ToolEntry) for entry in self.allowed_tools)
+
+
 class ToolCallRails(BaseModel):
     """Configuration of tool call rails.
 
@@ -454,6 +525,22 @@ class ToolCallRails(BaseModel):
         default=False,
         description="If True, the tool call rails are executed in parallel.",
     )
+
+
+def _tool_entry_name(entry: Union[str, ToolEntry]) -> str:
+    """The tool a list entry names."""
+    return entry if isinstance(entry, str) else entry.name
+
+
+def _first_repeated_tool_name(tool_list: List[Union[str, ToolEntry]]) -> Optional[str]:
+    """The first tool *tool_list* names a second time, or None when it names each tool once."""
+    seen: Set[str] = set()
+    for entry in tool_list:
+        name = _tool_entry_name(entry)
+        if name in seen:
+            return name
+        seen.add(name)
+    return None
 
 
 class ToolResultRails(BaseModel):
@@ -645,8 +732,8 @@ def merge_two_dicts(dict_1: dict, dict_2: dict, ignore_keys: Set[str]) -> None:
                 dict_1[key] = value
 
 
-def _join_config(dest_config: dict, additional_config: dict):
-    """Helper to join two configuration."""
+def _join_config(dest_config: dict, additional_config: dict, source: Optional[str] = None):
+    """Helper to join two configuration; *source* names where *additional_config* was read from, for errors."""
 
     dest_config["user_messages"] = {
         **dest_config.get("user_messages", {}),
@@ -676,6 +763,16 @@ def _join_config(dest_config: dict, additional_config: dict):
         **dest_config.get("sensitive_data_detection", {}),
         **additional_config.get("sensitive_data_detection", {}),
     }
+
+    if "hooks_server" in additional_config:
+        # Replacing one section with another would drop restrictions, and joining them would widen the allowlists.
+        if "hooks_server" in dest_config:
+            found_again = f" (found again in {source})" if source else ""
+            raise ValueError(
+                "The hooks_server section is set in more than one file of this config, or of a config it imports; "
+                f"set it in one file only{found_again}."
+            )
+        dest_config["hooks_server"] = additional_config["hooks_server"]
 
     dest_config["embedding_search_provider"] = dest_config.get(
         "embedding_search_provider", {}
@@ -724,6 +821,7 @@ def _join_config(dest_config: dict, additional_config: dict):
             "sensitive_data_detection",
             "embedding_search_provider",
             "import_paths",
+            "hooks_server",
         }
     )
 
@@ -786,7 +884,7 @@ def _load_path(
                 elif file.endswith(".co"):
                     colang_files.append((file, full_path))
 
-                _join_config(raw_config, _raw_config)
+                _join_config(raw_config, _raw_config, source=full_path)
 
     # If it's just a .co file, we append it as is to the config.
     elif config_path.endswith(".co"):
@@ -838,7 +936,7 @@ def _load_imported_paths(raw_config: dict, colang_files: List[Tuple[str, str]]):
             _raw_config, _colang_files = _load_path(actual_path)
 
             # Join them.
-            _join_config(raw_config, _raw_config)
+            _join_config(raw_config, _raw_config, source=actual_path)
             colang_files.extend(_colang_files)
 
             # And mark the path as imported.
@@ -1017,6 +1115,11 @@ class RailsConfig(BaseModel):
     rails: Rails = Field(
         default_factory=Rails,
         description="Configuration for the various rails (input, output, etc.).",
+    )
+
+    hooks_server: HooksServerConfig = Field(
+        default_factory=HooksServerConfig,
+        description="The tool policy of `nemoguardrails hooks-server`, which only that server reads.",
     )
 
     streaming: bool = Field(
@@ -1489,7 +1592,19 @@ def _join_rails_configs(base_rails_config: RailsConfig, updated_rails_config: Ra
     if base_rails_config.actions_server_url != updated_rails_config.actions_server_url:
         raise ValueError("Both config files should have the same actions_server_url")
 
+    # A section can't be told apart from an unset one after validation, so "set" means "not the default".
+    hooks_servers = [
+        config.hooks_server
+        for config in (base_rails_config, updated_rails_config)
+        if config.hooks_server != HooksServerConfig()
+    ]
+    if len(hooks_servers) > 1:
+        raise ValueError("Both configs set a hooks_server section, which only one of them may set")
+
     combined_rails_config_dict = _join_dict(base_rails_config.model_dump(), updated_rails_config.model_dump())
+    if hooks_servers:
+        # Every dump carries the section's defaults, which the join would mix into the set section.
+        combined_rails_config_dict["hooks_server"] = hooks_servers[0].model_dump()
     # filter out empty strings to avoid leading/trailing commas
     config_paths = [
         base_rails_config.model_dump()["config_path"] or "",

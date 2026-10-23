@@ -1518,13 +1518,76 @@ class TestCheckToolRailConfiguration:
                 await engine.check_async(tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL])
 
     @pytest.mark.asyncio
-    async def test_tool_rail_type_without_a_main_model_raises(self):
-        """Without a ``main`` model there is no wire format to read, so a tool check refuses to run."""
+    async def test_tool_call_check_ignores_the_hooks_server_section(self):
+        """A check doesn't read the hooks_server section, which only the hooks server applies."""
+        config = {"models": [], "hooks_server": {"blocked_tools": ["get_weather"]}, "rails": TOOL_CONFIG["rails"]}
+
+        async with started_iorails(config) as engine:
+            result = await engine.check_async(
+                tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL], tools=[WEATHER_TOOL]
+            )
+
+        assert result.status == RailStatus.PASSED
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tools", "violation_types"),
+        [([WEATHER_TOOL], []), (None, [ToolViolationType.TOOL_NOT_ALLOWED])],
+        ids=["declared", "undeclared"],
+    )
+    async def test_tool_call_check_runs_without_a_main_model(self, tools, violation_types):
+        """A config with no models runs a tool-call check, reading the call and the tools as Chat Completions."""
         config = {"models": [], "rails": TOOL_CONFIG["rails"]}
 
         async with started_iorails(config) as engine:
-            with pytest.raises(RailTypeNotConfiguredError, match="needs a `main` model"):
-                await engine.check_async(tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL])
+            result = await engine.check_async(
+                tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL], tools=tools
+            )
+
+        assert [violation.violation_type for violation in result.tool_violations or ()] == violation_types
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("result_call_id", "violation_types"),
+        [("call_1", []), ("call_999", [ToolViolationType.UNKNOWN_CALL_ID])],
+        ids=["linked", "unlinked"],
+    )
+    async def test_tool_result_check_runs_without_a_main_model(self, result_call_id, violation_types):
+        """A config with no models runs a tool-result check, reading the conversation as Chat Completions."""
+        config = {"models": [], "rails": TOOL_CONFIG["rails"]}
+
+        async with started_iorails(config) as engine:
+            result = await engine.check_async(
+                make_tool_conversation(result_call_id=result_call_id), rail_types=[RailType.TOOL_RESULT]
+            )
+
+        assert [violation.violation_type for violation in result.tool_violations or ()] == violation_types
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("content", "violation_types"),
+        [("18 rows", []), ("ssn: 123-45-6789", [ToolViolationType.PER_TOOL_RAIL])],
+        ids=["allowed", "blocked"],
+    )
+    async def test_per_tool_result_rails_run_without_a_main_model(self, content, violation_types):
+        """A config with no models runs a tool's per-tool result rails on its results in a tool-result check."""
+        config = {
+            "models": [],
+            "rails": {
+                "config": {
+                    "regex_detection": {"tool_result": {"run_sql": {"patterns": [r"ssn:\s*\d{3}-\d{2}-\d{4}"]}}}
+                },
+                "tool_result": {"per_tool": {"run_sql": ["regex check tool result"]}},
+            },
+        }
+        messages = make_tool_conversation(
+            result_name="run_sql", tool_name="run_sql", arguments='{"query": "SELECT 1"}', content=content
+        )
+
+        async with started_iorails(config) as engine:
+            result = await engine.check_async(messages, rail_types=[RailType.TOOL_RESULT])
+
+        assert [violation.violation_type for violation in result.tool_violations or ()] == violation_types
 
     @pytest.mark.asyncio
     async def test_auto_detection_runs_input_and_output_only_and_logs_a_hint(self, tool_and_io_iorails, caplog):
@@ -1588,6 +1651,40 @@ class TestCheckToolRailConfiguration:
 
         submit.assert_not_called()
         assert [record.getMessage() for record in caplog.records if record.levelno >= logging.ERROR] == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("tools", "message"),
+        [
+            (
+                [WEATHER_TOOL, {"type": "function", "name": "get_weather", "parameters": {"type": "object"}}],
+                "tools entry 1 isn't a Chat Completions function tool",
+            ),
+            ([{"type": "function"}], "tools entry 0 isn't a Chat Completions function tool"),
+            ([{"type": "function", "function": {"name": ""}}], "tools entry 0 isn't a Chat Completions function tool"),
+            ([{"type": "custom", "custom": {"name": "grep"}}], "tools entry 0 isn't a Chat Completions function tool"),
+            (["get_weather", WEATHER_TOOL, 7], "tools entries 0, 2 aren't Chat Completions function tools"),
+        ],
+        ids=["flat-shape", "no-function", "empty-name", "custom-tool", "not-objects"],
+    )
+    async def test_tools_entry_that_is_not_a_function_tool_raises_before_queueing(self, tool_iorails, tools, message):
+        """A `tools` entry a check can't read as a function tool raises InvalidCheckRequestError naming its position."""
+        with patch.object(tool_iorails._generate_async_queue, "submit") as submit:
+            with pytest.raises(InvalidCheckRequestError) as exc_info:
+                await tool_iorails.check_async(
+                    tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL], tools=tools
+                )
+
+        assert str(exc_info.value) == f"{message}: a function tool needs a `function` object with a non-empty `name`"
+        submit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_tools_that_are_not_a_list_raise(self, tool_iorails):
+        """`tools` that isn't a list raises InvalidCheckRequestError rather than counting as no tools."""
+        with pytest.raises(InvalidCheckRequestError, match="^tools must be a list of Chat Completions function tools$"):
+            await tool_iorails.check_async(
+                tool_call_turn(wire_tool_call()), rail_types=[RailType.TOOL_CALL], tools={"get_weather": WEATHER_TOOL}
+            )
 
     def test_sync_check_forwards_tools(self):
         """Sync ``check`` hands ``tools`` to the engine it spins up."""

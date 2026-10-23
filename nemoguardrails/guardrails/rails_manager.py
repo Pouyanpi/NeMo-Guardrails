@@ -37,6 +37,11 @@ from nemoguardrails.guardrails.guardrails_types import (
     last_user_content,
     rewrite_user_message,
 )
+from nemoguardrails.guardrails.model_engine import (
+    _extract_tool_exchanges_openai,
+    _latest_tool_calls_openai,
+    _parse_tools_openai,
+)
 from nemoguardrails.guardrails.telemetry import mark_rail_stop, rail_span, set_rail_content
 from nemoguardrails.guardrails.tool_rail_action import ToolRailAction, reported_violations, violations_outcome
 from nemoguardrails.guardrails.tool_schema import (
@@ -559,13 +564,14 @@ class RailsManager:
         llm_params: Optional[dict],
         *,
         enabled: Union[bool, list[str]] = True,
-        model_type: str = "main",
+        model_type: Optional[str] = "main",
     ) -> RailResult:
         """Validate the model's emitted tool calls (OUTPUT-direction tool rail).
 
         The tool-call counterpart to :meth:`is_output_safe`: takes the model's output
         (``tool_calls``) plus the request's declared tools (``llm_params``) and returns
-        a ``RailResult``.
+        a ``RailResult``. ``model_type`` names the engine whose wire format the tools are
+        in; ``None`` reads them as Chat Completions, as a check does, with no model.
         """
         if not tool_calls:
             return RailResult.allow()
@@ -575,7 +581,7 @@ class RailsManager:
         active = self._enabled_flows(list(self._tool_call_actions), enabled)
         global_result = RailResult.allow()
         try:
-            toolset = self.engine_registry.parse_tools(model_type, llm_params)
+            toolset = self._offered_tools(model_type, llm_params)
         except Exception as e:
             log.warning("[%s] tool parsing failed; blocking tool calls: %s", get_request_id(), e)
             return _blocked_before_rails(
@@ -627,19 +633,29 @@ class RailsManager:
             return replace(per_tool_result, records=combined_records)
         return RailResult.allow(records=combined_records)
 
+    def _offered_tools(self, model_type: Optional[str], llm_params: Optional[dict]) -> Toolset:
+        """The tools *llm_params* offers, in *model_type*'s wire format, or as Chat Completions when it's None."""
+        if model_type is not None:
+            return self.engine_registry.parse_tools(model_type, llm_params)
+        tools = (llm_params or {}).get("tools")
+        return Toolset(tools=_parse_tools_openai(tools)) if tools else Toolset()
+
     async def are_latest_tool_calls_safe(
         self,
         messages: list[dict],
         llm_params: Optional[dict],
         *,
         enabled: Union[bool, list[str]] = True,
-        model_type: str = "main",
     ) -> RailResult:
-        """Validate the tool calls on the last assistant message of *messages*, as a check with no model response."""
+        """Validate the tool calls on the last assistant message of *messages*, as a check with no model response.
+
+        The messages and the tools in *llm_params* are read as Chat Completions, the format of the APIs a check
+        takes them from, whatever the ``main`` model is, so a check needs no model.
+        """
         if not self._any_tool_call_rail_enabled(enabled):
             return RailResult.allow()
         try:
-            extracted = self.engine_registry.extract_latest_tool_calls(model_type, messages)
+            extracted = _latest_tool_calls_openai(messages)
         except ToolCallExtractionError as e:
             log.warning("[%s] tool call extraction failed; blocking: %s", get_request_id(), e)
             return _blocked_before_rails(_extraction_violation(e))
@@ -654,13 +670,11 @@ class RailsManager:
                 )
             )
         if any(isinstance(entry, ToolCallExtractionError) for entry in extracted):
-            return await self._blocked_with_every_call_violation(
-                extracted, llm_params, enabled=enabled, model_type=model_type
-            )
+            return await self._blocked_with_every_call_violation(extracted, llm_params, enabled=enabled)
         tool_calls = [entry for entry in extracted if isinstance(entry, ToolCall)]
         if not tool_calls:
             log.debug("[%s] the latest assistant message carries no tool calls", get_request_id())
-        return await self.are_tool_calls_safe(tool_calls, llm_params, enabled=enabled, model_type=model_type)
+        return await self.are_tool_calls_safe(tool_calls, llm_params, enabled=enabled, model_type=None)
 
     async def _blocked_with_every_call_violation(
         self,
@@ -668,7 +682,6 @@ class RailsManager:
         llm_params: Optional[dict],
         *,
         enabled: Union[bool, list[str]],
-        model_type: str,
     ) -> RailResult:
         """Block a turn with unparsable calls, still validating the calls that parsed so they are reported too."""
         failures = [entry for entry in extracted if isinstance(entry, ToolCallExtractionError)]
@@ -683,7 +696,7 @@ class RailsManager:
         violations = [_extraction_violation(failure) for failure in failures]
         parsed = [(position, entry) for position, entry in enumerate(extracted) if isinstance(entry, ToolCall)]
         rails_result = await self.are_tool_calls_safe(
-            [call for _, call in parsed], llm_params, enabled=enabled, model_type=model_type
+            [call for _, call in parsed], llm_params, enabled=enabled, model_type=None
         )
         positions = [position for position, _ in parsed]
         violations.extend(_at_call_position(violation, positions) for violation in rails_result.tool_violations)
@@ -702,7 +715,7 @@ class RailsManager:
         messages: list[dict],
         *,
         enabled: Union[bool, list[str]] = True,
-        model_type: str = "main",
+        model_type: Optional[str] = "main",
     ) -> RailResult:
         """Validate incoming tool results (INPUT-direction tool rail).
 
@@ -710,7 +723,9 @@ class RailsManager:
         ``messages`` and returns a ``RailResult``. Groups the conversation into per-turn
         ``(calls, results)`` exchanges via the engine adapter and validates each result
         against its own turn's calls, so call ids reused across turns (spec-allowed) are
-        not flagged as ambiguous duplicates.
+        not flagged as ambiguous duplicates. ``model_type`` names the engine whose wire
+        format the messages are in; ``None`` reads them as Chat Completions, as a check
+        does, with no model.
         """
         active = self._enabled_flows(list(self._tool_result_actions), enabled)
         enabled_per_tool_flows = {
@@ -719,7 +734,11 @@ class RailsManager:
         if not active and not enabled_per_tool_flows:
             return RailResult.allow()
         try:
-            exchanges = self.engine_registry.extract_tool_exchanges(model_type, messages)
+            exchanges = (
+                _extract_tool_exchanges_openai(messages)
+                if model_type is None
+                else self.engine_registry.extract_tool_exchanges(model_type, messages)
+            )
         except Exception as e:
             # The exception's text is not known to omit message content, so it stays in the log.
             log.warning("[%s] tool exchange extraction failed; blocking: %s", get_request_id(), e)

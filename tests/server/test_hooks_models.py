@@ -22,6 +22,7 @@ import pytest
 from pydantic import ValidationError
 from pydantic_core import ErrorDetails
 
+from nemoguardrails.rails.llm.config import RailsConfig
 from nemoguardrails.rails.llm.options import RailsResult, RailStatus, ToolViolation
 from nemoguardrails.server.hooks import (
     ADAPTERS,
@@ -30,6 +31,7 @@ from nemoguardrails.server.hooks import (
     HookOutcome,
     UnsupportedHookEventError,
     check_messages,
+    check_tools,
     outcome_from_result,
 )
 from nemoguardrails.server.hooks.checking import ToolInvocation
@@ -38,6 +40,7 @@ from nemoguardrails.server.hooks.schemas import (
     CodexPreToolUseRequest,
     NemoRelayToolConditionalExecutionGuardrailRequest,
 )
+from nemoguardrails.server.hooks.tool_policy import ToolPolicy
 from tests.guardrails.tool_helpers import call_violation
 
 CLAUDE_CODE_BASH = {
@@ -522,6 +525,66 @@ class TestCheckMessages:
         (tool_call,) = check_messages(call)[0]["tool_calls"]
 
         assert tool_call["function"]["arguments"] == '"rm -rf /"'
+
+
+def _tool_policy(**hooks: Any) -> ToolPolicy:
+    """The hooks server's tool policy for a config with *hooks* as its hooks_server section."""
+    return ToolPolicy.from_config(RailsConfig.from_content(config={"models": [], "hooks_server": hooks}).hooks_server)
+
+
+class TestCheckTools:
+    @pytest.mark.parametrize(
+        "tool_lists",
+        [
+            {},
+            {"allowed_tools": ["Bash"]},
+            {"allowed_tools": ["Read"]},
+            {"allowed_tools": ["Read"], "allow_unlisted_tools": False},
+            {"blocked_tools": ["Bash"]},
+            {"blocked_tools": [{"name": "Bash", "arguments": ["run_in_background"]}]},
+        ],
+        ids=[
+            "no-lists",
+            "allowed-by-name",
+            "unlisted",
+            "unlisted-denied",
+            "blocked-by-name",
+            "blocked-by-argument",
+        ],
+    )
+    def test_called_tool_without_an_allowed_tools_entry_is_declared_with_any_arguments(self, tool_lists):
+        """The called tool is the one tool offered, taking any arguments, unless an allowed_tools entry lists them."""
+        call = ToolInvocation(name="Bash", arguments={"command": "npm test"})
+
+        tools = check_tools(call, _tool_policy(**tool_lists))
+
+        assert tools == [
+            {
+                "type": "function",
+                "function": {"name": "Bash", "parameters": {"type": "object", "additionalProperties": True}},
+            }
+        ]
+
+    def test_called_tool_with_an_allowed_tools_entry_is_declared_with_its_arguments(self):
+        """A called tool with an allowed_tools entry is offered taking exactly the arguments the entry lists."""
+        policy = _tool_policy(allowed_tools=["Bash", {"name": "search", "arguments": ["query", "limit"]}])
+        call = ToolInvocation(name="search", arguments={"query": "weather"})
+
+        tools = check_tools(call, policy)
+
+        assert tools == [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {}, "limit": {}},
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        ]
 
 
 class TestHookOutcome:
