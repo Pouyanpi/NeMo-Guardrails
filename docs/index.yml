@@ -476,6 +476,28 @@ navigation:
           - page: Actions Server
             path: run-rails/using-fastapi-server/actions-server.mdx
             slug: actions-server
+      - section: Hooks Server
+        path: run-rails/using-hooks-server/index.mdx
+        slug: using-hooks-server
+        contents:
+          - page: Overview
+            path: run-rails/using-hooks-server/overview.mdx
+            slug: overview
+          - page: Run the Hooks Server
+            path: run-rails/using-hooks-server/run-hooks-server.mdx
+            slug: run-hooks-server
+          - page: Claude Code
+            path: run-rails/using-hooks-server/claude-code.mdx
+            slug: claude-code
+          - page: Codex
+            path: run-rails/using-hooks-server/codex.mdx
+            slug: codex
+          - page: NeMo Relay
+            path: run-rails/using-hooks-server/nemo-relay.mdx
+            slug: nemo-relay
+          - page: Results and Errors
+            path: run-rails/using-hooks-server/results-and-errors.mdx
+            slug: results-and-errors
   - section: Evaluation
     slug: evaluation
     collapsed: open-by-default
@@ -645,6 +667,25 @@ navigation:
               - endpoint: GET /
                 title: Get Server Health or Chat UI
                 slug: get-root
+      - section: Hooks Server API
+        path: reference/hooks-server-api/index.mdx
+        slug: hooks-server-api
+        contents:
+          - page: Check a Claude Code Tool Call
+            path: reference/hooks-server-api/claude-code.mdx
+            slug: claude-code
+          - page: Check a Codex Tool Call
+            path: reference/hooks-server-api/codex.mdx
+            slug: codex
+          - page: Check a NeMo Relay Tool Call
+            path: reference/hooks-server-api/nemo-relay.mdx
+            slug: nemo-relay
+          - page: Health Check
+            path: reference/hooks-server-api/get-health.mdx
+            slug: get-health
+          - page: Health Check (Alias)
+            path: reference/hooks-server-api/get-healthz.mdx
+            slug: get-healthz
       - page: Migrating to 0.22
         path: migration/0.22.mdx
         slug: 0-22
