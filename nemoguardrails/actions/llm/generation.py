@@ -32,6 +32,7 @@ from nemoguardrails.actions.actions import ActionResult, action
 from nemoguardrails.actions.llm.utils import (
     flow_to_colang,
     get_and_clear_reasoning_trace_contextvar,
+    get_and_clear_tool_calls_contextvar,
     get_first_nonempty_line,
     get_last_bot_intent_event,
     get_last_user_intent_event,
@@ -52,6 +53,7 @@ from nemoguardrails.embeddings.index import EmbeddingsIndex, IndexItem
 from nemoguardrails.kb.kb import KnowledgeBase
 from nemoguardrails.llm.call import llm_call
 from nemoguardrails.llm.completion_parsing import get_multiline_response, strip_quotes
+from nemoguardrails.llm.filters import apply_input_rail_updates, apply_tool_result_updates
 from nemoguardrails.llm.prompts import get_prompt
 from nemoguardrails.llm.taskmanager import LLMTaskManager
 from nemoguardrails.llm.types import Task
@@ -574,12 +576,13 @@ class LLMGenerationActions:
                     # as it may have been altered by the input rails.
                     prompt = event["text"]
                 elif isinstance(raw_prompt, list):
-                    prompt = raw_prompt.copy()
+                    prompt = apply_tool_result_updates(raw_prompt, events)
+                    prompt = apply_input_rail_updates(prompt, events)
 
                     # In this case, if the last message is from the user, we replace the text
                     # just in case the input rails may have altered it.
                     if prompt[-1]["role"] == "user":
-                        raw_prompt[-1]["content"] = event["text"]
+                        prompt[-1]["content"] = event["text"]
                 else:
                     raise ValueError(f"Unsupported type for raw prompt: {type(raw_prompt)}")
 
@@ -655,17 +658,10 @@ class LLMGenerationActions:
             context_updates["bot_thinking"] = reasoning_trace
             output_events.append(new_event_dict("BotThinking", content=reasoning_trace))
 
-        if self.config.passthrough:
-            from nemoguardrails.actions.llm.utils import (
-                get_and_clear_tool_calls_contextvar,
-            )
+        tool_calls = get_and_clear_tool_calls_contextvar()
 
-            tool_calls = get_and_clear_tool_calls_contextvar()
-
-            if tool_calls:
-                output_events.append(new_event_dict("BotToolCalls", tool_calls=tool_calls))
-            else:
-                output_events.append(new_event_dict("BotMessage", text=text))
+        if tool_calls:
+            output_events.append(new_event_dict("BotToolCalls", tool_calls=tool_calls))
         else:
             output_events.append(new_event_dict("BotMessage", text=text))
 

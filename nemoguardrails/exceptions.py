@@ -37,6 +37,7 @@ __all__ = [
     "StreamingNotSupportedError",
     "RailTypeNotConfiguredError",
     "RailTypeNotSupportedError",
+    "ToolConversationTooLongError",
 ]
 
 
@@ -101,6 +102,26 @@ class InvalidStateError(ValueError):
     """
 
     pass
+
+
+class ToolConversationTooLongError(ValueError):
+    """Raised when a rendered tool conversation exceeds the general prompt limit.
+
+    Tool exchanges are rejected intact rather than truncated, which could orphan
+    calls or discard the results needed to answer the user. Lengths are measured
+    in serialized characters, with structured inline image payloads discounted.
+    """
+
+    def __init__(self, actual_length: int, max_length: int):
+        """Store the measured and configured lengths without including conversation content."""
+        self.actual_length = actual_length
+        self.max_length = max_length
+        super().__init__(
+            f"Tool conversation length {actual_length} characters exceeds the general prompt max_length of "
+            f"{max_length} characters. Tool calls and results are not truncated. "
+            "Reduce the conversation or tool-result size, or increase the configured max_length "
+            "within your model's context capacity."
+        )
 
 
 class NonStreamingWorkQueueFullError(asyncio.QueueFull):

@@ -778,6 +778,10 @@ class LLMRails(BaseGuardrails):
                 cache_key = get_history_cache_key(messages[0:p])
                 if cache_key in self.events_history_cache:
                     events = self.events_history_cache[cache_key].copy()
+                    request_context = {"generation_options": None}
+                    if messages[0]["role"] == "context":
+                        request_context["generation_options"] = messages[0]["content"].get("generation_options")
+                    events.append({"type": "ContextUpdate", "data": request_context})
                     break
 
                 p -= 1
@@ -828,6 +832,7 @@ class LLMRails(BaseGuardrails):
                     # Handle system messages - convert them to SystemMessage events
                     events.append({"type": "SystemMessage", "content": msg["content"]})
                 elif msg["role"] == "tool":
+                    events.append({"type": "ToolMessage", "message": msg.copy()})
                     # For the last tool message, create grouped tool event and synthetic UserMessage
                     if idx == len(messages) - 1:
                         # Find the original user message for response generation
@@ -837,30 +842,39 @@ class LLMRails(BaseGuardrails):
                                 user_message = prev_msg["content"]
                                 break
 
-                        if user_message:
-                            # If tool result rails are configured, group all tool messages
+                        if user_message is not None:
                             if self.config.rails.tool_result.flows:
-                                # Collect all tool messages for grouped processing
-                                tool_messages = []
-                                for tool_idx in range(len(messages)):
-                                    if messages[tool_idx]["role"] == "tool":
-                                        tool_messages.append(
-                                            {
-                                                "content": messages[tool_idx]["content"],
-                                                "name": messages[tool_idx].get("name", "unknown"),
-                                                "tool_call_id": messages[tool_idx].get("tool_call_id", ""),
-                                            }
-                                        )
-
+                                # Do not rerun result rails for earlier batches in the supplied history.
+                                batch_start = idx
+                                while batch_start > 0 and messages[batch_start - 1]["role"] == "tool":
+                                    batch_start -= 1
+                                tool_names = {
+                                    call.get("id", ""): call.get("function", {}).get(
+                                        "name", call.get("name", "unknown")
+                                    )
+                                    for previous in messages[:batch_start]
+                                    if previous["role"] == "assistant"
+                                    for call in previous.get("tool_calls", [])
+                                }
+                                tool_messages = [
+                                    {
+                                        "content": tool_message["content"],
+                                        "name": tool_message.get("name")
+                                        or tool_names.get(tool_message.get("tool_call_id", ""), "unknown"),
+                                        "tool_call_id": tool_message.get("tool_call_id", ""),
+                                    }
+                                    for tool_message in messages[batch_start:]
+                                ]
                                 events.append(
                                     {
                                         "type": "UserToolMessages",
                                         "tool_messages": tool_messages,
+                                        "user_message": user_message,
                                     }
                                 )
 
                             else:
-                                events.append({"type": "UserMessage", "text": user_message})
+                                events.append({"type": "UserMessage", "text": user_message, "is_tool_result": True})
 
         else:
             for idx in range(len(messages)):
@@ -1171,17 +1185,29 @@ class LLMRails(BaseGuardrails):
         if response_events:
             new_message["events"] = response_events
 
+        tool_calls = extract_tool_calls_from_events(new_events)
+
         if self.config.colang_version == "1.0":
+            history_events = (
+                events
+                + [
+                    {**event, "tool_calls": tool_calls} if event["type"] == "BotToolCalls" else event
+                    for event in new_events
+                    if event["type"] != "BotToolCalls" or tool_calls
+                ]
+                + new_extra_events
+            )
             events.extend(new_events)
             events.extend(new_extra_events)
 
             # If a state object is not used, then we use the implicit caching
             if state is None:
                 # Save the new events in the history and update the cache
-                cache_key = get_history_cache_key((messages) + [new_message])  # type: ignore
-                self.events_history_cache[cache_key] = events
+                cache_message = {**new_message, "tool_calls": tool_calls} if tool_calls else new_message
+                cache_key = get_history_cache_key((messages) + [cache_message])  # type: ignore
+                self.events_history_cache[cache_key] = history_events
             else:
-                output_state = {"events": events}
+                output_state = {"events": history_events}
 
         # If logging is enabled, we log the conversation
         # TODO: add support for logging flag
@@ -1219,7 +1245,6 @@ class LLMRails(BaseGuardrails):
                 gen_options.log.llm_calls = True
                 gen_options.log.internal_events = True
 
-        tool_calls = extract_tool_calls_from_events(new_events)
         llm_metadata = get_and_clear_response_metadata_contextvar()
         reasoning_content = extract_bot_thinking_from_events(new_events)
         # If we have generation options, we prepare a GenerationResponse instance.

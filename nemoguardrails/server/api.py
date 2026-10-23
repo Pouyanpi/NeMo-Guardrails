@@ -45,6 +45,7 @@ from nemoguardrails.exceptions import (
     RailTypeNotSupportedError,
     StreamingCapacityExceededError,
     StreamingNotSupportedError,
+    ToolConversationTooLongError,
 )
 from nemoguardrails.guardrails.iorails import IORails
 from nemoguardrails.guardrails.model_engine import ModelEngineError
@@ -67,6 +68,7 @@ from nemoguardrails.server.exception_handlers import (
     rail_type_not_configured_error_handler,
     rail_type_not_supported_error_handler,
     streaming_capacity_error_handler,
+    tool_conversation_too_long_error_handler,
     validation_error_handler,
 )
 from nemoguardrails.server.metrics import shutdown_metrics_exporter, start_metrics_exporter
@@ -231,6 +233,7 @@ _EXCEPTION_HANDLERS = (
     (RailTypeNotSupportedError, rail_type_not_supported_error_handler),
     (InvalidCheckRequestError, invalid_check_request_error_handler),
     (InvalidStateError, invalid_state_error_handler),
+    (ToolConversationTooLongError, tool_conversation_too_long_error_handler),
     (RequestValidationError, validation_error_handler),
     (StarletteHTTPException, http_exception_handler),
     (Exception, internal_error_handler),
@@ -700,17 +703,38 @@ async def chat_completion(body: GuardrailsChatCompletionRequest, request: Reques
             detail="thread_id message-history replay is not supported for Colang 2.0.",
         )
 
-    if (body.tools or body.tool_choice is not None or body.parallel_tool_calls is not None) and (
-        llm_rails.config.passthrough is not True or body.stream
-    ):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are only "
-                "supported for non-streaming requests when the guardrails configuration has 'passthrough: true'."
-            ),
-        )
+    tools_requested = body.tools or body.tool_choice is not None or body.parallel_tool_calls is not None
+    if tools_requested:
+        if body.stream:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are only "
+                    "supported for non-streaming requests."
+                ),
+            )
 
+        if llm_rails.config.colang_version != "1.0":
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are only "
+                    "supported for Colang 1.0 configurations."
+                ),
+            )
+
+        # Dialog-flow configs (canonical-form user_messages) never surface tool
+        # calls to the request, so reject explicitly.
+        has_dialog_flows = bool(llm_rails.config.user_messages)
+        if has_dialog_flows:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are not "
+                    "supported when the guardrails configuration defines dialog flows "
+                    "(user_messages)."
+                ),
+            )
     messages = body.messages or []
     if body.guardrails.context:
         messages.insert(0, {"role": "context", "content": body.guardrails.context})

@@ -33,6 +33,7 @@ from nemoguardrails.rails import LLMRails
 from nemoguardrails.server import api
 from nemoguardrails.server.api import _format_streaming_response
 from nemoguardrails.server.schemas.openai import GuardrailsChatCompletionRequest
+from nemoguardrails.testing.fake_model import FakeLLMModel
 
 LIVE_TEST_MODE = os.environ.get("LIVE_TEST_MODE") or os.environ.get("TEST_LIVE_MODE")
 
@@ -758,6 +759,8 @@ def test_chat_completion_passes_tools_to_llm_params():
     mock_rails.generate_async = mock_generate_async
     mock_rails.config.colang_version = "1.0"
     mock_rails.config.passthrough = True
+    mock_rails.config.user_messages = {}
+    mock_rails.config.rails.dialog.single_call.enabled = False
 
     tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
 
@@ -813,11 +816,65 @@ def test_chat_completion_accepts_stop_parameter(stop):
         assert captured_options["options"].llm_params["stop"] == stop
 
 
-def test_chat_completion_rejects_tools_for_non_passthrough_config():
-    """Test that tools/tool_choice/parallel_tool_calls are rejected unless passthrough is True."""
+def test_chat_completion_accepts_tools_for_non_passthrough_config():
+    """Tools are allowed for a non-passthrough config without no dialog flows."""
+    from nemoguardrails.rails.llm.options import GenerationResponse
+
+    mock_rails = AsyncMock()
+    mock_rails.generate_async.return_value = GenerationResponse(response=[{"role": "assistant", "content": "ok"}])
+    mock_rails.config.colang_version = "1.0"
+    mock_rails.config.passthrough = False
+    mock_rails.config.user_messages = {}
+    mock_rails.config.rails.dialog.single_call.enabled = False
+
+    tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
+
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=mock_rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "Weather?"}],
+                "tools": tools,
+                "guardrails": {"config_id": "with_custom_llm"},
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_chat_completion_accepts_tool_choice_non_passthrough():
+    """Test that``tool_choice`` alone is allowed for a non-passthrough, no-dialog-flow config."""
+    from nemoguardrails.rails.llm.options import GenerationResponse
+
+    mock_rails = AsyncMock()
+    mock_rails.generate_async.return_value = GenerationResponse(response=[{"role": "assistant", "content": "ok"}])
+    mock_rails.config.colang_version = "1.0"
+    mock_rails.config.passthrough = None
+    mock_rails.config.user_messages = {}
+    mock_rails.config.rails.dialog.single_call.enabled = False
+
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=mock_rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "Weather?"}],
+                "tool_choice": "auto",
+                "guardrails": {"config_id": "with_custom_llm"},
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_chat_completion_rejects_tools_for_dialog_flow_config():
+    """Test that tools are rejected when the config defines dialog flows."""
     mock_rails = AsyncMock()
     mock_rails.config.colang_version = "1.0"
     mock_rails.config.passthrough = False
+    mock_rails.config.user_messages = {"express greeting": ["hello"]}
+    mock_rails.config.rails.dialog.single_call.enabled = False
 
     tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
 
@@ -833,14 +890,164 @@ def test_chat_completion_rejects_tools_for_non_passthrough_config():
         )
 
     assert response.status_code == 422
-    assert "passthrough" in response.json()["error"]["message"].lower()
+    assert "dialog flows" in response.json()["error"]["message"].lower()
 
 
-def test_chat_completion_rejects_tool_choice_without_passthrough():
-    """Test that tool_choice alone is rejected for non-passthrough configs."""
+@pytest.mark.parametrize("passthrough", [None, False, True])
+@pytest.mark.parametrize(
+    "tool_params",
+    [
+        {"tools": [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]},
+        {"tool_choice": "auto"},
+        {"parallel_tool_calls": False},
+    ],
+    ids=["tools", "tool_choice", "parallel_tool_calls"],
+)
+@pytest.mark.parametrize("unsupported", ["colang2", "dialog", "streaming"])
+def test_chat_completion_unsupported_tools_use_error_envelope(passthrough, tool_params, unsupported):
+    """Reject unsupported Colang, dialog, and streaming tool requests with 422 before generation."""
+    config = RailsConfig.from_content(
+        yaml_content="colang_version: '2.x'" if unsupported == "colang2" else "colang_version: '1.0'",
+        colang_content='define user greeting\n  "hello"' if unsupported == "dialog" else "",
+    )
+    config.passthrough = passthrough
+    rails = AsyncMock()
+    rails.config = config
+    expected_message = {
+        "colang2": "only supported for Colang 1.0 configurations.",
+        "dialog": "not supported when the guardrails configuration defines dialog flows (user_messages).",
+        "streaming": "only supported for non-streaming requests.",
+    }[unsupported]
+
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "messages": [{"role": "user", "content": "Weather?"}],
+                "guardrails": {"config_id": "with_custom_llm"},
+                "stream": unsupported == "streaming",
+                "model": "test-model",
+                **tool_params,
+            },
+        )
+
+    assert response.status_code == 422
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {
+        "error": {
+            "message": "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are " + expected_message,
+            "type": "invalid_request_error",
+            "param": None,
+            "code": None,
+        }
+    }
+    rails.generate_async.assert_not_called()
+
+
+@pytest.mark.parametrize("chat_prompt", [False, True])
+@pytest.mark.parametrize("oversized_field", ["result", "arguments"])
+def test_chat_completion_oversized_tool_conversation_returns_422(chat_prompt, oversized_field, caplog):
+    """Reject oversized tool prompts with a structured 422 without exposing private data or calling the model."""
+    template = (
+        {"messages": ["{{ history | to_chat_messages }}"]}
+        if chat_prompt
+        else {"content": "{{ history | user_assistant_sequence }}"}
+    )
+    config = RailsConfig.from_content(
+        yaml_content=json.dumps(
+            {
+                "models": [],
+                "passthrough": False,
+                "prompts": [{"task": "general", "models": ["unknown"], "max_length": 1000, **template}],
+            }
+        )
+    )
+    model = FakeLLMModel(responses=["Must not be called"])
+    rails = LLMRails(config, llm=model)
+    sensitive_text = "private-tool-data-" * 150
+    messages = [
+        {"role": "user", "content": "Weather?"},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_Paris",
+                    "type": "function",
+                    "function": {
+                        "name": "weather",
+                        "arguments": json.dumps(
+                            {"city": sensitive_text if oversized_field == "arguments" else "Paris"}
+                        ),
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "call_Paris",
+            "content": sensitive_text if oversized_field == "result" else "Sunny",
+        },
+    ]
+
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={"model": "test-model", "messages": messages, "guardrails": {"config_id": "with_custom_llm"}},
+        )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert set(payload) == {"error"}
+    assert payload["error"] == {
+        "message": payload["error"]["message"],
+        "type": "invalid_request_error",
+        "param": "messages",
+        "code": "tool_conversation_too_long",
+    }
+    assert "max_length of 1000 characters" in payload["error"]["message"]
+    assert "Tool calls and results are not truncated" in payload["error"]["message"]
+    assert "Reduce the conversation or tool-result size" in payload["error"]["message"]
+    assert "private-tool-data" not in response.text
+    assert "private-tool-data" not in caplog.text
+    assert model.inference_count == 0
+
+
+def test_chat_completion_accepts_tool_choice_for_single_call_without_user_messages():
+    """``single_call`` enabled with no ``user_messages`` still surfaces tool calls normally."""
+    from nemoguardrails.rails.llm.options import GenerationResponse
+
+    mock_rails = AsyncMock()
+    mock_rails.generate_async.return_value = GenerationResponse(response=[{"role": "assistant", "content": "ok"}])
+    mock_rails.config.colang_version = "1.0"
+    mock_rails.config.passthrough = None
+    mock_rails.config.user_messages = {}
+    mock_rails.config.rails.dialog.single_call.enabled = True
+
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=mock_rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": "Weather?"}],
+                "tool_choice": "auto",
+                "guardrails": {"config_id": "with_custom_llm"},
+            },
+        )
+
+    assert response.status_code == 200
+
+
+def test_chat_completion_rejects_tool_choice_for_single_call_with_user_messages():
+    """``single_call`` with non-empty ``user_messages`` still rejects tool calls.
+
+    The canonical-form branch of ``generate_intent_steps_message`` never surfaces
+    tool calls, so the dialog-flow rejection must still apply here.
+    """
     mock_rails = AsyncMock()
     mock_rails.config.colang_version = "1.0"
     mock_rails.config.passthrough = None
+    mock_rails.config.user_messages = {"express greeting": ["hello"]}
+    mock_rails.config.rails.dialog.single_call.enabled = True
 
     with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=mock_rails)):
         response = client.post(
@@ -854,7 +1061,7 @@ def test_chat_completion_rejects_tool_choice_without_passthrough():
         )
 
     assert response.status_code == 422
-    assert "passthrough" in response.json()["error"]["message"].lower()
+    assert "dialog flows" in response.json()["error"]["message"].lower()
 
 
 def test_chat_completion_rejects_tools_with_streaming_even_in_passthrough():
@@ -862,6 +1069,8 @@ def test_chat_completion_rejects_tools_with_streaming_even_in_passthrough():
     mock_rails = AsyncMock()
     mock_rails.config.colang_version = "1.0"
     mock_rails.config.passthrough = True
+    mock_rails.config.user_messages = {}
+    mock_rails.config.rails.dialog.single_call.enabled = False
 
     tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
 
@@ -878,7 +1087,7 @@ def test_chat_completion_rejects_tools_with_streaming_even_in_passthrough():
         )
 
     assert response.status_code == 422
-    assert "passthrough" in response.json()["error"]["message"].lower()
+    assert "non-streaming" in response.json()["error"]["message"].lower()
 
 
 def test_chat_completion_returns_tool_calls():
@@ -1677,3 +1886,46 @@ def test_list_models_upstream_missing_data_key():
     assert response.status_code == 200
     data = response.json()
     assert data["data"] == []
+
+
+@pytest.mark.parametrize("passthrough", [False, True])
+def test_chat_completion_tool_call_rail_block_omits_rejected_calls(passthrough):
+    """Return a refusal with a stop finish reason and no rejected tool calls in either passthrough mode."""
+    from nemoguardrails.types import LLMResponse, ToolCall, ToolCallFunction
+
+    config = RailsConfig.from_content(
+        yaml_content=json.dumps(
+            {"models": [], "passthrough": passthrough, "rails": {"tool_call": {"flows": ["block calls"]}}}
+        ),
+        colang_content="""
+define flow block calls
+  bot refuse call
+  abort
+
+define bot refuse call
+  "Tool call rejected."
+""",
+    )
+    model = FakeLLMModel(
+        llm_responses=[
+            LLMResponse(
+                content="",
+                tool_calls=[ToolCall(id="call_weather", function=ToolCallFunction(name="weather", arguments={}))],
+            )
+        ]
+    )
+    rails = LLMRails(config, llm=model)
+    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=rails)):
+        response = client.post(
+            "/v1/chat/completions",
+            json={
+                "model": "test-model",
+                "messages": [{"role": "user", "content": "Weather?"}],
+                "guardrails": {"config_id": "with_custom_llm"},
+            },
+        )
+    assert response.status_code == 200
+    choice = response.json()["choices"][0]
+    assert choice["finish_reason"] == "stop"
+    assert choice["message"] == {"role": "assistant", "content": "Tool call rejected."}
+    assert model.inference_count == 1
