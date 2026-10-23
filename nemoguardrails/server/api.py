@@ -51,7 +51,11 @@ from nemoguardrails.guardrails.iorails import IORails
 from nemoguardrails.guardrails.model_engine import ModelEngineError
 from nemoguardrails.http.errors import HTTPClientError
 from nemoguardrails.llm.call import _prepend_think_tags
-from nemoguardrails.llm.clients._errors import build_error_payload, normalize_error_status
+from nemoguardrails.llm.clients._errors import (
+    build_error_payload,
+    build_streaming_error_payload,
+    normalize_error_status,
+)
 from nemoguardrails.llm.models.initializer import ModelInitializationError
 from nemoguardrails.rails.llm.config import Model
 from nemoguardrails.rails.llm.options import GenerationResponse, RailStatus, ToolViolation
@@ -89,6 +93,7 @@ from nemoguardrails.server.schemas.utils import (
     resolve_tool_calls,
     warn_if_thread_history_invalid_for_tool_use,
 )
+from nemoguardrails.types import ToolCallChunk, ToolCallDeltaChunk
 
 try:
     from chainlit.utils import mount_chainlit as _mount_chainlit
@@ -550,16 +555,16 @@ class ChunkError(BaseModel):
 
 
 async def _prepend_stream_chunk(
-    first_chunk: Union[str, dict],
-    stream_iterator: AsyncIterator[Union[str, dict]],
-) -> AsyncIterator[Union[str, dict]]:
+    first_chunk: Union[str, dict, ToolCallChunk, ToolCallDeltaChunk],
+    stream_iterator: AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]],
+) -> AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]]:
     yield first_chunk
     async for chunk in stream_iterator:
         yield chunk
 
 
 async def _format_streaming_response(
-    stream_iterator: AsyncIterator[Union[str, dict]], model_name: str
+    stream_iterator: AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]], model_name: str
 ) -> AsyncIterator[str]:
     """
     Format streaming chunks from LLMRails.stream_async() as SSE events.
@@ -586,12 +591,15 @@ async def _format_streaming_response(
             else:
                 yield format_streaming_chunk_as_sse(processed_chunk, model, chunk_id)
 
+    except StreamingNotSupportedError as exc:
+        yield f"data: {build_streaming_error_payload(exc)}\n\n"
+
     finally:
         # Always send [DONE] event when stream ends
         yield "data: [DONE]\n\n"
 
 
-def process_chunk(chunk: Any) -> Union[Any, ChunkError]:
+def process_chunk(chunk: Any) -> Union[Any, ChunkError, ToolCallChunk, ToolCallDeltaChunk]:
     """
     Processes a single chunk from the stream.
 
@@ -600,8 +608,11 @@ def process_chunk(chunk: Any) -> Union[Any, ChunkError]:
         model: The model name (not used in processing but kept for signature consistency).
 
     Returns:
-        Union[Any, StreamingError]: StreamingError instance for errors or the original chunk.
+        A ChunkError instance for terminal errors, or the original text or structured event.
     """
+    if isinstance(chunk, (ToolCallChunk, ToolCallDeltaChunk)):
+        return chunk
+
     # Convert chunk to string for JSON parsing if needed
     chunk_str = chunk if isinstance(chunk, str) else json.dumps(chunk) if isinstance(chunk, dict) else str(chunk)
 

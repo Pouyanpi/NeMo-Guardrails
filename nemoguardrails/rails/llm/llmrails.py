@@ -107,7 +107,7 @@ from nemoguardrails.rails.llm.utils import (
     get_history_cache_key,
 )
 from nemoguardrails.streaming import END_OF_STREAM, StreamingHandler
-from nemoguardrails.types import LLMModel
+from nemoguardrails.types import LLMModel, ToolCallChunk, ToolCallDeltaChunk
 from nemoguardrails.utils import (
     get_or_create_event_loop,
     new_event_dict,
@@ -1033,6 +1033,11 @@ class LLMRails(BaseGuardrails):
             log.warning("No main LLM specified in the config and no LLM provided via constructor.")
 
         if streaming_handler:
+            tool_call_rails_enabled = self.config.rails.tool_call.flows and (
+                gen_options is None or gen_options.rails.tool_call
+            )
+            if self.config.rails.output.flows or tool_call_rails_enabled:
+                streaming_handler.allow_tool_calls = False
             streaming_handler_var.set(streaming_handler)
 
         # Initialize the object with additional explanation information.
@@ -1411,9 +1416,9 @@ class LLMRails(BaseGuardrails):
         options: Optional[Union[dict, GenerationOptions]] = None,
         state: Optional[Union[dict, State]] = None,
         include_metadata: Literal[False] = False,
-        generator: Optional[AsyncIterator[str]] = None,
+        generator: Optional[AsyncIterator[Union[str, ToolCallChunk, ToolCallDeltaChunk]]] = None,
         include_generation_metadata: Optional[bool] = None,
-    ) -> AsyncIterator[str]: ...
+    ) -> AsyncIterator[Union[str, ToolCallChunk, ToolCallDeltaChunk]]: ...
 
     @overload
     def stream_async(
@@ -1423,9 +1428,9 @@ class LLMRails(BaseGuardrails):
         options: Optional[Union[dict, GenerationOptions]] = None,
         state: Optional[Union[dict, State]] = None,
         include_metadata: Literal[True] = ...,
-        generator: Optional[AsyncIterator[str]] = None,
+        generator: Optional[AsyncIterator[Union[str, ToolCallChunk, ToolCallDeltaChunk]]] = None,
         include_generation_metadata: Optional[bool] = None,
-    ) -> AsyncIterator[Union[str, dict]]: ...
+    ) -> AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]]: ...
 
     def stream_async(
         self,
@@ -1434,9 +1439,9 @@ class LLMRails(BaseGuardrails):
         options: Optional[Union[dict, GenerationOptions]] = None,
         state: Optional[Union[dict, State]] = None,
         include_metadata: Optional[bool] = False,
-        generator: Optional[AsyncIterator[str]] = None,
+        generator: Optional[AsyncIterator[Union[str, ToolCallChunk, ToolCallDeltaChunk]]] = None,
         include_generation_metadata: Optional[bool] = None,
-    ) -> AsyncIterator[Union[str, dict]]:
+    ) -> AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]]:
         """Simplified interface for getting directly the streamed tokens from the LLM."""
 
         if include_generation_metadata is not None:
@@ -1515,7 +1520,11 @@ class LLMRails(BaseGuardrails):
                 async for chunk in base_iterator:
                     if chunk is not None:
                         yield chunk
-            finally:
+            except BaseException:
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+                raise
+            else:
                 await task
 
         return wrapped_iterator()
@@ -1861,7 +1870,7 @@ class LLMRails(BaseGuardrails):
 
     async def _run_output_rails_in_streaming(
         self,
-        streaming_handler: AsyncIterator[str],
+        streaming_handler: AsyncIterator[Union[str, dict, ToolCallChunk, ToolCallDeltaChunk]],
         output_rails_streaming_config: OutputRailsStreamingConfig,
         prompt: Optional[str] = None,
         messages: Optional[List[dict]] = None,
