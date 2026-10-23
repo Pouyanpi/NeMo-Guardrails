@@ -75,7 +75,7 @@ from nemoguardrails.server.exception_handlers import (
     tool_conversation_too_long_error_handler,
     validation_error_handler,
 )
-from nemoguardrails.server.metrics import shutdown_metrics_exporter, start_metrics_exporter
+from nemoguardrails.server.metrics import running_metrics_exporter
 from nemoguardrails.server.schemas.openai import (
     GuardrailCheckRequest,
     GuardrailCheckResponse,
@@ -146,20 +146,19 @@ async def lifespan(app: GuardrailsApp):
 
     The exporter starts before anything can construct a rails instance so the
     first IORails metric lands on a real MeterProvider (a no-op unless
-    NEMO_GUARDRAILS_SERVER_METRICS_EXPORTER is set, idempotent when the CLI
-    already started it) and is released even when startup fails inside
-    :func:`_server_lifespan`, for example on a malformed challenges.json.
+    NEMO_GUARDRAILS_SERVER_METRICS_EXPORTER is set).  An exporter already
+    running is reused: one started directly, as the CLI does, is left for its
+    starter to stop, and one a lifespan started stops as the last lifespan
+    holding it exits, even when startup fails inside :func:`_server_lifespan`,
+    for example on a malformed challenges.json.
     """
     from nemoguardrails.telemetry import DeploymentTypeEnum, set_deployment_type
 
     set_deployment_type(DeploymentTypeEnum.API.value)
 
-    start_metrics_exporter()
-    try:
+    with running_metrics_exporter():
         async with _server_lifespan(app):
             yield
-    finally:
-        shutdown_metrics_exporter()
 
 
 @asynccontextmanager
