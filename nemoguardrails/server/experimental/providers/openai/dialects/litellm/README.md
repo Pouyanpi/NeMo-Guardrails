@@ -1,5 +1,8 @@
 # LiteLLM Chat dialect
 
+For Responses, see the [LiteLLM Responses dialect](responses.md), which has
+its own supported boundary and compatibility evidence.
+
 This experimental dialect applies the `single_text.v1` guardrail profile to
 reviewed LiteLLM Chat Completions wire shapes. Typed Python declarations in
 [chat_completions.py](chat_completions.py) and [stream.py](stream.py) are
