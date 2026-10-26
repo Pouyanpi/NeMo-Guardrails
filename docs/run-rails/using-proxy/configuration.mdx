@@ -22,20 +22,22 @@ the same provider operation.
 version: 1
 rails_configs:
   - id: standard
-    config_path: ./rails/standard
+    config_path: ./rails
 providers:
   - provider: openai
-    instance_id: gateway
-    base_url: https://gateway.example/v1
-    mount_path: /gateway
+    instance_id: openai
+    base_url: https://api.openai.com/v1
+    mount_path: /openai
     operations: [chat_completions, responses]
-    dialect: litellm
     rails_config_id: standard
 ```
 
-This mounts guarded operations at `/gateway/v1/chat/completions` and
-`/gateway/v1/responses`, forwarding to the configured gateway. Remove `dialect`
-to select the native bindings. The hostname does not determine compatibility.
+Save this manifest beside the quickstart's `rails` directory. It mounts native
+OpenAI operations at `/openai/v1/chat/completions` and `/openai/v1/responses`.
+Use the same key and model as the quickstart, with those mounted client paths.
+For a verified LiteLLM service, change `base_url` to its deployed API base and
+set `dialect: litellm`. Do not apply that dialect to OpenAI itself; a hostname
+does not determine compatibility.
 
 `instance_id` is the application's identity for this deployment declaration;
 `mount_path` determines how incoming requests reach it. A model name inside a

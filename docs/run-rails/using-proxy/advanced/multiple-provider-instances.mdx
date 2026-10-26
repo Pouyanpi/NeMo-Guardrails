@@ -8,30 +8,47 @@ content:
 ## Mount multiple provider instances
 
 Copy the [quickstart example](/run-guardrailed-inference/using-proxy/quickstart)
-and save this as `proxy-multiple.yaml` beside its `rails` directory. Replace
-the gateway URL and select its verified dialect. Declare unique instance IDs
-and local mounts:
+and save this as `proxy-multiple.yaml` beside its `rails` directory. Both
+instances use OpenAI's native bindings and the same client credentials/model
+as the quickstart. Unique mounts select different Rails configurations:
 
 ```yaml
 version: 1
 rails_configs:
   - id: standard
     config_path: ./rails
+  - id: strict
+    config_path: ./strict-rails
 providers:
   - provider: openai
-    instance_id: direct
-    mount_path: /direct
+    instance_id: standard
+    mount_path: /standard
     base_url: https://api.openai.com/v1
     operations: [chat_completions, responses]
     rails_config_id: standard
   - provider: openai
-    instance_id: gateway
-    mount_path: /gateway
-    base_url: https://gateway.example/v1
-    dialect: litellm
+    instance_id: strict
+    mount_path: /strict
+    base_url: https://api.openai.com/v1
     operations: [chat_completions, responses]
-    rails_config_id: standard
+    rails_config_id: strict
 ```
+
+### Configure different Rails policies
+
+From the deployment directory, create the second Rails configuration:
+
+```bash
+cp -R rails strict-rails
+```
+
+In `strict-rails/config.yml`, append `- '(?i)\brestricted\b'` to
+`rails.config.regex_detection.input.patterns`. Preserve the existing email
+pattern, input/output flows and streaming settings. The strict policy now
+blocks the word `restricted` as well as email addresses. The standard policy
+keeps the quickstart checks.
+
+### Start and compare the mounts
 
 From that deployment directory, with the library environment active:
 
@@ -41,9 +58,10 @@ python -m nemoguardrails.server.experimental inspect proxy-multiple.yaml
 python -m nemoguardrails.server.experimental serve proxy-multiple.yaml
 ```
 
-Requests to `/direct/v1/chat/completions` use the direct instance; requests to
-`/gateway/v1/chat/completions` use the gateway instance. Each instance can select
-its own dialect and Rails entry. Guarded routes retain ownership over the
+Requests to `/standard/v1/chat/completions` use the standard policy; requests to
+`/strict/v1/chat/completions` use the strict policy. Both forward allowed requests
+to OpenAI. Each instance can independently select its upstream, dialect and
+Rails entry. Guarded routes retain ownership over the
 provider catch-all forwarding routes.
 
 `instance_id` identifies the instance internally. It does not automatically
@@ -61,10 +79,12 @@ namespaces such as `/providers/direct` and `/providers/gateway` when combining
 with a root instance. The two non-root mounts above do not require a root instance.
 
 Send the [quickstart Chat request](/run-guardrailed-inference/using-proxy/quickstart#send-a-buffered-request)
-to each mounted path, using the destination's model ID and credentials.
-Compare the upstream reached and Rails selection for both buffered and streamed
-requests. An email-address input should block before either upstream is called
-with the bundled regex configuration.
+to each mounted path. Use the same `OPENAI_API_KEY` and `gpt-5.4-mini` model.
+With input `restricted`, the strict mount returns `content_blocked` before
+dispatch; the standard mount passes input inspection and calls OpenAI. With
+`Hello!`, both can return accepted responses. Repeat in buffered and streaming
+modes. Generated answers vary and remain subject to output checks. An
+email-address input blocks before dispatch through either mount.
 
 ## Keep one public route
 
@@ -74,8 +94,8 @@ path to the selected provider mount:
 ```text
 client /v1/chat/completions
   → gateway
-    → proxy /direct/v1/chat/completions → service A
-    → proxy /gateway/v1/chat/completions → service B
+    → proxy /standard/v1/chat/completions → OpenAI, standard policy
+    → proxy /strict/v1/chat/completions → OpenAI, strict policy
 ```
 
 Alternatively, each destination can have a separate proxy deployment exposing
@@ -119,7 +139,7 @@ all instances share their application's HTTP client and checker owners.
 ## Prefix routes and avoid collisions
 
 Set application `path_prefix: /guarded` to place the example's operations under
-`/guarded/direct/v1/...` and `/guarded/gateway/v1/...`. This local prefix does not
+`/guarded/standard/v1/...` and `/guarded/strict/v1/...`. This local prefix does not
 become part of the upstream base URL. IDs and mounts must be unique; construction
 validates guarded, reserved, local and mapped-upstream ownership before serving.
 

@@ -26,15 +26,37 @@ applications with different commands and configuration contracts.
 [Run the proxy](/run-guardrailed-inference/using-proxy/quickstart), send a request, and see input blocked before
 inference using the bundled example. Then choose your next task:
 
-| Task | Guide |
-| --- | --- |
-| Select upstreams, operations, dialects, and Rails | [Configuration](/run-guardrailed-inference/using-proxy/configuration) |
-| Understand profiles, current provider coverage, and stream windows | [Providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming) |
-| Review or export the inspection boundary | [Guard contracts](/run-guardrailed-inference/using-proxy/guard-contracts) |
-| Construct or embed a Python application | [Python integration](/run-guardrailed-inference/using-proxy/python-integration) |
-| Choose replicas, gateways, embedding or sidecars | [Deployment](/run-guardrailed-inference/using-proxy/deployment) |
-| Diagnose startup, request, streaming, and cleanup failures | [Troubleshooting](/run-guardrailed-inference/using-proxy/troubleshooting) |
-| Understand system boundaries, inspection coverage, and tradeoffs | [Architecture](/run-guardrailed-inference/using-proxy/architecture) |
+<Cards>
+
+<Card title="Quickstart" href="/run-guardrailed-inference/using-proxy/quickstart">
+Start with OpenAI, then call the proxy from Shell or Python.
+</Card>
+
+<Card title="Guard Contracts" href="/run-guardrailed-inference/using-proxy/guard-contracts">
+Review which content is guarded, constrained or opaque.
+</Card>
+
+<Card title="Configuration" href="/run-guardrailed-inference/using-proxy/configuration">
+Select upstreams, operation bindings and Rails configurations.
+</Card>
+
+<Card title="Python Integration" href="/run-guardrailed-inference/using-proxy/python-integration">
+Construct an application or embed it in an ASGI host.
+</Card>
+
+<Card title="Deployment" href="/run-guardrailed-inference/using-proxy/deployment">
+Plan replicas, access controls, readiness and shutdown.
+</Card>
+
+<Card title="Troubleshooting" href="/run-guardrailed-inference/using-proxy/troubleshooting">
+Diagnose startup, request, streaming and cleanup failures.
+</Card>
+
+</Cards>
+
+Check [providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming)
+for accepted shapes and window settings, or read the
+[architecture overview](/run-guardrailed-inference/using-proxy/architecture).
 
 The architecture section also covers the [request lifecycle](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle)
 and [framework internals](/run-guardrailed-inference/using-proxy/architecture/framework-internals).

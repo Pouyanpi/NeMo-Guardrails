@@ -68,7 +68,7 @@ when you have established how the new field should be handled.
 
 ## Streaming is delayed or ends with an error
 
-Reproduce with `curl -N -i` using the [streaming request](/run-guardrailed-inference/using-proxy/quickstart#request-a-stream-or-use-responses).
+Reproduce with `curl -N -i` using the [streaming request](/run-guardrailed-inference/using-proxy/quickstart#stream-output).
 `-N` disables curl's output buffering; `-i` shows when response headers arrive.
 If your deployment permits direct access, compare the same synthetic request
 through the ingress and directly to the proxy to isolate gateway buffering.
@@ -83,8 +83,6 @@ through the ingress and directly to the proxy to isolate gateway buffering.
 | `upstream_stream_failed` | Investigate upstream body delivery and read/idle timeouts. Compare upstream and ingress behavior with the same request. |
 | A late block follows visible text | Earlier approved windows cannot be retracted. Define how the application presents partial output and stream errors. |
 
-The [offline fixture](/run-guardrailed-inference/using-proxy/quickstart#see-output-blocking-without-a-model) gives a
-deterministic example of HTTP 200 followed by an output-blocking SSE error.
 Accepted upstream headers do not validate the event body; even the first event
 can fail after downstream headers are sent. See [streaming lifecycle](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle#streaming-errors-and-cleanup)
 for release and cleanup ordering.
@@ -95,7 +93,6 @@ Exercise disconnect behavior through the actual ingress using a stream long
 enough to interrupt. Start the request with `curl -N`, interrupt it, and observe
 the upstream connection and proxy cleanup diagnostics. An in-process ASGI test
 cannot establish how sockets, ingress buffering, and disconnect propagation behave.
-Do not assume that the fixed, short offline response is sufficient for this test.
 
 These warning messages identify different cleanup owners:
 

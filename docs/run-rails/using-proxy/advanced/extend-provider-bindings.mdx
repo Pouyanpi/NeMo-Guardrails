@@ -16,6 +16,12 @@ the proxy preserves it without inspecting its contents. It extends buffered
 responses only; streaming continues to use the existing Chat event binding.
 New content channels need corresponding extraction and checking support.
 
+This walkthrough requires a gateway that actually returns the custom field.
+`https://gateway.example/v1` marks that deployment-specific URL; replace it
+with your gateway's API base and use its model ID and credentials. Ordinary
+OpenAI does not return `gateway_trace_id`. The verification tests later on this
+page supply controlled responses and need no gateway or provider calls.
+
 ## Declare and bind the field
 
 Use the active library environment from the [quickstart](/run-guardrailed-inference/using-proxy/quickstart). Save this

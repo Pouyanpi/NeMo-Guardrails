@@ -30,8 +30,8 @@ config = ProxyConfig(
     providers=(
         ProviderConfig(
             provider="openai",
-            instance_id="gateway",
-            base_url="https://gateway.example/v1",
+            instance_id="openai",
+            base_url="https://api.openai.com/v1",
             operations=("chat_completions", "responses"),
             rails_config_id="standard",
         ),
@@ -39,7 +39,7 @@ config = ProxyConfig(
 )
 ```
 
-Replace the upstream URL in that file. Create `proxy_app.py` beside it:
+This uses the same OpenAI upstream as the quickstart. Create `proxy_app.py` beside it:
 
 ```python
 from nemoguardrails.server.experimental.application import create_proxy_application
@@ -49,8 +49,9 @@ from proxy_config import config
 app = create_proxy_application(config)
 ```
 
-Set `dialect="litellm"` in `proxy_config.py` if required. Run from the
-repository root:
+Run from the repository root, then use the
+[quickstart requests](/run-guardrailed-inference/using-proxy/quickstart#send-a-buffered-request)
+with the same `OPENAI_API_KEY` and model:
 
 ```bash
 uvicorn proxy_app:app --host 127.0.0.1 --port 8000
@@ -152,8 +153,8 @@ verify its rejection boundary, and export its contract. For a new endpoint:
    [exported contract](/run-guardrailed-inference/using-proxy/guard-contracts) for representable declarations.
 
 For direct composition, bypass the built-in `ProxyConfig` selection while using
-the same factory. This can also replace `proxy_app.py`; supply the real upstream
-URL and keep the copied Rails directory:
+the same factory. This can also replace `proxy_app.py`; keep the copied Rails directory and
+use the same OpenAI requests:
 
 ```python
 from pathlib import Path
@@ -164,8 +165,8 @@ from nemoguardrails.server.experimental.providers.openai.integration import crea
 app = create_proxy_application(
     providers=(
         create_openai_integration(
-            instance_id="gateway",
-            base_url="https://gateway.example/v1",
+            instance_id="openai",
+            base_url="https://api.openai.com/v1",
         ),
     ),
     rails_configs=(ConfigEntry("standard", Path("proxy-example/rails")),),

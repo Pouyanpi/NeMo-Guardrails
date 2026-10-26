@@ -1,26 +1,26 @@
 ---
 title: "Run Guardrails Proxy"
 sidebar-title: "Quickstart"
-description: "Start a guarded endpoint, send buffered and streaming requests, and see an input blocked before inference."
+description: "Start a proxy for OpenAI, send buffered and streaming requests from Shell or Python, and block input before inference."
 content:
   type: "get_started"
 ---
 
-Use the experimental proxy in the NVIDIA NeMo Guardrails library to put input
-and output checks in front of a model
-service. The example selects Chat Completions and Responses and uses local regex
-rails to detect common email-address patterns. You can then replace those rails
-with the checks your application needs. The current bindings accept one user
-text input and one assistant text target; conversation histories, tools, and
-multimodal content are outside their [guarded scope](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles).
+Put input and output checks in front of OpenAI Chat Completions and Responses.
+This guide uses the NVIDIA NeMo Guardrails library's experimental proxy, native
+OpenAI bindings and bundled regex Rails configuration. The regex checks run
+without a detector model or service; accepted generation requests go to OpenAI.
+
+You need Python 3.10–3.13, [uv](https://docs.astral.sh/uv/), and an OpenAI API
+key with access to [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
+The examples use `gpt-5.4-mini` with one user text input and one assistant text
+target. Conversation histories, tools and multimodal content are outside the
+current [guarded scope](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles).
 
 ## Install
 
-You need Python 3.10–3.13 and [uv](https://docs.astral.sh/uv/). You can start with
-the local demonstration upstream or connect a service matching one of the
-[built-in bindings](/run-guardrailed-inference/using-proxy/providers-and-streaming).
-Use a library build that includes `nemoguardrails.server.experimental` and install
-its `server` extra. For a source checkout, run from the repository root:
+Use a library build that includes `nemoguardrails.server.experimental` and its
+`server` extra. From a source checkout's repository root:
 
 ```bash
 uv sync --locked --extra server
@@ -29,42 +29,21 @@ cp -R nemoguardrails/server/experimental/examples/basic proxy-example
 cd proxy-example
 ```
 
-These shell commands activate the library environment and enter
-your deployment-owned copy. All proxy commands below run from this directory;
-they do not need a `uv run` prefix. The copy contains two separate configurations:
-
-```text
-proxy-example/
-  proxy.yaml          deployment: upstreams, operations, Rails selection
-  rails/config.yml    checks: input, output, streaming windows
-```
-
 For an installed library wheel, include `[server]` when installing that artifact.
-Activate its environment and copy the installed resources outside the checkout:
+Activate its environment, then copy the installed resources outside the checkout:
 
 ```bash
 python -c 'from importlib.resources import files; from shutil import copytree; copytree(files("nemoguardrails.server.experimental") / "examples/basic", "proxy-example")'
 cd proxy-example
 ```
 
-All commands below use that active environment. A separate proxy distribution
-or checkout is not required for installed execution. An older
-library release may not include this experimental module.
+A separate proxy distribution is not required. An older library release may
+not include this experimental module. The `server` extra includes the OpenAI
+Python SDK used in the Python request examples.
 
-## Choose how to try it
+## Connect to OpenAI
 
-| Path | What you need | Start here |
-| --- | --- | --- |
-| Try blocking locally | The installed environment and copied example; no model or API key | [Run the offline demonstration](#see-output-blocking-without-a-model). Skip the real-upstream setup below. |
-| Connect your upstream | A compatible model service and any required provider credentials | [Configure your upstream](#connect-your-upstream), then send accepted and blocked requests. |
-
-Both paths use the same proxy and local regex checks. The offline fixture returns
-fixed assistant text so you can observe buffered and streaming output blocking.
-
-## Connect your upstream
-
-Edit `proxy.yaml`. Replace its local demonstration `base_url` with your
-model service or gateway's API base. For example:
+The copied `proxy.yaml` selects OpenAI and the sibling Rails directory:
 
 ```yaml
 version: 1
@@ -73,24 +52,26 @@ rails_configs:
     config_path: ./rails
 providers:
   - provider: openai
-    instance_id: local
+    instance_id: openai
     base_url: https://api.openai.com/v1
     operations: [chat_completions, responses]
     rails_config_id: standard
 ```
 
-For a LiteLLM upstream, add `dialect: litellm` to the provider entry.
-Changing a hostname or model name does not select a dialect. Check the binding's
-coverage against the requests your application sends and verify the deployed
-gateway's actual protocol, build and backend; a URL does not identify its dialect.
+Keep `proxy.yaml` beside `rails/config.yml`, outside the Rails directory. Relative
+Rails paths resolve against the manifest. Omit `dialect` to use native OpenAI
+bindings. See [providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming)
+when connecting a different service; its hostname does not establish its dialect.
 
-Keep credentials outside the manifest. The default transport forwards the
-caller's upstream authorization header; generation is forwarded over HTTP rather
-than through a provider SDK or the library's model framework. Rails that use external
-models or services have their own dependencies and credentials. The bundled
-regex example needs neither a detector model nor a detector API key.
+The Rails configuration enables input and output regex checks for common
+email-address patterns. Generation credentials belong in client request headers,
+outside the manifest. The proxy forwards generation over HTTP; it does not use
+the library's model framework to generate answers. Model/service-backed Rails
+checks have their own dependencies and credentials.
 
 ## Validate and start
+
+With the library environment active, run from `proxy-example`:
 
 ```bash
 python -m nemoguardrails.server.experimental validate proxy.yaml
@@ -98,150 +79,208 @@ python -m nemoguardrails.server.experimental inspect proxy.yaml
 python -m nemoguardrails.server.experimental serve proxy.yaml
 ```
 
-`validate` checks declaration data, paths, and routes. `inspect` shows selected
-bindings, profiles, and limits. Neither command initializes Rails or establishes
-upstream compatibility. `serve` loads every declared Rails configuration before
-accepting traffic at `http://127.0.0.1:8000`.
+`validate` checks declarations, paths and routes. `inspect` describes bindings,
+profiles and limits. Neither initializes Rails or establishes live-provider
+compatibility. `serve` loads every declared Rails configuration before accepting
+traffic at `http://127.0.0.1:8000`.
 
-The launcher also supports `--host`, `--port` and
-`--timeout-graceful-shutdown` on `serve`. Its default request-drain deadline is
-30 seconds; resource cleanup follows draining.
-The listener does not add inbound authentication. Keep it local or configure
-access controls in your [deployment](/run-guardrailed-inference/using-proxy/deployment#credentials-and-access).
+The launcher supports `--host`, `--port` and `--timeout-graceful-shutdown`.
+Its default request-drain deadline is 30 seconds; resource cleanup follows
+draining. It does not authenticate inbound callers. Configure
+[access controls](/run-guardrailed-inference/using-proxy/deployment#credentials-and-access)
+before exposing it beyond a trusted local environment.
 
 ## Send a buffered request
 
-In a second terminal, replace `YOUR_DEPLOYED_MODEL` with your upstream's model ID.
-If authorization is required, set `PROVIDER_API_KEY` to a key you manage locally.
-Omit the authorization header for an unauthenticated upstream.
+Open a second terminal with the same library environment active. Set your own
+OpenAI API key there:
 
 ```bash
+export OPENAI_API_KEY="<your OpenAI API key>"
+```
+
+Choose Shell or Python for each request. Each Python block is a standalone
+script; save it and run it with `python`. The Python client reads
+`OPENAI_API_KEY` and uses `max_retries=0` so these examples do not automatically
+repeat failed requests. Both clients call the proxy, which forwards the bearer
+credential to OpenAI. The bundled Rails checks do not need a server-side key.
+
+### Chat Completions
+
+<CodeBlocks>
+
+```bash title="Shell"
 curl -sS http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $PROVIDER_API_KEY" \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}]}'
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-The proxy checks the input, sends the original accepted request to your upstream,
-checks the selected response text, and returns the accepted response body.
+```python title="Python"
+from openai import OpenAI
 
-## Request a stream or use Responses
-
-For Chat streaming:
-
-```bash
-curl -N http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $PROVIDER_API_KEY" \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
+    completion = client.chat.completions.create(
+        model="gpt-5.4-mini",
+        messages=[{"role": "user", "content": "Hello!"}],
+    )
+    print(completion.choices[0].message.content)
 ```
 
-For Responses:
+</CodeBlocks>
 
-```bash
+The proxy checks the user text, forwards the accepted request to OpenAI,
+checks the assistant text and returns the accepted response. The generated
+wording varies.
+
+### Responses
+
+Responses requires explicit `store: false`. Omission, true, null and non-boolean
+values are rejected before dispatch. Use one nonempty input string:
+
+<CodeBlocks>
+
+```bash title="Shell"
 curl -sS http://127.0.0.1:8000/v1/responses \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $PROVIDER_API_KEY" \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","input":"Hello!","store":false}'
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-5.4-mini","input":"Hello!","store":false}'
 ```
 
-Responses requires explicit `"store": false`; omission, true, null and non-boolean
-values are rejected. It also accepts `"stream": true` within its current binding. Streaming
-output is checked in windows; the example can hold short answers until
-completion. See [streaming windows](/run-guardrailed-inference/using-proxy/providers-and-streaming#streaming-windows)
-for tuning and release behavior.
+```python title="Python"
+from openai import OpenAI
+
+with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
+    response = client.responses.create(
+        model="gpt-5.4-mini",
+        input="Hello!",
+        store=False,
+    )
+    print(response.output_text)
+```
+
+</CodeBlocks>
+
+## Stream output
+
+Both selected operations also support SSE streaming. Output is checked in
+windows before release. The bundled settings can hold short answers until
+completion; see [streaming windows](/run-guardrailed-inference/using-proxy/providers-and-streaming#streaming-windows).
+
+### Stream Chat Completions
+
+<CodeBlocks>
+
+```bash title="Shell"
+curl -N http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+```
+
+```python title="Python"
+from openai import OpenAI
+
+with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
+    with client.chat.completions.create(
+        model="gpt-5.4-mini",
+        messages=[{"role": "user", "content": "Hello!"}],
+        stream=True,
+    ) as stream:
+        for chunk in stream:
+            if chunk.choices:
+                print(chunk.choices[0].delta.content or "", end="", flush=True)
+    print()
+```
+
+</CodeBlocks>
+
+### Stream Responses
+
+<CodeBlocks>
+
+```bash title="Shell"
+curl -N http://127.0.0.1:8000/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-5.4-mini","input":"Hello!","store":false,"stream":true}'
+```
+
+```python title="Python"
+from openai import OpenAI
+
+with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
+    with client.responses.create(
+        model="gpt-5.4-mini",
+        input="Hello!",
+        store=False,
+        stream=True,
+    ) as stream:
+        for event in stream:
+            if event.type == "response.output_text.delta":
+                print(event.delta, end="", flush=True)
+            elif event.type in {"error", "response.failed", "response.incomplete"}:
+                raise RuntimeError(event.model_dump_json())
+    print()
+```
+
+</CodeBlocks>
+
+Consume the complete stream, including errors and terminal events. A failure
+after HTTP 200 cannot change that status; Shell displays the SSE events, and
+the Python SDK can raise an API error during iteration. Earlier approved text
+cannot be retracted. See [stream outcomes](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle#streaming-errors-and-cleanup).
 
 ## See input blocking
 
-```bash
+The bundled policy rejects this input before sending a generation request to
+OpenAI:
+
+<CodeBlocks>
+
+```bash title="Shell"
 curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -H "Authorization: Bearer $PROVIDER_API_KEY" \
-  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Contact person@example.com"}]}'
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Contact person@example.com"}]}'
 ```
 
-This returns HTTP 400 with error code `content_blocked` before any generation
-request reaches the upstream. The same input rule applies to the selected
-Responses input text.
+```python title="Python"
+from openai import BadRequestError, OpenAI
 
-## See output blocking without a model
-
-Use the bundled local fixture to reproduce output blocking. It always returns
-`Contact person@example.com` as assistant text, in buffered or streamed Chat
-format. This is a demonstration upstream, not an inference service; it needs no
-model, provider SDK, or API key.
-
-If a proxy is already running, stop it. From the copied `proxy-example`
-deployment directory, copy `proxy.yaml` to
-`proxy-offline.yaml` and change the copy's provider entry to:
-
-```yaml
-  - provider: openai
-    instance_id: local
-    base_url: http://127.0.0.1:9000/v1
-    operations: [chat_completions]
-    rails_config_id: standard
+with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
+    try:
+        client.chat.completions.create(
+            model="gpt-5.4-mini",
+            messages=[{"role": "user", "content": "Contact person@example.com"}],
+        )
+    except BadRequestError as error:
+        print(error.status_code, error.body)
 ```
 
-Keep its existing `rails_configs` entry and Rails directory. Use the native
-binding by omitting `dialect`. With the installed environment active, start
-the fixture in one terminal:
+</CodeBlocks>
 
-```bash
-uvicorn nemoguardrails.server.experimental.examples.offline_upstream:app --host 127.0.0.1 --port 9000
-```
+Expect HTTP 400 and error code `content_blocked`. The same input rule applies
+to Responses. Output checks are also enabled: matching assistant text is
+withheld, or its pending stream window is blocked. Asking a model to generate
+an address is not a deterministic output-blocking test.
 
-Start the proxy from the deployment directory in another terminal:
-
-```bash
-python -m nemoguardrails.server.experimental validate proxy-offline.yaml
-python -m nemoguardrails.server.experimental serve proxy-offline.yaml
-```
-
-Send a harmless input from a third terminal:
-
-```bash
-curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}]}'
-```
-
-Expect HTTP 400 and error code `content_blocked`. The input passes; the fixture's
-assistant text is blocked and is absent from the returned body.
-
-Repeat with streaming:
-
-```bash
-curl -N -i http://127.0.0.1:8000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
-```
-
-Expect HTTP 200 followed by an SSE error containing `content_blocked`, without
-the email address. The HTTP stream has already started when the output check
-blocks its pending window. In longer streams, earlier approved windows may
-already have reached the caller.
-
-Stop both processes after the demonstration. The fixture exposes only Chat
-Completions; it does not emulate Responses or prove live-service compatibility.
-To use a real model service,
-[configure your upstream](#connect-your-upstream) in `proxy.yaml` and restart
-the proxy with that manifest. Regex checks illustrate configuration and ordering;
-they are not comprehensive PII protection. Edit `rails/config.yml` to choose
-supported checks and any required models or optional integrations.
+Regex checks illustrate configuration and ordering; they are not comprehensive
+PII protection. Choose supported Rails checks for your application. Stop the
+proxy with Ctrl-C when finished.
 
 ## Troubleshoot the first request
 
 | Symptom | Check |
 | --- | --- |
-| Startup cannot find a Rails directory | `config_path` resolves relative to the manifest, not your shell directory. Copy the Rails directory with the manifest. |
-| Validation passes but startup fails | Rails contents, actions, dependencies, and engines load during startup. Declaration validation does not execute them. |
-| Upstream returns an authentication or model error | Use the upstream's model ID and authorization requirements. The proxy does not create models or credentials. |
-| A guarded request or response is rejected | Compare its shape with the selected binding and dialect. The upstream may support content that this binding does not yet inspect. |
-| Streaming output arrives late | Inspect the enabled Rails, streaming window size, and any gateway buffering. The final partial window is released only after it passes. |
+| Startup cannot find a Rails directory | `config_path` resolves against the manifest, not your shell directory. Copy the Rails directory with the manifest. |
+| Validation passes but startup fails | Rails contents, actions, dependencies and engines load during startup. Declaration validation does not execute them. |
+| OpenAI returns an authentication or model error | Check `OPENAI_API_KEY` in the client terminal and access to the model. The proxy does not create credentials or grant model access. |
+| A guarded request or response is rejected | Compare its shape with the selected binding. The provider may support content that the binding does not inspect. |
+| Streaming output arrives late | Inspect the Rails window size and any gateway buffering. Final partial windows release only after checking. |
 
-For error codes, disconnects, and cleanup warnings, use the
-[operator troubleshooting guide](/run-guardrailed-inference/using-proxy/troubleshooting).
-
-Next, [configure provider instances and Rails](/run-guardrailed-inference/using-proxy/configuration), or inspect the
-[guard contract](/run-guardrailed-inference/using-proxy/guard-contracts) describing the selected boundary.
+For error codes, disconnects and cleanup warnings, use the
+[troubleshooting guide](/run-guardrailed-inference/using-proxy/troubleshooting).
+Next, [configure the proxy](/run-guardrailed-inference/using-proxy/configuration),
+[compose a Python application](/run-guardrailed-inference/using-proxy/python-integration),
+or inspect its [guard contract](/run-guardrailed-inference/using-proxy/guard-contracts).

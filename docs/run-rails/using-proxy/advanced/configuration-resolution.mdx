@@ -13,8 +13,10 @@ the resolver returns a registered ID, never a filesystem path.
 
 YAML requires a fixed Rails ID per provider. Python also supports a trusted
 callback. Complete the [Python setup](/run-guardrailed-inference/using-proxy/python-integration#create-an-application),
-then replace `proxy_app.py` with the complete recipe below, set its upstream URL,
-and provide both Rails directories. This recipe builds its own catalog and
+then replace `proxy_app.py` with the complete recipe below and provide both
+Rails directories. Create `proxy-example/strict-rails` using the
+[different-policy setup](/run-guardrailed-inference/using-proxy/advanced/multiple-provider-instances#configure-different-rails-policies).
+This recipe keeps the OpenAI upstream and client setup from the quickstart and
 selects policy using the server-supplied operation identity:
 
 ```python
@@ -26,13 +28,13 @@ from nemoguardrails.server.experimental.rails import ConfigContext
 config = ProxyConfig(
     rails_configs=(
         ConfigEntry("standard", Path("proxy-example/rails")),
-        ConfigEntry("strict", Path("strict-rails")),
+        ConfigEntry("strict", Path("proxy-example/strict-rails")),
     ),
     providers=(
         ProviderConfig(
             provider="openai",
-            instance_id="gateway",
-            base_url="https://gateway.example/v1",
+            instance_id="openai",
+            base_url="https://api.openai.com/v1",
             operations=("chat_completions", "responses"),
         ),
     ),

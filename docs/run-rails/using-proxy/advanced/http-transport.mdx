@@ -52,7 +52,9 @@ The [model-routing example](https://github.com/NVIDIA-NeMo/Guardrails/blob/devel
 selects trusted destinations from model aliases. It preserves non-JSON upload
 streams and encoded URL suffixes, replaces the logical base path, and limits
 JSON reads to 1 MiB by default (`max_json_body_bytes`). Oversized JSON receives
-HTTP 413 before network dispatch. Select destinations and credentials from trusted
+HTTP 413 before network dispatch. The logical `model-router.internal` URL below
+is a dispatch label handled by the injected transport, not a service to deploy.
+Select destinations and credentials from trusted
 configuration. The transport hook does not itself implement model balancing,
 retry semantics, or another provider's dialect.
 
@@ -61,10 +63,11 @@ Rails models or checking services.
 
 ## Route model aliases
 
-For one fixed gateway, set `base_url` directly. When your application needs
+For one fixed upstream, set `base_url` directly. When your application needs
 model-to-destination routing, use a trusted table in a transport. This complete
 Chat-only recipe uses the bundled example implementation; save it as
-`routed_app.py` beside `proxy_config.py` and replace the destination/model:
+`routed_app.py` beside `proxy_config.py`. It maps `public-model` to the same
+OpenAI model used in the quickstart:
 
 ```python
 from pathlib import Path
@@ -77,9 +80,9 @@ from nemoguardrails.server.experimental.providers.openai.integration import crea
 
 routes = {
     "deployment": ModelRoute(
-        base_url=httpx.URL("https://gateway.example/v1"),
-        upstream_model="YOUR_DEPLOYED_MODEL",
-        api_key_environment_variable="GATEWAY_API_KEY",
+        base_url=httpx.URL("https://api.openai.com/v1"),
+        upstream_model="gpt-5.4-mini",
+        api_key_environment_variable="OPENAI_API_KEY",
     ),
 }
 
@@ -93,7 +96,8 @@ app = create_proxy_application(
 )
 ```
 
-Set `GATEWAY_API_KEY` through your deployment's secret management, start
+Set `OPENAI_API_KEY` in the server environment through your deployment's
+secret management, start
 `uvicorn routed_app:app --host 127.0.0.1 --port 8000`, and use model
 `public-model` in the Chat request. Unknown model names return a local error
 without contacting a provider. Requests without a model use the explicit default
