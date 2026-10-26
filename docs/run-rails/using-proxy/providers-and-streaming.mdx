@@ -23,6 +23,12 @@ native binding. The LiteLLM dialect accepts specific gateway field variations
 without requiring the LiteLLM SDK. Check the dialect's coverage against your
 deployed model route, including whether it uses a native or bridged API.
 
+The examples use OpenAI `gpt-6-luna`. Minimal text requests have also been
+verified with `gpt-6.1-sol` and `gpt-5.4-mini` in both operations, buffered and
+streaming, with input and output regex Rails enabled. This verifies those
+exchanges through the native binding; it does not extend the content coverage
+below to the models' other capabilities.
+
 ## Coverage of the shipped profiles
 
 These restrictions describe the current built-in bindings. Check them when
@@ -61,6 +67,42 @@ undo upstream storage. `GET /v1/responses/{response_id}` remains unguarded
 passthrough, including for responses created elsewhere or previously stored.
 Restrict exposed unguarded routes and direct upstream access before using the
 proxy as a policy boundary, especially with application-owned credentials.
+
+## Set reasoning and generation controls
+
+For Chat Completions, use the request's `reasoning_effort` field, such as the
+Python SDK keyword `reasoning_effort="low"`. For Responses, use
+`reasoning: {"effort": "low"}`, or the SDK keyword
+`reasoning={"effort": "low"}`. Keep the supported single-text request shape and
+explicit `store: false` for Responses.
+
+The following efforts passed live native-binding checks with regex input/output
+Rails, in both buffered and streaming modes:
+
+| Model | Chat Completions | Responses |
+| --- | --- | --- |
+| `gpt-6-luna` | `none`, `low`, `medium`, `high`, `xhigh` | `none`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `gpt-6.1-sol` | `low`, `medium`, `high`, `xhigh` | `low`, `medium`, `high`, `xhigh`, `max` |
+
+In those checks, OpenAI rejected `max` for Chat Completions on both models and
+`none` for `gpt-6.1-sol` on either operation. The proxy preserved the original
+HTTP 400 responses. Acceptance by a guard contract does not establish that a
+particular model/operation supports the value. Consult the
+[model parameter guidance](https://developers.openai.com/api/docs/guides/latest-model)
+and verify the deployed endpoint when changing controls.
+
+For `gpt-6-luna`, the combination `temperature: 0.2`, `top_p: 0.9` passed with
+effort `none` and was rejected by OpenAI with effort `medium`. Explicit low
+verbosity also passed: use `verbosity: "low"` for Chat or
+`text: {"verbosity": "low"}` for Responses. These controls are forwarded
+unchanged; they do not configure Rails or expand inspected content.
+
+Responses reasoning `summary`, `generate_summary`, `context` and `mode` remain
+disabled for non-null values in the current binding. Requests for reasoning
+summaries or pro mode fail with HTTP 422 before dispatch. Increasing reasoning
+effort does not enable a separately inspected reasoning-text channel. Leave
+enough token budget for both reasoning and final text; budget exhaustion is
+different from an unsupported parameter or a policy block.
 
 ## Capability profiles
 

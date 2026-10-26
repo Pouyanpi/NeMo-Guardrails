@@ -81,7 +81,7 @@ from nemoguardrails.server.experimental.providers.openai.integration import crea
 routes = {
     "deployment": ModelRoute(
         base_url=httpx.URL("https://api.openai.com/v1"),
-        upstream_model="gpt-5.4-mini",
+        upstream_model="gpt-6-luna",
         api_key_environment_variable="OPENAI_API_KEY",
     ),
 }

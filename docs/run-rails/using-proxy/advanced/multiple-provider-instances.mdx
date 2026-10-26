@@ -79,7 +79,7 @@ namespaces such as `/providers/direct` and `/providers/gateway` when combining
 with a root instance. The two non-root mounts above do not require a root instance.
 
 Send the [quickstart Chat request](/run-guardrailed-inference/using-proxy/quickstart#send-a-buffered-request)
-to each mounted path. Use the same `OPENAI_API_KEY` and `gpt-5.4-mini` model.
+to each mounted path. Use the same `OPENAI_API_KEY` and `gpt-6-luna` model.
 With input `restricted`, the strict mount returns `content_blocked` before
 dispatch; the standard mount passes input inspection and calls OpenAI. With
 `Hello!`, both can return accepted responses. Repeat in buffered and streaming

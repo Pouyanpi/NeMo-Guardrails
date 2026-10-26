@@ -12,8 +12,8 @@ OpenAI bindings and bundled regex Rails configuration. The regex checks run
 without a detector model or service; accepted generation requests go to OpenAI.
 
 You need Python 3.10–3.13, [uv](https://docs.astral.sh/uv/), and an OpenAI API
-key with access to [GPT-5.4 mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
-The examples use `gpt-5.4-mini` with one user text input and one assistant text
+key with access to [GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna).
+The examples use `gpt-6-luna` with one user text input and one assistant text
 target. Conversation histories, tools and multimodal content are outside the
 current [guarded scope](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles).
 
@@ -113,7 +113,7 @@ credential to OpenAI. The bundled Rails checks do not need a server-side key.
 curl -sS http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Hello!"}]}'
+  -d '{"model":"gpt-6-luna","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
 ```python title="Python"
@@ -121,7 +121,7 @@ from openai import OpenAI
 
 with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
     completion = client.chat.completions.create(
-        model="gpt-5.4-mini",
+        model="gpt-6-luna",
         messages=[{"role": "user", "content": "Hello!"}],
     )
     print(completion.choices[0].message.content)
@@ -144,7 +144,7 @@ values are rejected before dispatch. Use one nonempty input string:
 curl -sS http://127.0.0.1:8000/v1/responses \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-5.4-mini","input":"Hello!","store":false}'
+  -d '{"model":"gpt-6-luna","input":"Hello!","store":false}'
 ```
 
 ```python title="Python"
@@ -152,7 +152,7 @@ from openai import OpenAI
 
 with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
     response = client.responses.create(
-        model="gpt-5.4-mini",
+        model="gpt-6-luna",
         input="Hello!",
         store=False,
     )
@@ -175,7 +175,7 @@ completion; see [streaming windows](/run-guardrailed-inference/using-proxy/provi
 curl -N http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+  -d '{"model":"gpt-6-luna","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
 ```
 
 ```python title="Python"
@@ -183,7 +183,7 @@ from openai import OpenAI
 
 with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
     with client.chat.completions.create(
-        model="gpt-5.4-mini",
+        model="gpt-6-luna",
         messages=[{"role": "user", "content": "Hello!"}],
         stream=True,
     ) as stream:
@@ -203,7 +203,7 @@ with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
 curl -N http://127.0.0.1:8000/v1/responses \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-5.4-mini","input":"Hello!","store":false,"stream":true}'
+  -d '{"model":"gpt-6-luna","input":"Hello!","store":false,"stream":true}'
 ```
 
 ```python title="Python"
@@ -211,7 +211,7 @@ from openai import OpenAI
 
 with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
     with client.responses.create(
-        model="gpt-5.4-mini",
+        model="gpt-6-luna",
         input="Hello!",
         store=False,
         stream=True,
@@ -242,7 +242,7 @@ OpenAI:
 curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -d '{"model":"gpt-5.4-mini","messages":[{"role":"user","content":"Contact person@example.com"}]}'
+  -d '{"model":"gpt-6-luna","messages":[{"role":"user","content":"Contact person@example.com"}]}'
 ```
 
 ```python title="Python"
@@ -251,7 +251,7 @@ from openai import BadRequestError, OpenAI
 with OpenAI(base_url="http://127.0.0.1:8000/v1", max_retries=0) as client:
     try:
         client.chat.completions.create(
-            model="gpt-5.4-mini",
+            model="gpt-6-luna",
             messages=[{"role": "user", "content": "Contact person@example.com"}],
         )
     except BadRequestError as error:
