@@ -69,7 +69,8 @@ Python. They must not be accepted as caller-supplied uploads.
 | `rails_config_id` | A declared Rails ID. Required for each provider in YAML. |
 
 Unknown names and conflicting routes are rejected. There is no implicit addition
-of future operations and no automatic dialect detection.
+of future operations and no automatic dialect detection. Declarative upstreams
+must be explicit; provider-specific environment defaults are not used.
 
 Operation selection installs guard bindings. It does not create an HTTP route
 allowlist: unselected operations may still pass through. Enforce an inbound route
@@ -80,7 +81,7 @@ not activate checks disabled in the selected Rails configuration.
 
 Declare each configuration once in `rails_configs`. Several providers can use
 the same `rails_config_id`, or each can choose a different entry. YAML makes a
-fixed selection per provider. Use [Python resolution](/run-guardrailed-inference/using-proxy/python-integration#select-rails-per-request)
+fixed selection per provider. Use [Python resolution](/run-guardrailed-inference/using-proxy/advanced/configuration-resolution)
 when selection depends on authenticated request context or the operation.
 
 A resolver selects one configuration, not a sequence of configurations. All
@@ -171,6 +172,12 @@ Use one UTF-8 YAML document with `version: 1`. The parser rejects duplicate keys
 unknown fields, explicit tags, aliases, anchors, merges, and non-string mapping
 keys. It bounds the document to 1 MiB, depth 32, and 10,000 nodes including keys.
 There are no callback imports or dynamic resolver expressions in YAML.
+
+Python configuration models are frozen and snapshot their input collections.
+An assembled application does not track later edits to a caller's lists or
+manifest. `inspect` includes `routes` for guarded paths and
+`reserved_route_patterns` for rejected aliases. Manifest validation diagnostics
+omit source values and excerpts, but inspection still contains upstream addresses.
 
 For Python path semantics and callbacks, see [Python integration](/run-guardrailed-inference/using-proxy/python-integration).
 For the exact bound content coverage, see [providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming).

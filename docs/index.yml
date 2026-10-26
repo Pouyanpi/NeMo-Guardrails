@@ -489,21 +489,33 @@ navigation:
           - page: Providers and Streaming
             path: run-rails/using-proxy/providers-and-streaming.mdx
             slug: providers-and-streaming
-          - page: Python Integration
-            path: run-rails/using-proxy/python-integration.mdx
-            slug: python-integration
-          - page: Extend a Binding
-            path: run-rails/using-proxy/extend-provider-bindings.mdx
-            slug: extend-provider-bindings
           - page: Guard Contracts
             path: run-rails/using-proxy/guard-contracts.mdx
             slug: guard-contracts
+          - page: Python Integration
+            path: run-rails/using-proxy/python-integration.mdx
+            slug: python-integration
           - page: Deployment
             path: run-rails/using-proxy/deployment.mdx
             slug: deployment
           - page: Troubleshooting
             path: run-rails/using-proxy/troubleshooting.mdx
             slug: troubleshooting
+          - section: Advanced Configuration
+            slug: advanced
+            contents:
+              - page: Rails Configuration Resolution
+                path: run-rails/using-proxy/advanced/configuration-resolution.mdx
+                slug: configuration-resolution
+              - page: HTTP Transport Customization
+                path: run-rails/using-proxy/advanced/http-transport.mdx
+                slug: http-transport
+              - page: Multiple Provider Instances and Routing
+                path: run-rails/using-proxy/advanced/multiple-provider-instances.mdx
+                slug: multiple-provider-instances
+              - page: Extend a Binding
+                path: run-rails/using-proxy/advanced/extend-provider-bindings.mdx
+                slug: extend-provider-bindings
           - section: Architecture
             path: run-rails/using-proxy/architecture/index.mdx
             slug: architecture

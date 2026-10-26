@@ -28,16 +28,27 @@ inference using the bundled example. Then choose your next task:
 
 | Task | Guide |
 | --- | --- |
-| Understand system boundaries, inspection coverage, and tradeoffs | [Architecture](/run-guardrailed-inference/using-proxy/architecture) |
-| Follow validation, checking, streaming release, and cleanup | [Request lifecycle](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle) |
-| Understand framework dependencies and extension boundaries | [Framework internals](/run-guardrailed-inference/using-proxy/architecture/framework-internals) |
 | Select upstreams, operations, dialects, and Rails | [Configuration](/run-guardrailed-inference/using-proxy/configuration) |
 | Understand profiles, current provider coverage, and stream windows | [Providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming) |
 | Review or export the inspection boundary | [Guard contracts](/run-guardrailed-inference/using-proxy/guard-contracts) |
-| Choose mounts, replicas, gateways, or one-route routing | [Deployment](/run-guardrailed-inference/using-proxy/deployment) |
-| Embed the application or customize HTTP dispatch | [Python integration](/run-guardrailed-inference/using-proxy/python-integration) |
+| Construct or embed a Python application | [Python integration](/run-guardrailed-inference/using-proxy/python-integration) |
+| Choose replicas, gateways, embedding or sidecars | [Deployment](/run-guardrailed-inference/using-proxy/deployment) |
 | Diagnose startup, request, streaming, and cleanup failures | [Troubleshooting](/run-guardrailed-inference/using-proxy/troubleshooting) |
-| Add a provider metadata field, test it, and export its contract | [Extend a binding](/run-guardrailed-inference/using-proxy/extend-provider-bindings) |
+| Understand system boundaries, inspection coverage, and tradeoffs | [Architecture](/run-guardrailed-inference/using-proxy/architecture) |
+
+The architecture section also covers the [request lifecycle](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle)
+and [framework internals](/run-guardrailed-inference/using-proxy/architecture/framework-internals).
+
+## Advanced configuration
+
+Use these guides for detailed customization, resource ownership and boundary review:
+
+| Task | Guide |
+| --- | --- |
+| Select Rails from trusted request context | [Rails configuration resolution](/run-guardrailed-inference/using-proxy/advanced/configuration-resolution) |
+| Customize outbound HTTP or route model aliases | [HTTP transport customization](/run-guardrailed-inference/using-proxy/advanced/http-transport) |
+| Configure several mounts, upstreams and policies | [Multiple provider instances](/run-guardrailed-inference/using-proxy/advanced/multiple-provider-instances) |
+| Add a provider metadata field, test it, and export its contract | [Extend a binding](/run-guardrailed-inference/using-proxy/advanced/extend-provider-bindings) |
 
 ## How the pieces fit
 

@@ -43,7 +43,7 @@ Empty or null values have field-specific rules; an empty container is not
 universally interchangeable with null.
 
 For exact accepted fields and nullability, consult the
-[Chat boundary](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/contracts/openai/README.md#guarded-boundary),
+[Chat boundary](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/chat_completions/README.md#guarded-boundary),
 [Responses boundary](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/responses/README.md#supported-content),
 and [bound exports](/run-guardrailed-inference/using-proxy/guard-contracts#inspect-a-contract).
 
@@ -87,7 +87,7 @@ accepts specific extension containers; its
 accepts different metadata. Their allowances are operation-specific.
 
 By default, unknown fields and case aliases of declared fields are rejected.
-For an additional metadata field, [extend the binding](/run-guardrailed-inference/using-proxy/extend-provider-bindings)
+For an additional metadata field, [extend the binding](/run-guardrailed-inference/using-proxy/advanced/extend-provider-bindings)
 and test the resulting boundary. The
 [contract reference](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/contracts/README.md#object-and-stream-metadata)
 describes lower-level unknown-field overrides and their limits.

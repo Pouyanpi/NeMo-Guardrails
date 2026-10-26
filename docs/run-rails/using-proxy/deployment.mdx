@@ -36,75 +36,12 @@ The [quickstart](/run-guardrailed-inference/using-proxy/quickstart) uses this to
 initial `base_url`, a set of operation bindings, and a selected Rails config.
 You do not need a custom transport just to change that URL.
 
-## Mount multiple provider instances
+## Configure multiple destinations
 
-Declare unique instance IDs and local mounts:
-
-```yaml
-version: 1
-rails_configs:
-  - id: standard
-    config_path: ./rails
-providers:
-  - provider: openai
-    instance_id: direct
-    mount_path: /direct
-    base_url: https://api.openai.com/v1
-    operations: [chat_completions, responses]
-    rails_config_id: standard
-  - provider: openai
-    instance_id: gateway
-    mount_path: /gateway
-    base_url: https://gateway.example/v1
-    dialect: litellm
-    operations: [chat_completions, responses]
-    rails_config_id: standard
-```
-
-Requests to `/direct/v1/chat/completions` use the direct instance; requests to
-`/gateway/v1/chat/completions` use the gateway instance. Each instance can select
-its own dialect and Rails entry. Guarded routes retain ownership over the
-provider catch-all forwarding routes.
-
-`instance_id` identifies the instance internally. It does not automatically
-become a caller header or model-routing key. Separate IDs alone do not let
-several instances occupy the same local mount.
-
-All instances in one application share its lifespan-owned HTTP client and
-transport. They are not independently running replicas, and separate instances
-do not provide process-level resource or failure isolation.
-
-A root-mounted instance also reserves alternate operation paths such as
-`/{api_version}/chat/completions`. Mounts such as `/v1`, `/v2` or `/litellm` can
-collide with that ownership and are rejected at construction. Use disjoint
-namespaces such as `/providers/direct` and `/providers/gateway` when combining
-with a root instance. The two non-root mounts above do not require a root instance.
-
-## Keep one public route
-
-An inbound gateway can route by trusted application policy and rewrite a public
-path to the selected provider mount:
-
-```text
-client /v1/chat/completions
-  → gateway
-    → proxy /direct/v1/chat/completions → service A
-    → proxy /gateway/v1/chat/completions → service B
-```
-
-Alternatively, each destination can have a separate proxy deployment exposing
-`/v1/chat/completions`. The gateway chooses the deployment, then optionally
-balances across its equivalent replicas.
-
-A basic connection balancer does not infer model selection from JSON. If routing
-requires a model field or authenticated tenant, use infrastructure that supports
-that selection or implement a trusted [outbound transport](/run-guardrailed-inference/using-proxy/python-integration#customize-outbound-http).
-Destination selection and balancing equivalent replicas are separate decisions.
-
-A custom transport can choose among trusted destinations after input inspection.
-The instance still has one initial, possibly logical URL. The chosen upstream
-must match the already selected binding and dialect; routing does not change
-inspection coverage automatically.
+Use [multiple provider instances and routing](/run-guardrailed-inference/using-proxy/advanced/multiple-provider-instances)
+for a complete two-mount manifest, shared-policy choices, route prefixes and
+collision rules. That guide also covers keeping one public route through an
+inbound gateway or a trusted application transport.
 
 ## Put the proxy in front of a model gateway
 
@@ -167,17 +104,10 @@ ingress and process manager. A mounted child does not run its lifespan by itself
 
 ## Connection pools
 
-Each application lifespan shares one outbound HTTPX pool across provider
-instances. The default transport uses HTTP/1.1 and HTTPX defaults: 100 total
-connections, 20 idle keepalive connections and five-second keepalive expiry.
-An active stream holds a connection until consumed or closed, so one busy
-instance can make another wait. Pool acquisition uses the configured `timeout`;
-exhaustion follows the upstream-failure mapping.
-
-Supply `http_transport_factory` with an `httpx.AsyncHTTPTransport` and
-`httpx.Limits` to tune aggregate capacity. These limits do not provide per-provider
-quotas or fairness. Separate apps/workers own independent pools and preloaded
-Rails resources, increasing startup and memory costs per worker.
+Provider instances share the application's outbound connection pool; separate
+workers and replicas own independent pools and Rails resources. Active streams
+can contend with other traffic. See [pool capacity and tuning](/run-guardrailed-inference/using-proxy/advanced/http-transport#connection-pool-capacity)
+before sizing a deployment for concurrent users and instances.
 
 ## Streaming and resource ownership
 
@@ -206,7 +136,7 @@ The [offline fixture](/run-guardrailed-inference/using-proxy/quickstart#see-outp
 a deterministic blocking test.
 
 Treat cleanup timeout logs as incomplete cleanup and investigate the affected
-owner. See [cleanup semantics](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/http-transport.md#constraints-and-ownership)
+owner. See [cleanup semantics](/run-guardrailed-inference/using-proxy/advanced/http-transport#constraints-and-ownership)
 for cancellation and resource ownership requirements.
 
 Windowed checks cannot retract released content. Retrying or failing over after

@@ -87,7 +87,7 @@ the private interfaces used to implement it:
 | Private `ContentChecker` and dispatch interfaces | Maintainer boundaries used by execution and its tests. The application factory does not expose a custom-checker plugin argument. |
 
 Use the [Python integration guide](/run-guardrailed-inference/using-proxy/python-integration) for supported
-composition examples and the [transport reference](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/http-transport.md)
+composition examples and the [transport reference](/run-guardrailed-inference/using-proxy/advanced/http-transport)
 for streaming and cleanup requirements.
 
 ## Trusted Rails selection
@@ -139,7 +139,7 @@ The callback owns authorization for its selection. Use trusted identity or
 deliberately populated application state rather than raw caller headers. The
 catalog contains trusted Rails directories and is fixed for a lifespan. Model
 routing remains independent of Rails selection. See
-[configuration resolution](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/configuration-resolution.md)
+[configuration resolution](/run-guardrailed-inference/using-proxy/advanced/configuration-resolution)
 for examples and failure behavior.
 
 ## State and resource ownership
@@ -165,7 +165,7 @@ for response ownership and cooperative cleanup limits.
 | Provider operation or reviewed dialect | [Chat declarations](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/chat_completions/README.md), [Responses declarations](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/responses/README.md), and [integration assembly](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/integration.py). | [Buffered integration tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_openai_chat_integration.py), [composition tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_provider_composition.py), and [contract exports](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_contract_export.py). |
 | Event selection and streaming protocol behavior | [Event classifier declarations](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/chat_completions/stream_classifier.py) and [request-local hooks](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/providers/openai/chat_completions/stream_hooks.py). | [Stream classifier tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_stream_classifier.py) and [Chat streaming tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_openai_chat_streaming_integration.py). |
 | New content capability | Matching projection, [buffered execution](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/_buffered_kernel.py), [streaming execution](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/_guarded_stream.py), and [checker semantics](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/_content_checker.py). | Accepted/rejected payloads, both execution modes, byte preservation, and representable exports. Profile metadata alone cannot extend support. |
-| Egress, TLS, or trusted destination routing | [HTTP transport composition](/run-guardrailed-inference/using-proxy/python-integration#customize-outbound-http) and the [routing example](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/examples/model_routing_transport.py). | [Application transport tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_application_http_transport.py) and [routing transport tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_model_routing_transport.py). |
+| Egress, TLS, or trusted destination routing | [HTTP transport composition](/run-guardrailed-inference/using-proxy/advanced/http-transport) and the [routing example](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/nemoguardrails/server/experimental/examples/model_routing_transport.py). | [Application transport tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_application_http_transport.py) and [routing transport tests](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/tests/server/experimental/test_model_routing_transport.py). |
 
 Keep changes aligned with the [current content profiles](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles).
 Follow [Development](https://github.com/NVIDIA-NeMo/Guardrails/blob/develop/CONTRIBUTING.md) for validation commands and release
