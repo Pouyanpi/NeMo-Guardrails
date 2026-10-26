@@ -1,0 +1,59 @@
+---
+title: "Guardrails Proxy"
+sidebar-title: "Experimental Proxy"
+description: "Add guardrails around existing model HTTP exchanges and choose the right guide for setup, configuration, coverage, or integration."
+content:
+  type: "concept"
+---
+
+Run the NVIDIA NeMo Guardrails library at the boundary between your clients and
+model services. Provider bindings select the content to inspect; Rails supplies
+the checks. Accepted provider JSON and SSE bytes are forwarded without rebuilding
+them from the validation models.
+
+<Note>
+
+This experimental proxy uses `python -m nemoguardrails.server.experimental`
+and has a limited single-text inspection boundary. The [Guardrails API
+server](/run-guardrailed-inference/using-fastapi-server) (`nemoguardrails server`)
+and [hooks server](/run-guardrailed-inference/using-hooks-server) are separate
+applications with different commands and configuration contracts.
+
+</Note>
+
+## Start here
+
+[Run the proxy](/run-guardrailed-inference/using-proxy/quickstart), send a request, and see input blocked before
+inference using the bundled example. Then choose your next task:
+
+| Task | Guide |
+| --- | --- |
+| Understand system boundaries, inspection coverage, and tradeoffs | [Architecture](/run-guardrailed-inference/using-proxy/architecture) |
+| Follow validation, checking, streaming release, and cleanup | [Request lifecycle](/run-guardrailed-inference/using-proxy/architecture/request-lifecycle) |
+| Understand framework dependencies and extension boundaries | [Framework internals](/run-guardrailed-inference/using-proxy/architecture/framework-internals) |
+| Select upstreams, operations, dialects, and Rails | [Configuration](/run-guardrailed-inference/using-proxy/configuration) |
+| Understand profiles, current provider coverage, and stream windows | [Providers and streaming](/run-guardrailed-inference/using-proxy/providers-and-streaming) |
+| Review or export the inspection boundary | [Guard contracts](/run-guardrailed-inference/using-proxy/guard-contracts) |
+| Choose mounts, replicas, gateways, or one-route routing | [Deployment](/run-guardrailed-inference/using-proxy/deployment) |
+| Embed the application or customize HTTP dispatch | [Python integration](/run-guardrailed-inference/using-proxy/python-integration) |
+| Diagnose startup, request, streaming, and cleanup failures | [Troubleshooting](/run-guardrailed-inference/using-proxy/troubleshooting) |
+| Add a provider metadata field, test it, and export its contract | [Extend a binding](/run-guardrailed-inference/using-proxy/extend-provider-bindings) |
+
+## How the pieces fit
+
+| Piece | Responsibility |
+| --- | --- |
+| Application configuration | Choose upstream instances, operation bindings, dialects, and Rails IDs. |
+| Provider binding and capability profile | Describe which content the current integration and pipeline can handle. |
+| Rails configuration | Choose checks for that content and their dependencies. |
+| Guard contract | Make the bound inspection coverage reviewable as an export. |
+| HTTP transport | Perform the outbound exchange, with optional application-specific network policy. |
+
+Check [provider coverage](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles)
+before connecting your application. The built-in bindings currently support a
+single user text input and one assistant text target; additional content needs
+matching binding and checking support.
+
+Start with the [quickstart](/run-guardrailed-inference/using-proxy/quickstart)
+for the library's `server` extra and installed examples. For exact declaration
+details, follow the technical references linked from each guide.

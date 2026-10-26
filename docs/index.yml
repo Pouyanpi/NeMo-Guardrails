@@ -476,6 +476,44 @@ navigation:
           - page: Actions Server
             path: run-rails/using-fastapi-server/actions-server.mdx
             slug: actions-server
+      - section: Experimental Proxy
+        path: run-rails/using-proxy/index.mdx
+        slug: using-proxy
+        contents:
+          - page: Quickstart
+            path: run-rails/using-proxy/quickstart.mdx
+            slug: quickstart
+          - page: Configuration
+            path: run-rails/using-proxy/configuration.mdx
+            slug: configuration
+          - page: Providers and Streaming
+            path: run-rails/using-proxy/providers-and-streaming.mdx
+            slug: providers-and-streaming
+          - page: Python Integration
+            path: run-rails/using-proxy/python-integration.mdx
+            slug: python-integration
+          - page: Extend a Binding
+            path: run-rails/using-proxy/extend-provider-bindings.mdx
+            slug: extend-provider-bindings
+          - page: Guard Contracts
+            path: run-rails/using-proxy/guard-contracts.mdx
+            slug: guard-contracts
+          - page: Deployment
+            path: run-rails/using-proxy/deployment.mdx
+            slug: deployment
+          - page: Troubleshooting
+            path: run-rails/using-proxy/troubleshooting.mdx
+            slug: troubleshooting
+          - section: Architecture
+            path: run-rails/using-proxy/architecture/index.mdx
+            slug: architecture
+            contents:
+              - page: Request Lifecycle
+                path: run-rails/using-proxy/architecture/request-lifecycle.mdx
+                slug: request-lifecycle
+              - page: Framework Internals
+                path: run-rails/using-proxy/architecture/framework-internals.mdx
+                slug: framework-internals
       - section: Hooks Server
         path: run-rails/using-hooks-server/index.mdx
         slug: using-hooks-server

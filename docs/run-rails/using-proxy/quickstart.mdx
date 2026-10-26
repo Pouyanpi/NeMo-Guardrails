@@ -1,0 +1,247 @@
+---
+title: "Run Guardrails Proxy"
+sidebar-title: "Quickstart"
+description: "Start a guarded endpoint, send buffered and streaming requests, and see an input blocked before inference."
+content:
+  type: "get_started"
+---
+
+Use the experimental proxy in the NVIDIA NeMo Guardrails library to put input
+and output checks in front of a model
+service. The example selects Chat Completions and Responses and uses local regex
+rails to detect common email-address patterns. You can then replace those rails
+with the checks your application needs. The current bindings accept one user
+text input and one assistant text target; conversation histories, tools, and
+multimodal content are outside their [guarded scope](/run-guardrailed-inference/using-proxy/providers-and-streaming#coverage-of-the-shipped-profiles).
+
+## Install
+
+You need Python 3.10–3.13 and [uv](https://docs.astral.sh/uv/). You can start with
+the local demonstration upstream or connect a service matching one of the
+[built-in bindings](/run-guardrailed-inference/using-proxy/providers-and-streaming).
+Use a library build that includes `nemoguardrails.server.experimental` and install
+its `server` extra. For a source checkout, run from the repository root:
+
+```bash
+uv sync --locked --extra server
+source .venv/bin/activate
+cp -R nemoguardrails/server/experimental/examples/basic proxy-example
+cd proxy-example
+```
+
+These shell commands activate the library environment and enter
+your deployment-owned copy. All proxy commands below run from this directory;
+they do not need a `uv run` prefix. The copy contains two separate configurations:
+
+```text
+proxy-example/
+  proxy.yaml          deployment: upstreams, operations, Rails selection
+  rails/config.yml    checks: input, output, streaming windows
+```
+
+For an installed library wheel, include `[server]` when installing that artifact.
+Activate its environment and copy the installed resources outside the checkout:
+
+```bash
+python -c 'from importlib.resources import files; from shutil import copytree; copytree(files("nemoguardrails.server.experimental") / "examples/basic", "proxy-example")'
+cd proxy-example
+```
+
+All commands below use that active environment. A separate proxy distribution
+or checkout is not required for installed execution. An older
+library release may not include this experimental module.
+
+## Choose how to try it
+
+| Path | What you need | Start here |
+| --- | --- | --- |
+| Try blocking locally | The installed environment and copied example; no model or API key | [Run the offline demonstration](#see-output-blocking-without-a-model). Skip the real-upstream setup below. |
+| Connect your upstream | A compatible model service and any required provider credentials | [Configure your upstream](#connect-your-upstream), then send accepted and blocked requests. |
+
+Both paths use the same proxy and local regex checks. The offline fixture returns
+fixed assistant text so you can observe buffered and streaming output blocking.
+
+## Connect your upstream
+
+Edit `proxy.yaml`. Replace its local demonstration `base_url` with your
+model service or gateway's API base. For example:
+
+```yaml
+version: 1
+rails_configs:
+  - id: standard
+    config_path: ./rails
+providers:
+  - provider: openai
+    instance_id: local
+    base_url: https://api.openai.com/v1
+    operations: [chat_completions, responses]
+    rails_config_id: standard
+```
+
+For a LiteLLM upstream, add `dialect: litellm` to the provider entry.
+Changing a hostname or model name does not select a dialect. Check the binding's
+coverage against the requests your application sends and verify the deployed
+gateway's actual protocol, build and backend; a URL does not identify its dialect.
+
+Keep credentials outside the manifest. The default transport forwards the
+caller's upstream authorization header; generation is forwarded over HTTP rather
+than through a provider SDK or the library's model framework. Rails that use external
+models or services have their own dependencies and credentials. The bundled
+regex example needs neither a detector model nor a detector API key.
+
+## Validate and start
+
+```bash
+python -m nemoguardrails.server.experimental validate proxy.yaml
+python -m nemoguardrails.server.experimental inspect proxy.yaml
+python -m nemoguardrails.server.experimental serve proxy.yaml
+```
+
+`validate` checks declaration data, paths, and routes. `inspect` shows selected
+bindings, profiles, and limits. Neither command initializes Rails or establishes
+upstream compatibility. `serve` loads every declared Rails configuration before
+accepting traffic at `http://127.0.0.1:8000`.
+
+The launcher also supports `--host`, `--port` and
+`--timeout-graceful-shutdown` on `serve`. Its default request-drain deadline is
+30 seconds; resource cleanup follows draining.
+The listener does not add inbound authentication. Keep it local or configure
+access controls in your [deployment](/run-guardrailed-inference/using-proxy/deployment#credentials-and-access).
+
+## Send a buffered request
+
+In a second terminal, replace `YOUR_DEPLOYED_MODEL` with your upstream's model ID.
+If authorization is required, set `PROVIDER_API_KEY` to a key you manage locally.
+Omit the authorization header for an unauthenticated upstream.
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+The proxy checks the input, sends the original accepted request to your upstream,
+checks the selected response text, and returns the accepted response body.
+
+## Request a stream or use Responses
+
+For Chat streaming:
+
+```bash
+curl -N http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+```
+
+For Responses:
+
+```bash
+curl -sS http://127.0.0.1:8000/v1/responses \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","input":"Hello!","store":false}'
+```
+
+Responses requires explicit `"store": false`; omission, true, null and non-boolean
+values are rejected. It also accepts `"stream": true` within its current binding. Streaming
+output is checked in windows; the example can hold short answers until
+completion. See [streaming windows](/run-guardrailed-inference/using-proxy/providers-and-streaming#streaming-windows)
+for tuning and release behavior.
+
+## See input blocking
+
+```bash
+curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $PROVIDER_API_KEY" \
+  -d '{"model":"YOUR_DEPLOYED_MODEL","messages":[{"role":"user","content":"Contact person@example.com"}]}'
+```
+
+This returns HTTP 400 with error code `content_blocked` before any generation
+request reaches the upstream. The same input rule applies to the selected
+Responses input text.
+
+## See output blocking without a model
+
+Use the bundled local fixture to reproduce output blocking. It always returns
+`Contact person@example.com` as assistant text, in buffered or streamed Chat
+format. This is a demonstration upstream, not an inference service; it needs no
+model, provider SDK, or API key.
+
+If a proxy is already running, stop it. From the copied `proxy-example`
+deployment directory, copy `proxy.yaml` to
+`proxy-offline.yaml` and change the copy's provider entry to:
+
+```yaml
+  - provider: openai
+    instance_id: local
+    base_url: http://127.0.0.1:9000/v1
+    operations: [chat_completions]
+    rails_config_id: standard
+```
+
+Keep its existing `rails_configs` entry and Rails directory. Use the native
+binding by omitting `dialect`. With the installed environment active, start
+the fixture in one terminal:
+
+```bash
+uvicorn nemoguardrails.server.experimental.examples.offline_upstream:app --host 127.0.0.1 --port 9000
+```
+
+Start the proxy from the deployment directory in another terminal:
+
+```bash
+python -m nemoguardrails.server.experimental validate proxy-offline.yaml
+python -m nemoguardrails.server.experimental serve proxy-offline.yaml
+```
+
+Send a harmless input from a third terminal:
+
+```bash
+curl -sS -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}]}'
+```
+
+Expect HTTP 400 and error code `content_blocked`. The input passes; the fixture's
+assistant text is blocked and is absent from the returned body.
+
+Repeat with streaming:
+
+```bash
+curl -N -i http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"offline","messages":[{"role":"user","content":"Hello!"}],"stream":true}'
+```
+
+Expect HTTP 200 followed by an SSE error containing `content_blocked`, without
+the email address. The HTTP stream has already started when the output check
+blocks its pending window. In longer streams, earlier approved windows may
+already have reached the caller.
+
+Stop both processes after the demonstration. The fixture exposes only Chat
+Completions; it does not emulate Responses or prove live-service compatibility.
+To use a real model service,
+[configure your upstream](#connect-your-upstream) in `proxy.yaml` and restart
+the proxy with that manifest. Regex checks illustrate configuration and ordering;
+they are not comprehensive PII protection. Edit `rails/config.yml` to choose
+supported checks and any required models or optional integrations.
+
+## Troubleshoot the first request
+
+| Symptom | Check |
+| --- | --- |
+| Startup cannot find a Rails directory | `config_path` resolves relative to the manifest, not your shell directory. Copy the Rails directory with the manifest. |
+| Validation passes but startup fails | Rails contents, actions, dependencies, and engines load during startup. Declaration validation does not execute them. |
+| Upstream returns an authentication or model error | Use the upstream's model ID and authorization requirements. The proxy does not create models or credentials. |
+| A guarded request or response is rejected | Compare its shape with the selected binding and dialect. The upstream may support content that this binding does not yet inspect. |
+| Streaming output arrives late | Inspect the enabled Rails, streaming window size, and any gateway buffering. The final partial window is released only after it passes. |
+
+For error codes, disconnects, and cleanup warnings, use the
+[operator troubleshooting guide](/run-guardrailed-inference/using-proxy/troubleshooting).
+
+Next, [configure provider instances and Rails](/run-guardrailed-inference/using-proxy/configuration), or inspect the
+[guard contract](/run-guardrailed-inference/using-proxy/guard-contracts) describing the selected boundary.
