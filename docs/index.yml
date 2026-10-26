@@ -513,7 +513,7 @@ navigation:
               - page: Multiple Provider Instances and Routing
                 path: run-rails/using-proxy/advanced/multiple-provider-instances.mdx
                 slug: multiple-provider-instances
-              - page: Extend a Binding
+              - page: Request and Response Policies
                 path: run-rails/using-proxy/advanced/extend-provider-bindings.mdx
                 slug: extend-provider-bindings
           - section: Architecture
