@@ -304,7 +304,10 @@ The fake-cassette metadata validator is in `tests/recorded/fake_cassettes.py`.
 `tool_choice`, and `parallel_tool_calls` with `stream: true` through the ASGI
 server and the OpenAI SDK. These requests generate and check a complete answer
 before emitting SSE. The recordings contain buffered provider JSON, not provider
-SSE; the SDK consumes the SSE produced by the server.
+SSE; the SDK consumes the SSE produced by the server and reconstructs approved
+messages from successive text and tool-argument deltas. The provider cassettes
+and reconstructed-answer snapshots also serve as the equivalence check for
+changes to the server's fragment boundaries.
 
 | Scenario | Coverage |
 | --- | --- |
@@ -326,8 +329,12 @@ Assertions compare public call IDs, names, and parsed arguments to the actual
 provider response, validate request history and completion framing, and require
 all recorded provider exchanges to be consumed during offline replay. ASGI
 requests are excluded from recording so replay always executes the server route.
-Inline snapshots pin the resulting answers and call arguments without volatile
-completion IDs or timestamps.
+Inline snapshots pin both the reconstructed answers and the complete downstream
+SSE event sequences for every successful stream, including refusals. The SSE
+snapshots preserve event order, fragment boundaries, argument strings, tool
+indices, finish reasons, metadata, and `[DONE]`. Only completion IDs, timestamps,
+and tool-call IDs are normalized. Provider cassettes remain buffered JSON;
+regenerate the downstream snapshots offline from those cassettes.
 
 Record with `OPENAI_API_KEY` and `NVIDIA_INFERENCE_KEY`; gateway coverage uses
 `https://inference-api.nvidia.com/v1`, not the public NIM endpoint. The parallel gateway cases use

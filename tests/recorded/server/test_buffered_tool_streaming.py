@@ -33,12 +33,12 @@ from tests.recorded.rails.public_api.configs import (
 )
 from tests.recorded.rails_config import load_config
 from tests.recorded.server.buffered_tool_streaming import (
+    ToolStreamRecorder,
     _assert_provider_calls,
     _backend,
     _calls,
     _config,
     _request,
-    _stream,
     _wire_requests,
 )
 from tests.recorded.snapshots import snapshot
@@ -51,6 +51,7 @@ ENGINES = ["llmrails", "llmrails-chat", "iorails"]
 @pytest.mark.parametrize("engine", ENGINES)
 @pytest.mark.parametrize("parallel", [False, True], ids=["single-stateless", "parallel-thread"])
 async def test_sdk_tool_round_trip(openai_api_key, nvidia_inference_key, monkeypatch, vcr, provider, engine, parallel):
+    tool_stream = ToolStreamRecorder()
     config = _config(provider, nvidia_inference_key)
     store = MemoryStore()
     monkeypatch.setattr(api, "datastore", store)
@@ -69,7 +70,7 @@ async def test_sdk_tool_round_trip(openai_api_key, nvidia_inference_key, monkeyp
         request["max_tokens"] = 1024
     original = deepcopy(messages)
     async with _backend(config, engine, monkeypatch):
-        first = await _stream({**request, "tool_choice": choice})
+        first = await tool_stream({**request, "tool_choice": choice})
         _assert_provider_calls(vcr, 0, first)
         calls = first["tool_calls"]
         assert sorted(json.loads(call["function"]["arguments"])["city"] for call in calls) == sorted(cities)
@@ -83,14 +84,14 @@ async def test_sdk_tool_round_trip(openai_api_key, nvidia_inference_key, monkeyp
             for call in reversed(calls)
         ]
         followup_messages = results if parallel else [*messages, first, *results]
-        final = await _stream({**request, "messages": followup_messages, "tool_choice": "auto"})
+        final = await tool_stream({**request, "messages": followup_messages, "tool_choice": "auto"})
         assert not final.get("tool_calls")
         assert "sunny" in final["content"].lower()
         provider_answer = decode_body_json(vcr.responses[1]["body"])["choices"][0]["message"]["content"]
         assert final["content"].strip() == provider_answer.strip()
         later = None
         if parallel:
-            later = await _stream(
+            later = await tool_stream(
                 {
                     **request,
                     "messages": [{"role": "user", "content": "Repeat only the weather token from earlier, no tools."}],
@@ -221,10 +222,414 @@ Paris: WX-4827, sunny.\
             },
         }
     )[f"{provider}/{engine}/{parallel}"]
+    assert (
+        tool_stream.events
+        == snapshot(
+            {
+                "openai/llmrails/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Paris: WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/llmrails/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Quote: \\u201cParis: WX-4827, sunny.\\u201d"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "openai/llmrails-chat/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Paris: WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/llmrails-chat/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "The current weather in **Paris**"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " is:  \\n- **Condition**: sunny  \\n"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "\\nWould you like to check another"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " city or need additional details"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " about Paris's weather? \\ud83d\\ude0a"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "openai/iorails/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Paris: WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/iorails/False": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "The weather in Paris is **sunny*"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "* with the condition code **WX-4"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "827**."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "openai/llmrails/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "\\"Paris: WX-4827, sunny.\\"\\n\\"Berlin"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": ": WX-4827, sunny.\\""}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/llmrails/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Berlin: WX-4827, sunny.  \\nParis:"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "openai/llmrails-chat/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Paris: WX-4827, sunny.  \\nBerlin:"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/llmrails-chat/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "- **Paris**: WX-4827, sunny.  \\n-"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " **Berlin**: WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "openai/iorails/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "\\u201cParis: WX-4827, sunny.\\u201d  \\n\\u201cBerl"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "in: WX-4827, sunny.\\u201d"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "nim/iorails/True": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"city\\": \\"Paris\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_weather", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{\\"city\\": \\"Berlin\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Berlin: WX-4827, sunny.  \\nParis:"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": " WX-4827, sunny."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "nvidia/nvidia/nemotron-3-nano-30b-a3b", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+            }
+        )[f"{provider}/{engine}/{parallel}"]
+    )
 
 
 @pytest.mark.parametrize("engine", ENGINES)
 async def test_sequential_dependent_tools(openai_api_key, monkeypatch, vcr, engine):
+    tool_stream = ToolStreamRecorder()
     config = _config("openai", None)
     tools = [
         {
@@ -257,7 +662,7 @@ async def test_sequential_dependent_tools(openai_api_key, monkeypatch, vcr, engi
     outputs = []
     async with _backend(config, engine, monkeypatch):
         for index, name in enumerate(["lookup_token", "lookup_weather"]):
-            message = await _stream({**request, "tool_choice": {"type": "function", "function": {"name": name}}})
+            message = await tool_stream({**request, "tool_choice": {"type": "function", "function": {"name": name}}})
             _assert_provider_calls(vcr, index, message)
             (call,) = message["tool_calls"]
             assert call["function"]["name"] == name
@@ -274,7 +679,7 @@ async def test_sequential_dependent_tools(openai_api_key, monkeypatch, vcr, engi
                     },
                 ]
             )
-        final = await _stream({**request, "tool_choice": "auto"})
+        final = await tool_stream({**request, "tool_choice": "auto"})
     assert "DEP-6912" in final["content"] and "WX-4827" in final["content"]
     wire = _wire_requests(vcr, 3)
     assert wire[2]["messages"][-4:] == messages[-4:]
@@ -324,13 +729,137 @@ Weather result: **WX-4827: sunny**\
             },
         }
     )[engine]
+    assert (
+        tool_stream.events
+        == snapshot(
+            {
+                "llmrails": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_token", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"token\\": \\"DEP-6912\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Token result: **DEP-6912**\\n\\nWeat"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "her result: **WX-4827: sunny**"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "llmrails-chat": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_token", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"token\\": \\"DEP-6912\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Token result: **\\"DEP-6912\\"**\\n\\nWe"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "ather result: **\\"WX-4827: sunny\\""}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "**"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                "iorails": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_token", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "lookup_weather", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"token\\": \\"DEP-6912\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Token result: **DEP-6912**\\n\\nWeat"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "her result: **WX-4827: sunny**"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+            }
+        )[engine]
+    )
 
 
 @pytest.mark.parametrize("passthrough", [False, True])
 async def test_tool_call_rail_blocks_provider_call(openai_api_key, monkeypatch, vcr, passthrough):
+    tool_stream = ToolStreamRecorder()
     config = load_config(TOOL_CALL_BLOCK_CONFIG)
     async with _backend(config, "llmrails" if passthrough else "llmrails-chat", monkeypatch):
-        result = await _stream(
+        result = await tool_stream(
             _request(
                 config, [{"role": "user", "content": "Call get_weather for Paris."}], tool_choice=WEATHER_TOOL_CHOICE
             )
@@ -340,10 +869,42 @@ async def test_tool_call_rail_blocks_provider_call(openai_api_key, monkeypatch, 
     assert len(emitted) == 1
     assert result == snapshot({"role": "assistant", "content": "Tool call rejected."})
     assert emitted[0]["id"] not in json.dumps(result)
+    assert (
+        tool_stream.events
+        == snapshot(
+            {
+                False: [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Tool call rejected."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+"""
+                ],
+                True: [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Tool call rejected."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+"""
+                ],
+            }
+        )[passthrough]
+    )
 
 
 @pytest.mark.parametrize("passthrough", [False, True])
 async def test_input_result_output_rails_sanitize_stream_and_history(openai_api_key, monkeypatch, vcr, passthrough):
+    tool_stream = ToolStreamRecorder()
     config = load_config(TOOL_ROUND_TRIP_RAILS_CONFIG)
     if passthrough:
         config.rails.dialog.single_call.enabled = False
@@ -362,7 +923,7 @@ async def test_input_result_output_rails_sanitize_stream_and_history(openai_api_
     request = _request(config, [{"role": "user", "content": "PRIVATE_USER"}], tools=tools, parallel_tool_calls=True)
     request["guardrails"]["thread_id"] = "recorded-sanitized-tools"
     async with _backend(config, "llmrails" if passthrough else "llmrails-chat", monkeypatch):
-        first = await _stream({**request, "tool_choice": "required"})
+        first = await tool_stream({**request, "tool_choice": "required"})
         _assert_provider_calls(vcr, 0, first)
         assert {call["name"] for call in _calls(first)} == {"get_paris", "get_berlin"}
         results = [
@@ -370,10 +931,10 @@ async def test_input_result_output_rails_sanitize_stream_and_history(openai_api_
             for call in reversed(first["tool_calls"])
         ]
         original = deepcopy(results)
-        final = await _stream({**request, "messages": results, "tool_choice": "auto"})
+        final = await tool_stream({**request, "messages": results, "tool_choice": "auto"})
         assert final["content"].startswith("Checked: ")
         assert "PARIS-4827" in final["content"] and "BERLIN-6912" in final["content"]
-        later = await _stream(
+        later = await tool_stream(
             {
                 **request,
                 "messages": [{"role": "user", "content": "Repeat both weather tokens from earlier."}],
@@ -437,6 +998,99 @@ BERLIN-6912: rainy\
             },
         }
     )[passthrough]
+    assert (
+        tool_stream.events
+        == snapshot(
+            {
+                False: [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_paris", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_berlin", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Checked: PARIS result: `\\"PARIS-4"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "827: sunny\\"`  \\n\\nBERLIN result: `"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "\\"BERLIN-6912: rainy\\"`"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Checked: PARIS-4827: sunny\\"  \\n\\n\\""}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "BERLIN-6912: rainy"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+                True: [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "get_paris", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_1]", "function": {"name": "get_berlin", "arguments": ""}, "type": "function", "index": 1}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 1, "function": {"arguments": "{}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Checked: PARIS-4827: sunny\\n\\nBERL"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "IN-6912: rainy"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "Checked: PARIS-4827: sunny\\n\\nBERL"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "IN-6912: rainy"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+""",
+                ],
+            }
+        )[passthrough]
+    )
 
 
 @pytest.mark.parametrize("provider", ["openai", "nim"])

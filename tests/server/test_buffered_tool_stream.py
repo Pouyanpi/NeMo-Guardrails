@@ -23,6 +23,8 @@ import httpx
 import pytest
 import pytest_asyncio
 from openai import AsyncOpenAI
+from openai.lib.streaming.chat import ChatCompletionStreamState
+from openai.types.chat import ChatCompletionChunk
 
 from nemoguardrails import Guardrails, RailsConfig
 from nemoguardrails.rails import LLMRails
@@ -63,6 +65,16 @@ def events(response):
     assert data[-1] == "[DONE]"
     assert data.count("[DONE]") == 1
     return [json.loads(line) for line in data[:-1]]
+
+
+def assembled_message(frames):
+    state = ChatCompletionStreamState()
+    for frame in frames:
+        state.handle_chunk(ChatCompletionChunk.model_validate(frame))
+    message = state.get_final_completion().choices[0].message.model_dump(exclude_none=True)
+    for call in message.get("tool_calls", []):
+        call.pop("index", None)
+    return message
 
 
 @pytest_asyncio.fixture
@@ -132,10 +144,11 @@ async def test_tool_stream_round_trip_with_openai_client(engine, client, monkeyp
         assert all(chunk.model == "test-model" for chunk in chunks)
         expected_text = "Checking both cities." if isinstance(engine[0], Guardrails) else ""
         assert "".join(c.choices[0].delta.content or "" for c in chunks) == expected_text
-        calls = [call for c in chunks for call in c.choices[0].delta.tool_calls or []]
-        assert [call.index for call in calls] == [0, 1]
-        assert [call.id for call in calls] == [call.id for call in CALLS]
-        assert [json.loads(call.function.arguments) for call in calls] == [{"city": "Paris"}, {"city": "Boston"}]
+        headers = [call for c in chunks for call in c.choices[0].delta.tool_calls or [] if call.id]
+        calls = assembled_message([c.model_dump(exclude_none=True) for c in chunks])["tool_calls"]
+        assert [call.index for call in headers] == [0, 1]
+        assert [call["id"] for call in calls] == [call.id for call in CALLS]
+        assert [json.loads(call["function"]["arguments"]) for call in calls] == [{"city": "Paris"}, {"city": "Boston"}]
         assert chunks[-1].choices[0].finish_reason == "tool_calls"
         stored = json.loads(await store.get("thread-" + thread))
         assert [call["id"] for call in stored[-1]["tool_calls"]] == [call.id for call in CALLS]
@@ -163,7 +176,7 @@ async def test_each_tool_parameter_uses_buffered_generation(client, monkeypatch,
     monkeypatch.setattr(api, "_get_rails", AsyncMock(return_value=rails))
     body = {k: v for k, v in REQUEST.items() if k != "tools"}
     frames = events(await client.post("/v1/chat/completions", json={**body, **params}))
-    assert frames[0]["choices"][0]["delta"]["content"] == "No tool needed."
+    assert assembled_message(frames)["content"] == "No tool needed."
     assert frames[-1]["choices"][0]["finish_reason"] == "stop"
     rails.stream_async.assert_not_called()
     for key, value in params.items():
@@ -186,7 +199,7 @@ define bot refuse call
     rails = LLMRails(config, llm=FakeLLMModel(llm_responses=[LLMResponse(content="", tool_calls=CALLS)]))
     monkeypatch.setattr(api, "_get_rails", AsyncMock(return_value=rails))
     frames = events(await client.post("/v1/chat/completions", json=REQUEST))
-    assert frames[0]["choices"][0]["delta"]["content"] == "Tool call rejected."
+    assert assembled_message(frames)["content"] == "Tool call rejected."
     assert frames[-1]["choices"][0]["finish_reason"] == "stop"
     assert "call_Paris" not in json.dumps(frames)
     assert "tool_calls" not in json.dumps(frames)
@@ -278,7 +291,7 @@ define bot refuse text
     rails = LLMRails(config, llm=model)
     monkeypatch.setattr(api, "_get_rails", AsyncMock(return_value=rails))
     frames = events(await client.post("/v1/chat/completions", json=REQUEST))
-    assert frames[0]["choices"][0]["delta"]["content"] == "Text rejected."
+    assert assembled_message(frames)["content"] == "Text rejected."
     assert frames[-1]["choices"][0]["finish_reason"] == "stop"
     assert model.inference_count == (1 if direction == "output" else 0)
     assert "Unsafe answer" not in json.dumps(frames)
@@ -353,7 +366,7 @@ async def test_sse_formatter_preserves_approved_fields_and_usage():
     assert all(
         p["id"] == "chatcmpl-tested" and p["created"] == 42 and p["system_fingerprint"] == "fp_test" for p in payloads
     )
-    assert payloads[0]["choices"][0]["delta"]["refusal"] == "Approved refusal"
+    assert assembled_message(payloads)["refusal"] == "Approved refusal"
     assert payloads[0]["guardrails"]["output_data"] == {"approved": True}
     assert payloads[-1]["choices"] == []
     assert payloads[-1]["usage"]["total_tokens"] == 5
@@ -428,10 +441,61 @@ async def test_provider_response_is_buffered_and_parsed_before_delivery(
         assert requests[0]["tools"] == TOOLS
         if arguments.endswith("}"):
             frames = events(response)
-            assert frames[0]["choices"][0]["delta"]["tool_calls"][0]["id"] == "call_Paris"
+            assert assembled_message(frames)["tool_calls"][0]["id"] == "call_Paris"
         else:
             assert response.status_code >= 400
             assert response.headers["content-type"] == "application/json"
             assert "data:" not in response.text
     finally:
         await rails.shutdown()
+
+
+@pytest.mark.parametrize("text", ["", 'Quoted "text", backslash \\, newline\n and Unicode 漢😊. ' * 5])
+async def test_successive_deltas_reconstruct_exact_approved_messages(text):
+    from nemoguardrails.server.schemas.openai import GuardrailsChatCompletion
+    from nemoguardrails.server.schemas.utils import chat_completion_to_sse
+
+    arguments = json.dumps({"text": text, "cities": ["Zürich", "東京"]}, ensure_ascii=False)
+    message = {
+        "role": "assistant",
+        "content": text,
+        "refusal": text,
+        "tool_calls": [
+            {"id": f"call_{index}", "type": "function", "function": {"name": "lookup", "arguments": arguments}}
+            for index in range(2)
+        ],
+    }
+    completion = GuardrailsChatCompletion.model_validate(
+        {
+            "id": "chatcmpl-fragments",
+            "created": 42,
+            "object": "chat.completion",
+            "model": "test-model",
+            "choices": [{"index": 0, "message": message, "finish_reason": "tool_calls"}],
+        }
+    )
+    before = completion.model_dump()
+    frames = [json.loads(frame[6:]) for frame in list(chat_completion_to_sse(completion))[:-1]]
+    assert assembled_message(frames) == message
+    assert completion.model_dump() == before
+    deltas = [frame["choices"][0]["delta"] for frame in frames[:-1]]
+    assert deltas[0] == {"role": "assistant"}
+    assert all(frame["choices"][0]["finish_reason"] is None for frame in frames[:-1])
+    assert frames[-1]["choices"][0]["finish_reason"] == "tool_calls"
+    for index in range(2):
+        calls = [call for delta in deltas for call in delta.get("tool_calls", []) if call["index"] == index]
+        assert calls[0] == {
+            "index": index,
+            "id": f"call_{index}",
+            "type": "function",
+            "function": {"name": "lookup", "arguments": ""},
+        }
+        assert len(calls) > 2
+        assert all(set(call) == {"index", "function"} for call in calls[1:])
+        assert all(set(call["function"]) == {"arguments"} for call in calls[1:])
+        assert "".join(call["function"]["arguments"] for call in calls) == arguments
+    if text:
+        for key in ("content", "refusal"):
+            pieces = [delta[key] for delta in deltas if key in delta]
+            assert len(pieces) > 1
+            assert all(0 < len(piece) < len(text) for piece in pieces)

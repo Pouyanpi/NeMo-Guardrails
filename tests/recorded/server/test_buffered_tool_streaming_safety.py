@@ -25,7 +25,7 @@ from tests.recorded.cassette import decode_body_json
 from tests.recorded.rails.library.configs import NIM_TOOL_SAFETY_CHECK_CONFIG
 from tests.recorded.rails.public_api.configs import OPENAI_INVALID_MODEL, OPENAI_MODEL
 from tests.recorded.rails_config import load_config
-from tests.recorded.server.buffered_tool_streaming import _backend, _calls, _request, _stream, _wire_requests
+from tests.recorded.server.buffered_tool_streaming import ToolStreamRecorder, _backend, _calls, _request, _wire_requests
 from tests.recorded.server.configs import TOOL_SAFETY_JUDGE_MODEL
 from tests.recorded.snapshots import snapshot
 
@@ -36,6 +36,7 @@ pytestmark = [pytest.mark.recorded, pytest.mark.vcr(ignore_hosts=["testserver"])
 @pytest.mark.parametrize("stage", ["call", "result"])
 @pytest.mark.parametrize("outcome", ["allow", "block", "error"])
 async def test_model_backed_tool_rail_fails_closed(openai_api_key, monkeypatch, vcr, engine, stage, outcome):
+    tool_stream = ToolStreamRecorder()
     config = load_config(NIM_TOOL_SAFETY_CHECK_CONFIG)
     tools = config.models[0].parameters["tools"]
     for model in config.models:
@@ -90,7 +91,7 @@ async def test_model_backed_tool_rail_fails_closed(openai_api_key, monkeypatch, 
             assert set(response.json()) == {"error"}
             public = response.json()
         else:
-            public = await _stream(request)
+            public = await tool_stream(request)
             if outcome == "block":
                 assert public == {"role": "assistant", "content": "I'm sorry, I can't respond to that."}
             elif stage == "call":
@@ -133,6 +134,71 @@ async def test_model_backed_tool_rail_fails_closed(openai_api_key, monkeypatch, 
                         "code": "model_not_found",
                     }
                 },
+            }
+        )[f"{engine}/{stage}/{outcome}"]
+    )
+    assert (
+        tool_stream.events
+        == snapshot(
+            {
+                "iorails/call/allow": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"id": "[TOOL_CALL_0]", "function": {"name": "run_sql", "arguments": ""}, "type": "function", "index": 0}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{\\"query\\": \\"SELECT name FROM cust"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "omers WHERE id = 7\\"}"}}]}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]}
+
+data: [DONE]
+
+"""
+                ],
+                "iorails/result/allow": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "WX-4827: Jane, Austin, orders: 3"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+"""
+                ],
+                "iorails/call/block": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "I'm sorry, I can't respond to th"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "at."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+"""
+                ],
+                "iorails/result/block": [
+                    """\
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "guardrails": {"config_id": "recorded-buffered-tools"}, "choices": [{"finish_reason": null, "index": 0, "delta": {"role": "assistant"}}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "I'm sorry, I can't respond to th"}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {"content": "at."}, "finish_reason": null}]}
+
+data: {"id": "[COMPLETION_ID]", "created": 0, "model": "gpt-5.4-nano", "object": "chat.completion.chunk", "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
+
+data: [DONE]
+
+"""
+                ],
+                "iorails/call/error": [],
+                "iorails/result/error": [],
             }
         )[f"{engine}/{stage}/{outcome}"]
     )

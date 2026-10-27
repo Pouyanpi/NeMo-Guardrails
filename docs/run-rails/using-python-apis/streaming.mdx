@@ -336,8 +336,9 @@ Use the supported non-streaming tool-calling path when these checks are required
 The Guardrails server accepts `stream: true` with a non-empty `tools` list,
 `tool_choice`, or `parallel_tool_calls` for supported Colang 1.0 configurations.
 For these requests it runs non-streaming generation and all enabled checks first,
-then delivers the approved answer as SSE. Text and complete tool calls arrive
-only after generation and checking finish. This applies to both LLMRails and
+then delivers the approved answer as successive SSE deltas. Text and tool-argument
+fragments start only after generation and checking finish; they are not live
+model tokens. This applies to both LLMRails and
 IORails; it does not change either engine's `stream_async()` behavior.
 See [Server Tool Calling](/run-guardrailed-inference/using-fastapi-server/chat-with-guardrailed-model#tool-calling).
 

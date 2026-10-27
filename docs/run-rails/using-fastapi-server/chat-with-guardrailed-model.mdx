@@ -288,13 +288,18 @@ definitions (`user_messages`). Both LLMRails and IORails support this path;
 You can set `stream: true` for these requests. When the request includes a
 non-empty `tools` list, `tool_choice`, or `parallel_tool_calls`, the server waits
 for the complete answer and all enabled rail checks before sending any SSE.
-This includes text returned instead of, or alongside, tool calls. Tool arguments
-arrive complete rather than as incremental fragments.
+This includes text returned instead of, or alongside, tool calls. After approval,
+the server splits text and tool arguments into successive SSE deltas. These are
+fragments of the completed answer, not live model tokens. The server adds no
+artificial delay between fragments; clients or intermediaries may deliver them
+in batches.
 
 The response uses the OpenAI streaming format:
 
-- The assistant delta contains approved text and/or indexed `tool_calls`, with
-  function arguments encoded as JSON strings.
+- The first delta identifies the assistant role. Later deltas contain text or
+  indexed `tool_calls`. Each call identifies its ID, type, and function name once;
+  subsequent deltas carry fragments of its JSON argument string. Accumulate
+  argument fragments by tool index before parsing them.
 - A separate terminal choice has `finish_reason: "tool_calls"` when calls are
   returned, or `"stop"` for a textual answer or refusal.
 - `[DONE]` ends the response.

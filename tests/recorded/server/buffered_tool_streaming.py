@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 from openai import AsyncOpenAI
+from openai.lib.streaming.chat import ChatCompletionStreamState
 
 from nemoguardrails import Guardrails, LLMRails
 from nemoguardrails.server import api
@@ -74,7 +75,38 @@ def _request(config, messages, **params):
     }
 
 
-async def _stream(request):
+class ToolStreamRecorder:
+    """Capture downstream SSE separately from the upstream provider cassettes."""
+
+    def __init__(self):
+        self.events: list[str] = []
+
+    async def __call__(self, request):
+        return await _stream(request, self.events)
+
+
+def _normalized_sse(body):
+    tool_ids = {}
+    normalized = []
+    for line in body.splitlines(keepends=True):
+        if not line.startswith("data: ") or line[6:].strip() == "[DONE]":
+            normalized.append(line)
+            continue
+        payload = json.loads(line[6:])
+        if "id" in payload:
+            payload["id"] = "[COMPLETION_ID]"
+        if "created" in payload:
+            payload["created"] = 0
+        for choice in payload["choices"]:
+            for call in choice["delta"].get("tool_calls", []):
+                if "id" in call:
+                    call["id"] = tool_ids.setdefault(call["id"], f"[TOOL_CALL_{len(tool_ids)}]")
+        ending = line[len(line.rstrip("\r\n")) :]
+        normalized.append(f"data: {json.dumps(payload)}{ending}")
+    return "".join(normalized)
+
+
+async def _stream(request, events):
     """Consume the real ASGI route through the SDK and independently check its wire framing."""
     responses = []
 
@@ -105,18 +137,24 @@ async def _stream(request):
     assert len({chunk.created for chunk in chunks}) == 1
     assert all(chunk.object == "chat.completion.chunk" and chunk.model == request["model"] for chunk in chunks)
     choices = [choice for chunk in chunks for choice in chunk.choices]
-    assert len(choices) == 2
-    first, terminal = choices
-    assert first.index == terminal.index == 0
-    assert first.finish_reason is None
+    assert len(choices) >= 3
+    assert choices[0].delta.role == "assistant"
+    assert all(choice.index == 0 and choice.finish_reason is None for choice in choices[:-1])
+    terminal = choices[-1]
     assert terminal.delta.model_dump(exclude_none=True) == {}
-    message = first.delta.model_dump(exclude_none=True)
+    state = ChatCompletionStreamState()
+    for chunk in chunks:
+        state.handle_chunk(chunk)
+    message = state.get_final_completion().choices[0].message.model_dump(exclude_none=True)
     assert message["role"] == "assistant"
+    call_headers = [call for choice in choices for call in choice.delta.tool_calls or [] if call.id]
+    assert [call.index for call in call_headers] == list(range(len(message.get("tool_calls", []))))
     for index, call in enumerate(message.get("tool_calls", [])):
         assert call.pop("index") == index
         assert call["id"] and call["type"] == "function"
         assert isinstance(json.loads(call["function"]["arguments"]), dict)
     assert terminal.finish_reason == ("tool_calls" if message.get("tool_calls") else "stop")
+    events.append(_normalized_sse(response.text))
     return message
 
 
