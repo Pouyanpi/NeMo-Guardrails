@@ -54,8 +54,54 @@ schema: reviewed opaque members remain available, and unreviewed members are
 rejected by default. This schema still does not encode arbitrary Python validators.
 
 The [contract guide](../../../contracts/README.md) defines the document format;
-the [OpenAI boundary summary](../../../contracts/openai/README.md) records its
-scope and provider provenance. Neither is loaded by the models or bindings.
+the [OpenAI source reference](../../../contracts/openai/README.md) records
+provider provenance. Neither is loaded by the models or bindings.
+
+## Guarded Boundary
+
+| Area | Single-text boundary |
+| --- | --- |
+| Request | One user message with non-empty string content at `messages[0].content`. |
+| Buffered response | One assistant choice with string content at `choices[0].message.content`. Empty or null content means the response has no guarded text: every other reviewed field that could carry generated content is rejected unless null or empty, and opaque metadata is not inspected. The projection reports this through `has_text`, and the buffered integration relays such a response without output checks. |
+| Streamed response | At most one choice, with integer index zero and optional assistant text at `choices[0].delta.content`. Missing or null text is metadata; an empty choices array allows usage chunks. Reviewed root metadata passes through without inspection. |
+| Constrained values | User/assistant roles, single-item arrays, and request `n` constrained to one. |
+| Unsupported content | Tool, audio, multimodal, refusal, participant name, and separate reasoning content where explicitly disabled. |
+| Opaque data | Reviewed provider-owned metadata and controls, not additional guarded subjects. |
+| Closed objects | The request, its user message, the buffered response, and its choice and assistant message reject members outside OpenAI's fields. The user message, choice, and assistant message are configurable: only trusted configuration may allow unknown members there. Fields specific to compatible servers belong to their own reviewed extensions. |
+
+This request boundary does not accept conversation histories, system or developer
+messages alongside the user message, or multimodal content blocks. Disabled
+fields are null-only: a non-null value does not become acceptable merely because
+it requests plain text or no tools. A few unsupported features are constrained
+instead, because OpenAI's schema also allows a value that carries no content:
+buffered and stream `tool_calls` and response `annotations` accept null or an empty list, and
+request `logprobs` accepts null or `false`.
+
+Log probabilities are unsupported: they carry token text that rails do not
+inspect. Request `logprobs` accepts only `false` or null, request `top_logprobs`
+accepts only null, and both buffered and stream `choices[0].logprobs` accept only null.
+The request check applies even when output inspection is off.
+
+Text replacement eligibility is separate from endpoint support for replacement
+outcomes. Response annotations must be null or empty, because citation text is
+not inspected. The policy still declares that non-empty annotations would block
+text replacement. Unrelated provider data must remain intact.
+
+The Python projections, bindings, and endpoint determine exact acceptance and
+runtime behavior. The [exported contract](../../../contracts/openai/_generated/chat-completions.guard.yaml)
+describes buffered payloads and the bound stream classifier, not a separately
+maintained handwritten policy. The stream root, choice, delta, and error envelope
+are closed. Error details are configurable, but the classifier validates with
+the closed default, so unreviewed error fields are rejected too.
+
+The stream export includes event selection, roles, missing-text handling, and
+SSE sentinel/non-data declarations. Stateful hooks enforce completion and event
+ordering and frame provider-native errors; they remain handwritten and are not
+serialized. Exporting a contract does not enable streaming dispatch or reproduce
+arbitrary Python validation. For example, the runtime rejects choice index
+`0.0`, while JSON Schema treats it as the integer zero. See the integration's
+[export guide](#contract-export)
+for generation, drift checks, and limitations.
 
 ## Streaming declarations
 

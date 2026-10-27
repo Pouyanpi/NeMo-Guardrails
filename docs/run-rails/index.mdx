@@ -35,6 +35,7 @@ Choose an interface based on the following tasks:
 |---|---|
 | Call guardrails from Python code in your application | The Python API |
 | Send chat requests or checks over HTTP, from any language | The Guardrails API server (`nemoguardrails server`) |
+| Check supported existing provider HTTP exchanges while preserving accepted JSON and server-sent event bytes | The Guardrails proxy (`python -m nemoguardrails.server.experimental`) |
 | Check a coding agent's tool calls before they run, from the agent's own hooks | The Guardrails hooks server (`nemoguardrails hooks-server`) |
 
 ### Python API for Edge and Embedded Applications
@@ -74,6 +75,20 @@ This approach is best for:
 - Networked systems where multiple clients need access to guardrails.
 - Non-Python clients such as JavaScript, Go, and Java that communicate through HTTP.
 
+### Guardrails Proxy for Existing Provider Exchanges
+
+The Guardrails proxy is experimental.
+
+Use the [Guardrails proxy](/run-guardrailed-inference/using-proxy) when your
+application already calls a model service over HTTP. The proxy checks inputs
+and outputs for supported Chat Completions or Responses traffic using the selected
+Rails configuration, and forwards generation to the configured upstream.
+
+The current bindings support one user text input and one assistant text target;
+they do not cover arbitrary conversation histories, tools, or multimodal content.
+Use its own manifest, library `server` extra, and module launcher, as described
+in the [quickstart](/run-guardrailed-inference/using-proxy/quickstart).
+
 ### Guardrails Hooks Server for Coding Agents
 
 The Guardrails hooks server is a separate server that checks the tool calls of Claude Code, Codex, and NeMo Relay before they run.
@@ -106,6 +121,13 @@ Run guardrailed inference using the NeMo Guardrails Python API.
 <Card title="Guardrails API Server" href="/run-guardrailed-inference/using-fastapi-server">
 
 Expose guardrails through an HTTP API using the Guardrails API server.
+
+<Badge intent="tip" minimal outlined>Get Started</Badge>
+</Card>
+
+<Card title="Guardrails Proxy" href="/run-guardrailed-inference/using-proxy">
+
+Apply input and output checks around supported provider JSON and server-sent event exchanges.
 
 <Badge intent="tip" minimal outlined>Get Started</Badge>
 </Card>
