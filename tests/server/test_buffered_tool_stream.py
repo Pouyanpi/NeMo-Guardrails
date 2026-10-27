@@ -297,7 +297,7 @@ define bot refuse text
     assert "Unsafe answer" not in json.dumps(frames)
 
 
-@pytest.mark.parametrize("status", [400, 429, 503])
+@pytest.mark.parametrize("status", [400, 429, 500, 502, 503])
 async def test_generation_errors_remain_http_errors_before_sse(client, monkeypatch, status):
     from nemoguardrails.exceptions import LLMCallException, LLMClientError
 
@@ -312,6 +312,43 @@ async def test_generation_errors_remain_http_errors_before_sse(client, monkeypat
     assert response.headers["content-type"] == "application/json"
     assert response.json()["error"]["message"] == "Provider rejected request"
     assert "data:" not in response.text
+
+
+@pytest.mark.parametrize("wrapper", ["direct", "llm", "engine", "nested"])
+async def test_response_validation_errors_are_bad_gateway(client, monkeypatch, wrapper):
+    from nemoguardrails.exceptions import LLMCallException, LLMResponseValidationError
+    from nemoguardrails.guardrails.model_engine import ModelEngineError
+
+    error = LLMResponseValidationError("Invalid tool arguments")
+    if wrapper in ("engine", "nested"):
+        error = ModelEngineError("Provider response invalid", model_name="private-model", inner_exception=error)
+    if wrapper in ("llm", "nested"):
+        error = LLMCallException(error)
+    rails = AsyncMock()
+    rails.config = RailsConfig.from_content(config={"models": []})
+    rails.generate_async.side_effect = error
+    monkeypatch.setattr(api, "_get_rails", AsyncMock(return_value=rails))
+
+    response = await client.post("/v1/chat/completions", json=REQUEST)
+
+    assert response.status_code == 502
+    assert response.headers["content-type"] == "application/json"
+    assert response.json()["error"]["type"] == "server_error"
+    assert response.json()["error"]["message"] == "Invalid tool arguments"
+    assert "x-should-retry" not in response.headers
+    assert "data:" not in response.text
+
+
+async def test_unexpected_generation_error_remains_internal_error(client, monkeypatch):
+    rails = AsyncMock()
+    rails.config = RailsConfig.from_content(config={"models": []})
+    rails.generate_async.side_effect = RuntimeError("Internal failure")
+    monkeypatch.setattr(api, "_get_rails", AsyncMock(return_value=rails))
+
+    response = await client.post("/v1/chat/completions", json=REQUEST)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["message"] == "Internal server error"
 
 
 async def test_iorails_overload_remains_http_error(client, monkeypatch):
@@ -374,9 +411,10 @@ async def test_sse_formatter_preserves_approved_fields_and_usage():
 
 
 @pytest.mark.parametrize("iorails", [False, True])
+@pytest.mark.parametrize("stream", [False, True])
 @pytest.mark.parametrize("arguments", ['{"city":"Paris"}', '{"city":', "[]", "null"])
 async def test_provider_response_is_buffered_and_parsed_before_delivery(
-    client, monkeypatch, httpx_mock, iorails, arguments
+    client, monkeypatch, httpx_mock, iorails, arguments, stream
 ):
     from aioresponses import CallbackResult, aioresponses
 
@@ -435,15 +473,17 @@ async def test_provider_response_is_buffered_and_parsed_before_delivery(
                 upstream.post(url, callback=aiohttp_response)
             else:
                 httpx_mock.add_callback(httpx_response, url=url)
-            response = await client.post("/v1/chat/completions", json=REQUEST)
+            response = await client.post("/v1/chat/completions", json={**REQUEST, "stream": stream})
         assert len(requests) == 1
         assert not requests[0].get("stream", False)
         assert requests[0]["tools"] == TOOLS
         if arguments.endswith("}"):
-            frames = events(response)
-            assert assembled_message(frames)["tool_calls"][0]["id"] == "call_Paris"
+            assert response.status_code == 200
+            message = assembled_message(events(response)) if stream else response.json()["choices"][0]["message"]
+            assert message["tool_calls"][0]["id"] == "call_Paris"
         else:
-            assert response.status_code >= 400
+            assert response.status_code == 502
+            assert response.json()["error"]["type"] == "server_error"
             assert response.headers["content-type"] == "application/json"
             assert "data:" not in response.text
     finally:

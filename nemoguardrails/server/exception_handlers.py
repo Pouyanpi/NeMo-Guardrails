@@ -28,6 +28,7 @@ from nemoguardrails.exceptions import (
     InvalidStateError,
     LLMCallException,
     LLMRateLimitError,
+    LLMResponseValidationError,
     RailTypeNotConfiguredError,
     RailTypeNotSupportedError,
     StreamingCapacityExceededError,
@@ -98,11 +99,14 @@ def _upstream_status(exc: BaseException) -> Optional[int]:
 
 
 async def llm_call_exception_handler(
-    request: Request, exc: Union[LLMCallException, ModelEngineError, HTTPClientError]
+    request: Request, exc: Union[LLMCallException, ModelEngineError, HTTPClientError, LLMResponseValidationError]
 ) -> Response:
-    """Map LLM and engine call failures to their upstream HTTP status."""
+    """Map provider failures to their HTTP status, or 502 for invalid responses."""
     log.exception(exc)
-    status = normalize_error_status(_upstream_status(exc))
+    if isinstance(as_client_error(exc), LLMResponseValidationError):
+        status = 502
+    else:
+        status = normalize_error_status(_upstream_status(exc))
     message, code, param, headers = _client_error_details(exc)
     return _error_response(status, message, code=code, param=param, headers=headers or None)
 

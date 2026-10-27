@@ -307,7 +307,9 @@ The response uses the OpenAI streaming format:
 The selected engine applies the same configured rails as a non-streaming request.
 Text output rails do not substitute for tool-call rails. A blocked call is omitted
 from the response; a generation or rail failure returns the usual HTTP error
-before SSE begins. This path does not require output-rail streaming to be enabled.
+before SSE begins. Invalid provider responses, including malformed tool arguments,
+return HTTP 502. This status does not disable client retries.
+This path does not require output-rail streaming to be enabled.
 
 After receiving the complete response, execute approved calls in your application
 and send their results as `role: tool` messages with matching `tool_call_id`

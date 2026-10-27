@@ -40,6 +40,7 @@ from nemoguardrails.exceptions import (
     InvalidModelConfigurationError,
     InvalidStateError,
     LLMCallException,
+    LLMResponseValidationError,
     NonStreamingWorkQueueFullError,
     RailTypeNotConfiguredError,
     RailTypeNotSupportedError,
@@ -229,6 +230,7 @@ _EXCEPTION_HANDLERS = (
     (NonStreamingWorkQueueFullError, queue_full_error_handler),
     # Any QueueFull raised outside the paths above still reads as overload.
     (asyncio.QueueFull, queue_full_error_handler),
+    (LLMResponseValidationError, llm_call_exception_handler),
     (LLMCallException, llm_call_exception_handler),
     (ModelEngineError, llm_call_exception_handler),
     (HTTPClientError, llm_call_exception_handler),
