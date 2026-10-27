@@ -331,15 +331,12 @@ class OpenAIChatModel:
     def _parse_tool_call(tc: Dict[str, Any]) -> ToolCall:
         func = tc.get("function", {})
         raw_args = func.get("arguments", "{}")
-        if isinstance(raw_args, str):
-            # Graceful degrade: malformed args from provider => empty dict.
-            # The tool will surface the real error when invoked with no arguments.
-            try:
-                args_dict = json.loads(raw_args)
-            except json.JSONDecodeError:
-                args_dict = {}
-        else:
-            args_dict = raw_args
+        try:
+            args_dict = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        except json.JSONDecodeError as exc:
+            raise LLMResponseValidationError("Tool call arguments must be a valid JSON object") from exc
+        if not isinstance(args_dict, dict):
+            raise LLMResponseValidationError("Tool call arguments must be a valid JSON object")
 
         return ToolCall(
             id=tc.get("id", ""),

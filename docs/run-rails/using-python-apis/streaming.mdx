@@ -333,13 +333,18 @@ Buffered dialog generation, `RunnableRails`, and the chat CLI also reject stream
 tool-call events explicitly.
 Use the supported non-streaming tool-calling path when these checks are required.
 
-The Guardrails server still rejects requests combining `stream: true` with
-`tools`, `tool_choice`, or `parallel_tool_calls` with HTTP 422. Its stream formatter
-forwards backend-produced `ToolCallDeltaChunk` events as OpenAI-compatible
-`delta.tool_calls` without assembling the arguments first. It sends the provider's
-finish reason in a terminal choice and then `[DONE]`. Completed `ToolCallChunk`
-events remain supported and are serialized at this boundary. Neither path enables
-streaming request-level tools or tool safety checks.
+The Guardrails server accepts `stream: true` with a non-empty `tools` list,
+`tool_choice`, or `parallel_tool_calls` for supported Colang 1.0 configurations.
+For these requests it runs non-streaming generation and all enabled checks first,
+then delivers the approved answer as SSE. Text and complete tool calls arrive
+only after generation and checking finish. This applies to both LLMRails and
+IORails; it does not change either engine's `stream_async()` behavior.
+See [Server Tool Calling](/run-guardrailed-inference/using-fastapi-server/chat-with-guardrailed-model#tool-calling).
+
+Without these request-level tool parameters, the existing incremental server
+path remains unchanged. Its formatter can serialize backend-produced
+`ToolCallDeltaChunk` and `ToolCallChunk` events, subject to the engine restrictions
+above.
 
 </Warning>
 

@@ -21,7 +21,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import httpx
 from openai.types.chat.chat_completion import Choice
@@ -435,6 +435,29 @@ def create_error_chat_completion(
         ],
         guardrails=GuardrailsDataOutput(config_id=config_id) if config_id else None,
     )
+
+
+def chat_completion_to_sse(completion: GuardrailsChatCompletion) -> Iterator[str]:
+    """Deliver an already checked completion as content, finish, and optional usage events."""
+    payload = completion.model_dump(mode="json", exclude_none=True)
+    choices = payload.pop("choices")
+    usage = payload.pop("usage", None)
+    payload["object"] = "chat.completion.chunk"
+    deltas = []
+    finishes = []
+    for choice in choices:
+        message = choice.pop("message")
+        calls = message.get("tool_calls")
+        if calls:
+            message["tool_calls"] = [{"index": index, **call} for index, call in enumerate(calls)]
+        deltas.append({**choice, "delta": message, "finish_reason": None})
+        finishes.append({"index": choice["index"], "delta": {}, "finish_reason": choice["finish_reason"]})
+    yield f"data: {json.dumps({**payload, 'choices': deltas})}\n\n"
+    payload.pop("guardrails", None)
+    yield f"data: {json.dumps({**payload, 'choices': finishes})}\n\n"
+    if usage is not None:
+        yield f"data: {json.dumps({**payload, 'choices': [], 'usage': usage})}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def format_streaming_chunk(

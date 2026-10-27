@@ -903,9 +903,10 @@ def test_chat_completion_rejects_tools_for_dialog_flow_config():
     ],
     ids=["tools", "tool_choice", "parallel_tool_calls"],
 )
-@pytest.mark.parametrize("unsupported", ["colang2", "dialog", "streaming"])
-def test_chat_completion_unsupported_tools_use_error_envelope(passthrough, tool_params, unsupported):
-    """Reject unsupported Colang, dialog, and streaming tool requests with 422 before generation."""
+@pytest.mark.parametrize("unsupported", ["colang2", "dialog"])
+@pytest.mark.parametrize("stream", [False, True])
+def test_chat_completion_unsupported_tools_use_error_envelope(passthrough, tool_params, unsupported, stream):
+    """Reject unsupported Colang and dialog tool requests with 422 before generation."""
     config = RailsConfig.from_content(
         yaml_content="colang_version: '2.x'" if unsupported == "colang2" else "colang_version: '1.0'",
         colang_content='define user greeting\n  "hello"' if unsupported == "dialog" else "",
@@ -916,7 +917,6 @@ def test_chat_completion_unsupported_tools_use_error_envelope(passthrough, tool_
     expected_message = {
         "colang2": "only supported for Colang 1.0 configurations.",
         "dialog": "not supported when the guardrails configuration defines dialog flows (user_messages).",
-        "streaming": "only supported for non-streaming requests.",
     }[unsupported]
 
     with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=rails)):
@@ -925,7 +925,7 @@ def test_chat_completion_unsupported_tools_use_error_envelope(passthrough, tool_
             json={
                 "messages": [{"role": "user", "content": "Weather?"}],
                 "guardrails": {"config_id": "with_custom_llm"},
-                "stream": unsupported == "streaming",
+                "stream": stream,
                 "model": "test-model",
                 **tool_params,
             },
@@ -1062,32 +1062,6 @@ def test_chat_completion_rejects_tool_choice_for_single_call_with_user_messages(
 
     assert response.status_code == 422
     assert "dialog flows" in response.json()["error"]["message"].lower()
-
-
-def test_chat_completion_rejects_tools_with_streaming_even_in_passthrough():
-    """Test that tools + stream=True is rejected even when passthrough is True."""
-    mock_rails = AsyncMock()
-    mock_rails.config.colang_version = "1.0"
-    mock_rails.config.passthrough = True
-    mock_rails.config.user_messages = {}
-    mock_rails.config.rails.dialog.single_call.enabled = False
-
-    tools = [{"type": "function", "function": {"name": "get_weather", "parameters": {}}}]
-
-    with patch("nemoguardrails.server.api._get_rails", new=AsyncMock(return_value=mock_rails)):
-        response = client.post(
-            "/v1/chat/completions",
-            json={
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": "Weather?"}],
-                "tools": tools,
-                "stream": True,
-                "guardrails": {"config_id": "with_custom_llm"},
-            },
-        )
-
-    assert response.status_code == 422
-    assert "non-streaming" in response.json()["error"]["message"].lower()
 
 
 def test_chat_completion_returns_tool_calls():
