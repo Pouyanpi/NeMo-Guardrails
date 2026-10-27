@@ -408,54 +408,68 @@ class TestStream:
         assert tcs[1].function.name == "get_time"
 
     @pytest.mark.asyncio
-    async def test_invalid_json_fallback(self):
+    @pytest.mark.parametrize("finish_reason", ["tool_calls", "stop"])
+    @pytest.mark.parametrize(
+        "arguments,expected",
+        [
+            ("{bad json", None),
+            ('{"city":', None),
+            ("[]", None),
+            ("null", None),
+            ('"text"', None),
+            ("42", None),
+            ("false", None),
+            ("", {}),
+            ("{}", {}),
+            ('{"city":"Paris"}', {"city": "Paris"}),
+        ],
+    )
+    async def test_streamed_tool_argument_validation(self, finish_reason, arguments, expected):
         mc = _mock_client()
+        chunks = _stream_chunks(
+            [
+                {
+                    "tool_calls": [
+                        {
+                            "index": 0,
+                            "id": "c1",
+                            "type": "function",
+                            "function": {"name": "fn", "arguments": ""},
+                        }
+                    ]
+                },
+                {"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]},
+                {},
+            ]
+        )
+        chunks[-1].body["choices"][0]["finish_reason"] = finish_reason
+        closed = False
 
         async def mock_stream(*args, **kwargs):
-            for c in [
-                {
-                    "id": "c",
-                    "model": "gpt-4o",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {
-                                "tool_calls": [
-                                    {
-                                        "index": 0,
-                                        "id": "c1",
-                                        "type": "function",
-                                        "function": {"name": "fn", "arguments": ""},
-                                    }
-                                ]
-                            },
-                            "finish_reason": None,
-                        }
-                    ],
-                },
-                {
-                    "id": "c",
-                    "model": "gpt-4o",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": {"tool_calls": [{"index": 0, "function": {"arguments": "{bad json"}}]},
-                            "finish_reason": None,
-                        }
-                    ],
-                },
-                {"id": "c", "model": "gpt-4o", "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}]},
-            ]:
-                yield HTTPResponse(body=c)
+            nonlocal closed
+            try:
+                for chunk in chunks:
+                    yield chunk
+            finally:
+                closed = True
 
         mc.stream_chat_completion = mock_stream
         m = _model(mc)
-
         results = []
-        async for chunk in m.stream_async("test"):
-            results.append(chunk)
-
-        assert results[-1].delta_tool_calls[0].function.arguments == {}
+        if expected is None:
+            with pytest.raises(LLMResponseValidationError, match="valid JSON object") as exc_info:
+                async for chunk in m.stream_async("test"):
+                    results.append(chunk)
+            assert exc_info.value.model_name == m.model_name
+            assert exc_info.value.provider_name == m.provider_name
+            assert all(chunk.delta_tool_calls is None and chunk.finish_reason is None for chunk in results)
+        else:
+            results = [chunk async for chunk in m.stream_async("test")]
+            assert results[-1].delta_tool_calls == [
+                ToolCall(id="c1", function=ToolCallFunction(name="fn", arguments=expected))
+            ]
+            assert results[-1].finish_reason == finish_reason
+        assert closed
 
 
 class TestParams:

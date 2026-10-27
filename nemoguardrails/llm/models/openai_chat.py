@@ -188,24 +188,20 @@ class OpenAIChatModel:
 
     @staticmethod
     def _finalize_tool_calls(acc: Dict[int, Dict[str, Any]]) -> List[ToolCall]:
+        """Validate completed arguments, treating no argument fragments as a no-argument call."""
         result = []
         for idx in sorted(acc.keys()):
             entry = acc[idx]
-            raw_args = entry["arguments_buffer"]
-            # Graceful degrade: truncated (max_tokens) or malformed args => empty dict.
-            # The tool will surface the real error when invoked with no arguments.
-            try:
-                args_dict = json.loads(raw_args) if raw_args else {}
-            except json.JSONDecodeError:
-                args_dict = {}
             result.append(
-                ToolCall(
-                    id=entry["id"],
-                    type=entry["type"],
-                    function=ToolCallFunction(
-                        name=entry["function_name"],
-                        arguments=args_dict,
-                    ),
+                OpenAIChatModel._parse_tool_call(
+                    {
+                        "id": entry["id"],
+                        "type": entry["type"],
+                        "function": {
+                            "name": entry["function_name"],
+                            "arguments": entry["arguments_buffer"] or "{}",
+                        },
+                    }
                 )
             )
         return result
