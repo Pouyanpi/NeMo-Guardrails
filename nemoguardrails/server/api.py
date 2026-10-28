@@ -539,7 +539,7 @@ class ChunkErrorMetadata(BaseModel):
     message: str
     # Only the internal stream markers count as a terminal error frame; see
     # ChunkError below.
-    type: Literal["generation_error", "downstream_error", "guardrails_violation"]
+    type: Literal["generation_error", "downstream_error", "guardrails_violation", "internal_error"]
     param: Optional[str] = None
     code: Union[str, int, None] = None
 
