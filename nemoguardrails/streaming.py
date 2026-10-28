@@ -33,6 +33,12 @@ class _EndOfStream:
 END_OF_STREAM = _EndOfStream()
 
 
+def _pattern_alternatives(pattern: Optional[Union[str, Tuple[str, ...]]]) -> Tuple[str, ...]:
+    if pattern is None:
+        return ()
+    return (pattern,) if isinstance(pattern, str) else pattern
+
+
 class StreamingHandler(AsyncIterator):
     """Provider-agnostic streaming handler with prefix/suffix/stop handling.
 
@@ -361,29 +367,14 @@ class StreamingHandler(AsyncIterator):
 
         # Process prefix: accumulate until the expected prefix is received, then remove it.
         if self.prefix:
-            if isinstance(chunk, str):
-                self.current_chunk += chunk
-            prefixes = (self.prefix,) if isinstance(self.prefix, str) else self.prefix
-            for prefix in prefixes:
-                if self.current_chunk.startswith(prefix):
-                    self.current_chunk = self.current_chunk[len(prefix) :]
-                    self.prefix = None
-                    break
-            if self.prefix is None or chunk is END_OF_STREAM:
-                self.prefix = None
-                remaining = self.current_chunk
-                self.current_chunk = ""
-                if remaining:
-                    await self.push_chunk(remaining)
-                if chunk is END_OF_STREAM:
-                    await self.push_chunk(END_OF_STREAM, metadata)
+            await self._process_prefix(chunk, metadata)
         # Process suffix/stop tokens: accumulate and check whether the current chunk ends with one.
         elif self.suffix or self.stop:
             if isinstance(chunk, str):
                 self.current_chunk += chunk
             _chunks = []
             if self.suffix:
-                _chunks.extend((self.suffix,) if isinstance(self.suffix, str) else self.suffix)
+                _chunks.extend(_pattern_alternatives(self.suffix))
             if self.stop:
                 _chunks.extend(self.stop)
             skip_processing = False
@@ -412,10 +403,30 @@ class StreamingHandler(AsyncIterator):
         else:
             await self._process(chunk, metadata)
 
+    async def _process_prefix(
+        self,
+        chunk: Union[str, _EndOfStream],
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if isinstance(chunk, str):
+            self.current_chunk += chunk
+        for prefix in _pattern_alternatives(self.prefix):
+            if self.current_chunk.startswith(prefix):
+                self.current_chunk = self.current_chunk[len(prefix) :]
+                self.prefix = None
+                break
+        if self.prefix is None or chunk is END_OF_STREAM:
+            self.prefix = None
+            remaining = self.current_chunk
+            self.current_chunk = ""
+            if remaining:
+                await self.push_chunk(remaining)
+            if chunk is END_OF_STREAM:
+                await self.push_chunk(END_OF_STREAM, metadata)
+
     def _strip_current_suffix(self):
         if self.suffix:
-            suffixes = (self.suffix,) if isinstance(self.suffix, str) else self.suffix
-            for suffix in suffixes:
+            for suffix in _pattern_alternatives(self.suffix):
                 if suffix and self.current_chunk.endswith(suffix):
                     self.current_chunk = self.current_chunk[: -len(suffix)]
                     break

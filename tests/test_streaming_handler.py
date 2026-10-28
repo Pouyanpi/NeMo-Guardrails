@@ -100,6 +100,20 @@ async def _collect_handler(handler):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("prefix,leading", [("abc", ""), (("ab", "abc"), "c"), (("abc", "ab"), "")])
+@pytest.mark.parametrize("suffix,trailing", [("abc", ""), (("bc", "abc"), "a"), (("abc", "bc"), "")])
+async def test_overlapping_patterns_use_first_match(prefix, leading, suffix, trailing):
+    handler = StreamingHandler()
+    handler.set_pattern(prefix=prefix, suffix=suffix)
+    await handler.push_chunk("abcbodyabc")
+    await handler.push_chunk(END_OF_STREAM)
+
+    expected = f"{leading}body{trailing}"
+    assert await asyncio.wait_for(_collect_handler(handler), timeout=1) == [expected]
+    assert handler.completion == expected
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("finish_before_release", [False, True])
 async def test_pattern_set_during_buffering_preserves_chunk_order(finish_before_release):
     handler = StreamingHandler(enable_buffer=True)
