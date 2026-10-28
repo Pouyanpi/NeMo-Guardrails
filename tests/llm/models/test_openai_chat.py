@@ -407,7 +407,10 @@ class TestStream:
         assert tcs[0].function.name == "get_weather"
         assert tcs[1].function.name == "get_time"
 
+
+class TestToolArgumentValidation:
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("stream", [False, True])
     @pytest.mark.parametrize("finish_reason", ["tool_calls", "stop"])
     @pytest.mark.parametrize(
         "arguments,expected",
@@ -419,13 +422,24 @@ class TestStream:
             ('"text"', None),
             ("42", None),
             ("false", None),
+            ("   ", None),
+            (None, {}),
             ("", {}),
             ("{}", {}),
             ('{"city":"Paris"}', {"city": "Paris"}),
         ],
     )
-    async def test_streamed_tool_argument_validation(self, finish_reason, arguments, expected):
+    async def test_tool_argument_validation(self, stream, finish_reason, arguments, expected):
         mc = _mock_client()
+        function = {"name": "fn"}
+        if arguments is not None:
+            function["arguments"] = arguments
+        mc.chat_completion = AsyncMock(
+            return_value=_response(
+                tool_calls=[{"id": "c1", "type": "function", "function": function}],
+                finish_reason=finish_reason,
+            )
+        )
         chunks = _stream_chunks(
             [
                 {
@@ -434,11 +448,11 @@ class TestStream:
                             "index": 0,
                             "id": "c1",
                             "type": "function",
-                            "function": {"name": "fn", "arguments": ""},
+                            "function": {"name": "fn"},
                         }
                     ]
                 },
-                {"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]},
+                {"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]} if arguments is not None else {},
                 {},
             ]
         )
@@ -458,18 +472,28 @@ class TestStream:
         results = []
         if expected is None:
             with pytest.raises(LLMResponseValidationError, match="valid JSON object") as exc_info:
-                async for chunk in m.stream_async("test"):
-                    results.append(chunk)
+                if stream:
+                    async for chunk in m.stream_async("test"):
+                        results.append(chunk)
+                else:
+                    await m.generate_async("test")
             assert exc_info.value.model_name == m.model_name
             assert exc_info.value.provider_name == m.provider_name
+            assert exc_info.value.base_url == mc.provider_url
             assert all(chunk.delta_tool_calls is None and chunk.finish_reason is None for chunk in results)
         else:
-            results = [chunk async for chunk in m.stream_async("test")]
-            assert results[-1].delta_tool_calls == [
-                ToolCall(id="c1", function=ToolCallFunction(name="fn", arguments=expected))
-            ]
-            assert results[-1].finish_reason == finish_reason
-        assert closed
+            if stream:
+                results = [chunk async for chunk in m.stream_async("test")]
+                tool_calls = results[-1].delta_tool_calls
+                actual_finish_reason = results[-1].finish_reason
+            else:
+                response = await m.generate_async("test")
+                tool_calls = response.tool_calls
+                actual_finish_reason = response.finish_reason
+            assert tool_calls == [ToolCall(id="c1", function=ToolCallFunction(name="fn", arguments=expected))]
+            assert actual_finish_reason == finish_reason
+        if stream:
+            assert closed
 
 
 class TestParams:

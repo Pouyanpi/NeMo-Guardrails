@@ -295,7 +295,9 @@ The adapter also accumulates fragments into canonical `ToolCall` objects for the
 final internal `LLMResponse`, context, and subsequent conversation processing.
 On normal completion, non-empty argument buffers must decode to JSON objects;
 malformed JSON, arrays, and scalar values fail validation instead of becoming
-empty arguments. A call with no argument fragments retains empty `{}` arguments.
+empty arguments. Buffered and streamed calls use the same argument validation:
+absent or empty argument strings become `{}`, while whitespace-only strings fail.
+This validation does not check required parameters against the tool's schema.
 Earlier fragments may already have reached the caller when validation fails.
 The adapter does not emit completed calls again after emitting deltas.
 `stream_async()` still yields events rather than returning the internal response.
