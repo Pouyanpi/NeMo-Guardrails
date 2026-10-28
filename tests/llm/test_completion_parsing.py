@@ -59,3 +59,26 @@ def test_multiline_response_stops_at_closing_quote(opening, closing):
 def test_multiline_response_preserves_inner_curly_quotes(opening, closing, message):
     text = f'{opening}{message}{closing}\nbot another intent\n  "Unwanted reply"'
     assert strip_quotes(get_multiline_response(text)) == message
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("", ""),
+        (" \n\t\n ", ""),
+        ('\n  "Hello\n\n  there.  \n', '"Hello\nthere.'),
+        ('"', '"'),
+        ("“", "“"),
+        ("”\nIgnored", "”"),
+        ('"Hello\nuser express greeting\nIgnored', '"Hello'),
+        ('"Hello\nusername\nIgnored', '"Hello'),
+        ("user express greeting\nHello", "user express greeting\nHello"),
+        ('Unquoted\nreply"\nIgnored', 'Unquoted\nreply"'),
+        ("Unquoted\nreply”\nIgnored", "Unquoted\nreply”"),
+        ('“Hello"\nIgnored', '“Hello"'),
+        ('"Hello”\nIgnored', '"Hello”'),
+        ('"She said “hello”\nuser express greeting\nIgnored', '"She said “hello”'),
+    ],
+)
+def test_multiline_response_boundaries(text, expected):
+    assert get_multiline_response(text) == expected
