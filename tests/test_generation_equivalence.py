@@ -1246,8 +1246,8 @@ class TestStreamingPatternFor:
     def test_pattern_matrix(self):
         from nemoguardrails.actions.llm.generation import _streaming_pattern_for
 
-        verbose = ('Bot message: "', '"')
-        plain = ('  "', '"')
+        verbose = (('Bot message: "', "Bot message: “"), ('"', "”"))
+        plain = (('  "', "  “"), ('"', "”"))
 
         # verbose_v1 is always verbose, regardless of the flag.
         assert _streaming_pattern_for("verbose_v1", include_bot_message_parser=False) == verbose

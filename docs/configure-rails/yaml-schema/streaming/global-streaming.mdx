@@ -10,6 +10,8 @@ content:
 
 The NeMo Guardrails library supports streaming LLM responses in real-time through the `stream_async()` method. No configuration is required to enable streaming—simply use `stream_async()` instead of `generate_async()`.
 
+For Colang 1.0 dialog generation, the NVIDIA NeMo Guardrails library accepts both straight (`"`) and curly (`“…”`) double quotes around generated bot messages, including in single-call mode. It removes these delimiters and preserves quotes inside the message. If a response does not match the expected message prefix, buffered text is released when generation ends.
+
 ## Basic Usage
 
 ```python
