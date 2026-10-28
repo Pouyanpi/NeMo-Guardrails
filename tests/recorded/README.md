@@ -297,3 +297,57 @@ Use a fake cassette only when runtime injection cannot model the behavior clearl
 - include YAML header metadata with `reason`, `frozen_fields`, and `fake_llm_model_considered`.
 
 The fake-cassette metadata validator is in `tests/recorded/fake_cassettes.py`.
+
+### Buffered server tool streams
+
+`server/test_buffered_tool_streaming.py` exercises top-level `tools`,
+`tool_choice`, and `parallel_tool_calls` with `stream: true` through the ASGI
+server and the OpenAI SDK. These requests generate and check a complete answer
+before emitting SSE. The recordings contain buffered provider JSON, not provider
+SSE; the SDK consumes the SSE produced by the server and reconstructs approved
+messages from successive text and tool-argument deltas. The provider cassettes
+and reconstructed-answer snapshots also serve as the equivalence check for
+changes to the server's fragment boundaries.
+
+| Scenario | Coverage |
+| --- | --- |
+| Single call and stateless result continuation | OpenAI and NVIDIA inference gateway; LLMRails passthrough, LLMRails with a chat prompt, and IORails |
+| Parallel calls and thread continuation | Matching IDs and indices, reversed result order, result-only follow-up, and a later user turn |
+| Sequential dependent calls | A second tool receives the first result's token; both results reach the answer |
+| Tool-call rejection | LLMRails checks an actual provider call and emits only the refusal |
+| Sanitized history | Input rewrite, tool-result sanitization, output processing, and later thread replay in both LLMRails passthrough modes |
+| Provider failure | Invalid-model requests after a tool result return an HTTP JSON error before SSE starts |
+| Model-backed tool checks | IORails tool-safety checker allows, blocks, or fails for both call arguments and results |
+
+`server/test_buffered_tool_streaming_safety.py` uses the existing tool-safety
+policy with an OpenAI main model and judge. That library rail uses IORails;
+LLMRails coverage uses its supported Colang tool-call and tool-result flows.
+The server stores original caller history; the sanitization cases check that
+later provider requests still contain only the checked messages.
+
+Assertions compare public call IDs, names, and parsed arguments to the actual
+provider response, validate request history and completion framing, and require
+all recorded provider exchanges to be consumed during offline replay. ASGI
+requests are excluded from recording so replay always executes the server route.
+Inline snapshots pin both the reconstructed answers and the complete downstream
+SSE event sequences for every successful stream, including refusals. The SSE
+snapshots preserve event order, fragment boundaries, argument strings, tool
+indices, finish reasons, metadata, and `[DONE]`. Only completion IDs, timestamps,
+and tool-call IDs are normalized. Provider cassettes remain buffered JSON;
+regenerate the downstream snapshots offline from those cassettes.
+
+Record with `OPENAI_API_KEY` and `NVIDIA_INFERENCE_KEY`; gateway coverage uses
+`https://inference-api.nvidia.com/v1`, not the public NIM endpoint. The parallel gateway cases use
+`tool_choice: auto`; attempts with `required` timed out during recording, so
+these cassettes do not establish that gateway combination. OpenAI parallel
+cases use `required`. Invalid-model cases preserve OpenAI's 404 and the
+gateway's 403. Follow the record/create/replay procedure above. Replay must pass with `--block-network`.
+
+Synthetic malformed argument JSON, cancellation before generation completes,
+local input/output rejection, structural validation, unsupported configurations,
+HTTP error variants, and metadata/usage serialization remain in
+`tests/server/test_buffered_tool_stream.py` and `tests/server/test_api.py`.
+Existing incremental server and public-API tool-stream recordings remain the
+regression coverage for requests that do not select this buffered path. This
+matrix does not establish LangChain, Colang 2, dialog-flow, or every provider's
+compatibility.

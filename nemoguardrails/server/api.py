@@ -40,6 +40,7 @@ from nemoguardrails.exceptions import (
     InvalidModelConfigurationError,
     InvalidStateError,
     LLMCallException,
+    LLMResponseValidationError,
     NonStreamingWorkQueueFullError,
     RailTypeNotConfiguredError,
     RailTypeNotSupportedError,
@@ -85,6 +86,7 @@ from nemoguardrails.server.schemas.openai import (
 )
 from nemoguardrails.server.schemas.utils import (
     bot_message_to_chat_completion,
+    chat_completion_to_sse,
     extract_bot_message_from_response,
     fetch_models,
     format_streaming_chunk_as_sse,
@@ -228,6 +230,7 @@ _EXCEPTION_HANDLERS = (
     (NonStreamingWorkQueueFullError, queue_full_error_handler),
     # Any QueueFull raised outside the paths above still reads as overload.
     (asyncio.QueueFull, queue_full_error_handler),
+    (LLMResponseValidationError, llm_call_exception_handler),
     (LLMCallException, llm_call_exception_handler),
     (ModelEngineError, llm_call_exception_handler),
     (HTTPClientError, llm_call_exception_handler),
@@ -715,15 +718,6 @@ async def chat_completion(body: GuardrailsChatCompletionRequest, request: Reques
 
     tools_requested = body.tools or body.tool_choice is not None or body.parallel_tool_calls is not None
     if tools_requested:
-        if body.stream:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "The 'tools', 'tool_choice', and 'parallel_tool_calls' parameters are only "
-                    "supported for non-streaming requests."
-                ),
-            )
-
         if llm_rails.config.colang_version != "1.0":
             raise HTTPException(
                 status_code=422,
@@ -794,7 +788,7 @@ async def chat_completion(body: GuardrailsChatCompletionRequest, request: Reques
     if body.parallel_tool_calls is not None:
         generation_options.llm_params["parallel_tool_calls"] = body.parallel_tool_calls
 
-    if body.stream:
+    if body.stream and not tools_requested:
         # Use stream_async for streaming with output rails support
         stream_iterator = llm_rails.stream_async(
             messages=messages,
@@ -831,51 +825,56 @@ async def chat_completion(body: GuardrailsChatCompletionRequest, request: Reques
             ),
             media_type="text/event-stream",
         )
+
+    # Tool calls need a complete generation result so rails finish before SSE delivery.
+    res = await llm_rails.generate_async(
+        messages=messages,
+        options=generation_options,
+    )
+
+    # IORails-only: prefix `content` with `reasoning_content` and think-tags.
+    # A Guardrails wrapper can fall back to an LLMRails engine, which already
+    # inlines reasoning itself, so the engine check is what scopes this.
+    if (
+        isinstance(llm_rails, Guardrails)
+        and isinstance(llm_rails.rails_engine, IORails)
+        and isinstance(res, GenerationResponse)
+    ):
+        res = _inline_reasoning_as_think_tags(res)
+
+    # Extract bot message for thread storage if needed
+    bot_message = extract_bot_message_from_response(res)
+
+    # If we're using threads, we also need to update the data before returning
+    # the message.
+    if body.guardrails.thread_id and datastore is not None and datastore_key is not None:
+        # If using tool calls, we need to normalize them to OpenAI format before storing.
+        response_tool_calls = res.tool_calls if isinstance(res, GenerationResponse) else None
+        tool_calls_for_storage = resolve_tool_calls(bot_message, response_tool_calls)
+        if tool_calls_for_storage:
+            normalized = [tc.model_dump() for tc in normalize_tool_calls_openai(tool_calls_for_storage)]
+            storable_message = {**bot_message, "tool_calls": normalized}
+        else:
+            storable_message = bot_message
+        await datastore.set(datastore_key, json.dumps(messages + [storable_message]))
+
+    # Build the response with OpenAI-compatible format using utility function
+    if isinstance(res, GenerationResponse):
+        completion = generation_response_to_chat_completion(
+            response=res,
+            model=body.model,
+            config_id=config_ids[0] if config_ids else None,
+        )
     else:
-        res = await llm_rails.generate_async(
-            messages=messages,
-            options=generation_options,
+        completion = bot_message_to_chat_completion(
+            bot_message=bot_message,
+            model=body.model,
+            config_id=config_ids[0] if config_ids else None,
         )
 
-        # IORails-only: prefix `content` with `reasoning_content` and think-tags.
-        # A Guardrails wrapper can fall back to an LLMRails engine, which already
-        # inlines reasoning itself, so the engine check is what scopes this.
-        if (
-            isinstance(llm_rails, Guardrails)
-            and isinstance(llm_rails.rails_engine, IORails)
-            and isinstance(res, GenerationResponse)
-        ):
-            res = _inline_reasoning_as_think_tags(res)
-
-        # Extract bot message for thread storage if needed
-        bot_message = extract_bot_message_from_response(res)
-
-        # If we're using threads, we also need to update the data before returning
-        # the message.
-        if body.guardrails.thread_id and datastore is not None and datastore_key is not None:
-            # If using tool calls, we need to normalize them to OpenAI format before storing.
-            response_tool_calls = res.tool_calls if isinstance(res, GenerationResponse) else None
-            tool_calls_for_storage = resolve_tool_calls(bot_message, response_tool_calls)
-            if tool_calls_for_storage:
-                normalized = [tc.model_dump() for tc in normalize_tool_calls_openai(tool_calls_for_storage)]
-                storable_message = {**bot_message, "tool_calls": normalized}
-            else:
-                storable_message = bot_message
-            await datastore.set(datastore_key, json.dumps(messages + [storable_message]))
-
-        # Build the response with OpenAI-compatible format using utility function
-        if isinstance(res, GenerationResponse):
-            return generation_response_to_chat_completion(
-                response=res,
-                model=body.model,
-                config_id=config_ids[0] if config_ids else None,
-            )
-        else:
-            return bot_message_to_chat_completion(
-                bot_message=bot_message,
-                model=body.model,
-                config_id=config_ids[0] if config_ids else None,
-            )
+    if body.stream:
+        return StreamingResponse(chat_completion_to_sse(completion), media_type="text/event-stream")
+    return completion
 
 
 def _map_rail_status(status: RailStatus) -> str:

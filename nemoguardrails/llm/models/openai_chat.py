@@ -115,9 +115,9 @@ class OpenAIChatModel:
         params = self._prepare_params(stop, kwargs)
         try:
             response = await self._client.chat_completion(self._model, messages, **params)
+            return self._parse_response(response)
         except LLMClientError as exc:
             raise self._enrich(exc)
-        return self._parse_response(response)
 
     async def stream_async(
         self,
@@ -188,24 +188,20 @@ class OpenAIChatModel:
 
     @staticmethod
     def _finalize_tool_calls(acc: Dict[int, Dict[str, Any]]) -> List[ToolCall]:
+        """Parse assembled calls using the same validation as buffered responses."""
         result = []
         for idx in sorted(acc.keys()):
             entry = acc[idx]
-            raw_args = entry["arguments_buffer"]
-            # Graceful degrade: truncated (max_tokens) or malformed args => empty dict.
-            # The tool will surface the real error when invoked with no arguments.
-            try:
-                args_dict = json.loads(raw_args) if raw_args else {}
-            except json.JSONDecodeError:
-                args_dict = {}
             result.append(
-                ToolCall(
-                    id=entry["id"],
-                    type=entry["type"],
-                    function=ToolCallFunction(
-                        name=entry["function_name"],
-                        arguments=args_dict,
-                    ),
+                OpenAIChatModel._parse_tool_call(
+                    {
+                        "id": entry["id"],
+                        "type": entry["type"],
+                        "function": {
+                            "name": entry["function_name"],
+                            "arguments": entry["arguments_buffer"],
+                        },
+                    }
                 )
             )
         return result
@@ -328,24 +324,26 @@ class OpenAIChatModel:
         )
 
     @staticmethod
+    def _parse_tool_arguments(raw_args: Any) -> Dict[str, Any]:
+        """Accept empty argument strings for compatibility with no-argument calls."""
+        if raw_args == "":
+            return {}
+        try:
+            args_dict = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        except json.JSONDecodeError as exc:
+            raise LLMResponseValidationError("Tool call arguments must be a valid JSON object") from exc
+        if not isinstance(args_dict, dict):
+            raise LLMResponseValidationError("Tool call arguments must be a valid JSON object")
+        return args_dict
+
+    @staticmethod
     def _parse_tool_call(tc: Dict[str, Any]) -> ToolCall:
         func = tc.get("function", {})
-        raw_args = func.get("arguments", "{}")
-        if isinstance(raw_args, str):
-            # Graceful degrade: malformed args from provider => empty dict.
-            # The tool will surface the real error when invoked with no arguments.
-            try:
-                args_dict = json.loads(raw_args)
-            except json.JSONDecodeError:
-                args_dict = {}
-        else:
-            args_dict = raw_args
-
         return ToolCall(
             id=tc.get("id", ""),
             type=tc.get("type", "function"),
             function=ToolCallFunction(
                 name=func.get("name", ""),
-                arguments=args_dict,
+                arguments=OpenAIChatModel._parse_tool_arguments(func.get("arguments", "")),
             ),
         )

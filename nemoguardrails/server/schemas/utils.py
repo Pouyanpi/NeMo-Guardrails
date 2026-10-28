@@ -21,7 +21,7 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple, Union, cast
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union, cast
 
 import httpx
 from openai.types.chat.chat_completion import Choice
@@ -435,6 +435,47 @@ def create_error_chat_completion(
         ],
         guardrails=GuardrailsDataOutput(config_id=config_id) if config_id else None,
     )
+
+
+def _approved_message_deltas(message: Dict[str, Any]) -> Iterator[Dict[str, Any]]:
+    """Fragment approved strings without changing their characters or tool identities."""
+    header = dict(message)
+    text = {key: header.pop(key) for key in ("content", "refusal") if key in header}
+    calls = header.pop("tool_calls", [])
+    yield header
+    for key, value in text.items():
+        if not isinstance(value, str) or not value:
+            yield {key: value}
+            continue
+        for offset in range(0, len(value), 32):
+            yield {key: value[offset : offset + 32]}
+    for index, call in enumerate(calls):
+        function = dict(call["function"])
+        arguments = function.pop("arguments", "")
+        yield {"tool_calls": [{**call, "index": index, "function": {**function, "arguments": ""}}]}
+        for offset in range(0, len(arguments), 32):
+            yield {"tool_calls": [{"index": index, "function": {"arguments": arguments[offset : offset + 32]}}]}
+
+
+def chat_completion_to_sse(completion: GuardrailsChatCompletion) -> Iterator[str]:
+    """Deliver a checked completion as successive deltas, finish, and optional usage events."""
+    payload = completion.model_dump(mode="json", exclude_none=True)
+    choices = payload.pop("choices")
+    usage = payload.pop("usage", None)
+    payload["object"] = "chat.completion.chunk"
+    finishes = []
+    for choice in choices:
+        message = choice.pop("message")
+        for delta_index, delta in enumerate(_approved_message_deltas(message)):
+            fields = choice if delta_index == 0 else {"index": choice["index"]}
+            event = {**fields, "delta": delta, "finish_reason": None}
+            yield f"data: {json.dumps({**payload, 'choices': [event]})}\n\n"
+            payload.pop("guardrails", None)
+        finishes.append({"index": choice["index"], "delta": {}, "finish_reason": choice["finish_reason"]})
+    yield f"data: {json.dumps({**payload, 'choices': finishes})}\n\n"
+    if usage is not None:
+        yield f"data: {json.dumps({**payload, 'choices': [], 'usage': usage})}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 def format_streaming_chunk(
