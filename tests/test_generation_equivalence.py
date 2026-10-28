@@ -816,6 +816,33 @@ async def test_single_call_streaming_handles_subsequent_bot_replies(monkeypatch,
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("single_call", [False, True])
+async def test_dialog_multiline_message_preserves_inner_curly_quotes(single_call):
+    config = RailsConfig.from_content(
+        """
+        define user express greeting
+            "hello"
+        define flow
+            user express greeting
+            bot respond kindly
+        """,
+    )
+    config.rails.dialog.single_call.enabled = single_call
+    message = "She said “hello”\nand then waved."
+    quoted_message = f'"{message}"'
+    responses = (
+        [f"  express greeting\nbot respond kindly\n  {quoted_message}"]
+        if single_call
+        else ["  express greeting", quoted_message]
+    )
+    chat = TestChat(config, llm=RecordingFakeLLM(responses=responses))
+
+    response = await chat.app.generate_async(messages=[{"role": "user", "content": "hello"}])
+
+    assert response == {"role": "assistant", "content": message}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("cached_intent", ["respond kindly", "another intent"])
 async def test_single_call_consumed_handoff_regenerates_bot_message(monkeypatch, cached_intent):
     from nemoguardrails.actions.llm import generation

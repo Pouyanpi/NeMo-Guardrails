@@ -45,3 +45,17 @@ def test_strip_quotes(text, expected):
 def test_multiline_response_stops_at_closing_quote(opening, closing):
     text = f'\n  {opening}Hello!\nHow can I help?{closing}\nbot another intent\n  "Unwanted reply"'
     assert strip_quotes(get_multiline_response(text)) == "Hello!\nHow can I help?"
+
+
+@pytest.mark.parametrize("opening,closing", [('"', '"'), ("“", "”"), ('"', "”"), ("“", '"')])
+@pytest.mark.parametrize(
+    "message",
+    [
+        "She said “hello”\nand then waved.",
+        "She said “hello\nand goodbye”\nand then waved.",
+        "She said “say “hello””\nand then waved.",
+    ],
+)
+def test_multiline_response_preserves_inner_curly_quotes(opening, closing, message):
+    text = f'{opening}{message}{closing}\nbot another intent\n  "Unwanted reply"'
+    assert strip_quotes(get_multiline_response(text)) == message

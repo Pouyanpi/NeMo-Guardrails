@@ -37,7 +37,7 @@ def strip_quotes(s: str) -> str:
 
 def get_multiline_response(s: str) -> str:
     """Helper that extracts multi-line responses from the LLM.
-    Stopping conditions: when a non-empty line ends with a quote or when the token "user" appears after a newline.
+    Stopping conditions: when a non-empty line ends with an outer quote or when the token "user" appears after a newline.
     Empty lines at the begging of the string are skipped."""
 
     # Check if the token "user" appears after a newline, as this would mark a new dialogue turn.
@@ -48,14 +48,19 @@ def get_multiline_response(s: str) -> str:
 
     lines = [line.strip() for line in s.split("\n")]
     result = ""
+    inner_quote_depth = 0
     for line in lines:
         # Keep getting additional non-empty lines until the message ends
         if len(line) > 0:
+            content = line
             if len(result) == 0:
                 result = line
+                if line.startswith(('"', "“")):
+                    content = line[1:]
             else:
                 result += "\n" + line
-            if line.endswith(('"', "”")):
+            inner_quote_depth += content.count("“") - content.count("”")
+            if line.endswith('"') or (line.endswith("”") and inner_quote_depth < 0):
                 break
 
     return result
