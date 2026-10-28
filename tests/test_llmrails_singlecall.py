@@ -163,7 +163,11 @@ async def test_single_call_text_still_streams_successfully():
 @pytest.mark.parametrize("streaming", [False, True])
 @pytest.mark.parametrize("verbose", [False, True])
 @pytest.mark.parametrize("opening,closing", [('"', '"'), ("“", "”"), ("“", '"'), ('"', "”")])
-async def test_generated_message_quote_variants(single_call, streaming, verbose, opening, closing):
+@pytest.mark.parametrize(
+    "body",
+    ['Hello! Say “hello” and "goodbye".', "She said “hello”\nand then waved.", "The opening quotation mark is “."],
+)
+async def test_generated_message_quote_variants(single_call, streaming, verbose, opening, closing, body):
     config = RailsConfig.from_content(
         config={
             "models": [],
@@ -179,8 +183,8 @@ async def test_generated_message_quote_variants(single_call, streaming, verbose,
         },
         colang_content='define user express greeting\n  "hello"\ndefine flow\n  user express greeting\n  bot express greeting\n',
     )
-    body = 'Hello! Say “hello” and "goodbye".'
     message = f"{'Bot message: ' if verbose else '  '}{opening}{body}{closing}"
+    message += '\nBot intent: unwanted\nBot message: "Wrong reply!"' if verbose else '\nbot unwanted\n  "Wrong reply!"'
     if single_call:
         intents = (
             "User intent: express greeting\nBot intent: express greeting\n"

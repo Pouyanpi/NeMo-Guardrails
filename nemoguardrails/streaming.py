@@ -80,6 +80,7 @@ class StreamingHandler(AsyncIterator):
         # The prefix/suffix that should be removed (text-only processing)
         self.prefix: Optional[Union[str, Tuple[str, ...]]] = None
         self.suffix: Optional[Union[str, Tuple[str, ...]]] = None
+        self._pattern_stop: List[str] = []
 
         # The current chunk which needs to be checked for prefix/suffix matching
         self.current_chunk = ""
@@ -117,14 +118,19 @@ class StreamingHandler(AsyncIterator):
         self,
         prefix: Optional[Union[str, Tuple[str, ...]]] = None,
         suffix: Optional[Union[str, Tuple[str, ...]]] = None,
+        *,
+        stop: Optional[List[str]] = None,
     ):
         """Sets the pattern that is expected.
 
         If a prefix or a suffix are specified, they will be removed from the output.
         A tuple specifies alternative prefixes or suffixes to match.
+        Pattern stop sequences are local text boundaries, independent of the
+        provider stop sequences assigned by the LLM call.
         """
         self.prefix = prefix
         self.suffix = suffix
+        self._pattern_stop = stop or []
 
     def set_pipe_to(self, another_handler: "StreamingHandler"):
         self.pipe_to = another_handler
@@ -275,20 +281,27 @@ class StreamingHandler(AsyncIterator):
             if isinstance(chunk, str):
                 self.completion += chunk
                 # Check if the completion contains one of the stop chunks
-                for stop_chunk in self.stop:
-                    if stop_chunk in self.completion:
-                        # Make sure the stop chunk is not included
-                        self.completion = self.completion.split(stop_chunk)[0]
-
-                        # If the current chunk does add something new to the final completion
-                        # We push that as well.
-                        if len(self.completion) > len(prev_completion):
-                            self.current_chunk = self.completion[len(prev_completion) :]
-                            await self.push_chunk(END_OF_STREAM)
-                        # And we stop the streaming
-                        self.streaming_finished_event.set()
-                        self.top_k_nonempty_lines_event.set()
-                        return
+                matches = [
+                    (position, stop_chunk)
+                    for stop_chunk in self.stop + self._pattern_stop
+                    if (position := self.completion.find(stop_chunk)) >= 0
+                ]
+                if matches:
+                    position, stop_chunk = min(matches, key=lambda match: match[0])
+                    self.current_chunk = self.completion[len(prev_completion) : position]
+                    # Pattern boundaries already include the closing quote.
+                    # Provider stops may still leave a suffix to remove.
+                    if stop_chunk not in self._pattern_stop:
+                        self._strip_current_suffix()
+                    remaining = self.current_chunk
+                    self.current_chunk = ""
+                    self.completion = prev_completion
+                    if remaining:
+                        await self._process(remaining)
+                    # Always deliver termination, including when the entire
+                    # message was emitted before the stop sequence arrived.
+                    await self._process(END_OF_STREAM)
+                    return
 
             if self.pipe_to:
                 self._validate_chunk(chunk)
@@ -369,7 +382,7 @@ class StreamingHandler(AsyncIterator):
         if self.prefix:
             await self._process_prefix(chunk, metadata)
         # Process suffix/stop tokens: accumulate and check whether the current chunk ends with one.
-        elif self.suffix or self.stop:
+        elif self.suffix or self.stop or self._pattern_stop:
             if isinstance(chunk, str):
                 self.current_chunk += chunk
             _chunks = []
@@ -377,6 +390,7 @@ class StreamingHandler(AsyncIterator):
                 _chunks.extend(_pattern_alternatives(self.suffix))
             if self.stop:
                 _chunks.extend(self.stop)
+            _chunks.extend(self._pattern_stop)
             skip_processing = False
             for _chunk in _chunks:
                 if skip_processing:
@@ -449,3 +463,4 @@ class StreamingHandler(AsyncIterator):
         if not self.enable_buffer:
             self.prefix = None
             self.suffix = None
+            self._pattern_stop = []

@@ -21,6 +21,7 @@ from typing import List, Optional, Union
 
 import pytest
 
+from nemoguardrails.llm.completion_parsing import BOT_MESSAGE_STOP_SEQUENCES
 from nemoguardrails.streaming import END_OF_STREAM, StreamingHandler
 
 
@@ -97,6 +98,65 @@ async def test_unmatched_prefix_flushes_on_end(text, buffered, finish):
 
 async def _collect_handler(handler):
     return [chunk async for chunk in handler]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("buffered", [False, True])
+@pytest.mark.parametrize("piped", [False, True])
+@pytest.mark.parametrize("chunk_size", [1, 2, 7, 1000])
+@pytest.mark.parametrize(
+    "body",
+    [
+        "She said “hello”\nand then waved.",
+        "The opening quotation mark is “.",
+        "She said “hello”",
+        "She said “hello”\nbotany is interesting.",
+        "She said “hello”\n  bot examples are indented.",
+    ],
+)
+async def test_dialogue_boundaries_across_chunks(body, chunk_size, piped, buffered):
+    handler = StreamingHandler(enable_buffer=buffered)
+    consumer = StreamingHandler() if piped else handler
+    if piped:
+        handler.set_pipe_to(consumer)
+    handler.set_pattern(prefix=('  "', "  “"), suffix=('"', "”"), stop=list(BOT_MESSAGE_STOP_SEQUENCES))
+    handler.stop = []
+    text = f"  “{body}”\nbot unwanted\n  “Wrong reply!”"
+    for start in range(0, len(text), chunk_size):
+        await handler.push_chunk(text[start : start + chunk_size])
+    await handler.push_chunk(END_OF_STREAM)
+    if buffered:
+        await handler.disable_buffering()
+
+    chunks = await asyncio.wait_for(_collect_handler(consumer), timeout=1)
+    assert "".join(chunks) == body
+    assert handler.completion == body
+
+
+@pytest.mark.asyncio
+async def test_pattern_stop_delivers_usage_once_and_finishes_after_emitted_text():
+    handler = StreamingHandler(include_metadata=True)
+    handler.set_pattern(suffix='"', stop=['"\nbot '])
+    await handler.push_chunk("Hello")
+    await handler.push_chunk('"\nbot unwanted', metadata={"usage": {"total_tokens": 5}})
+
+    chunks = await asyncio.wait_for(_collect_handler(handler), timeout=1)
+    assert [chunk["text"] for chunk in chunks] == ["Hello", ""]
+    assert chunks[-1]["metadata"]["usage"] == {"total_tokens": 5}
+    assert handler.completion == "Hello"
+
+
+@pytest.mark.asyncio
+async def test_pattern_stop_precedes_later_provider_stop_in_same_chunk():
+    handler = StreamingHandler(include_metadata=True)
+    handler.set_pattern(suffix='"', stop=['"\nbot '])
+    handler.stop = ["\nuser "]
+    await handler.push_chunk('Hello"\nbot unwanted\nuser next')
+
+    chunks = await asyncio.wait_for(_collect_handler(handler), timeout=1)
+    assert [chunk["text"] for chunk in chunks] == ["Hello", ""]
+    assert handler.queue.empty()
+    assert handler.completion == "Hello"
 
 
 @pytest.mark.asyncio

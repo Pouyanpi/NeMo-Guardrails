@@ -52,7 +52,11 @@ from nemoguardrails.context import (
 from nemoguardrails.embeddings.index import EmbeddingsIndex, IndexItem
 from nemoguardrails.kb.kb import KnowledgeBase
 from nemoguardrails.llm.call import llm_call
-from nemoguardrails.llm.completion_parsing import get_multiline_response, strip_quotes
+from nemoguardrails.llm.completion_parsing import (
+    BOT_MESSAGE_STOP_SEQUENCES,
+    get_multiline_response,
+    strip_quotes,
+)
 from nemoguardrails.llm.filters import apply_input_rail_updates, apply_tool_result_updates
 from nemoguardrails.llm.prompts import get_prompt
 from nemoguardrails.llm.taskmanager import LLMTaskManager
@@ -925,11 +929,6 @@ class LLMGenerationActions:
             # so the main handler is set here.
             _streaming_handler.set_pipe_to(cast(StreamingHandler, streaming_handler))
 
-            # We stop after the closing double quotes for the bot message.
-            _streaming_handler.stop = [
-                '"\n',
-                "”\n",
-            ]
             await _streaming_handler.disable_buffering()
 
             # And wait for it to finish.
@@ -1115,7 +1114,7 @@ class LLMGenerationActions:
                     prefix, suffix = _streaming_pattern_for(
                         prompt_config.output_parser, include_bot_message_parser=True
                     )
-                    streaming_handler.set_pattern(prefix=prefix, suffix=suffix)
+                    streaming_handler.set_pattern(prefix=prefix, suffix=suffix, stop=list(BOT_MESSAGE_STOP_SEQUENCES))
 
                 # Initialize the LLMCallInfo object
                 llm_call_info_var.set(LLMCallInfo(task=Task.GENERATE_BOT_MESSAGE.value))
@@ -1438,7 +1437,7 @@ class LLMGenerationActions:
                 # parse the message.
                 # TODO: Figure out a more generic way to deal with this.
                 prefix, suffix = _streaming_pattern_for(prompt_config.output_parser, include_bot_message_parser=False)
-                _streaming_handler.set_pattern(prefix=prefix, suffix=suffix)
+                _streaming_handler.set_pattern(prefix=prefix, suffix=suffix, stop=list(BOT_MESSAGE_STOP_SEQUENCES))
             else:
                 # Initialize the LLMCallInfo object
                 llm_call_info_var.set(LLMCallInfo(task=Task.GENERATE_INTENT_STEPS_MESSAGE.value))

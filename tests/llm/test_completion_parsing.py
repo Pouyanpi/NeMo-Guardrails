@@ -82,3 +82,10 @@ def test_multiline_response_preserves_inner_curly_quotes(opening, closing, messa
 )
 def test_multiline_response_boundaries(text, expected):
     assert get_multiline_response(text) == expected
+
+
+@pytest.mark.parametrize("opening,closing", [('"', '"'), ("“", "”"), ('"', "”"), ("“", '"')])
+def test_literal_opening_quote_does_not_include_subsequent_dialogue(opening, closing):
+    message = "The opening quotation mark is “."
+    text = f'{opening}{message}{closing}\nbot another intent\n  "Unwanted reply"'
+    assert strip_quotes(get_multiline_response(text)) == message

@@ -24,6 +24,21 @@ The completion parsers that do depend on Colang intent/action vocabulary stay in
 
 from typing import List
 
+# An unindented dialogue header after a closing quote takes precedence over
+# quote balance: prose can contain a literal, unmatched opening quotation mark.
+BOT_MESSAGE_STOP_SEQUENCES = tuple(
+    f"{quote}\n{header}"
+    for quote in ('"', "”")
+    for header in (
+        "bot ",
+        "user ",
+        "Bot intent: ",
+        "Bot message: ",
+        "User intent: ",
+        "User message: ",
+    )
+)
+
 
 def strip_quotes(s: str) -> str:
     """Remove surrounding double quotes, allowing an unfinished quoted response."""
@@ -43,6 +58,11 @@ def get_multiline_response(s: str) -> str:
     """Helper that extracts multi-line responses from the LLM.
     Stopping conditions: when a non-empty line ends with an outer quote or when the token "user" appears after a newline.
     Empty lines are skipped."""
+
+    for stop in BOT_MESSAGE_STOP_SEQUENCES:
+        boundary = s.find(stop)
+        if boundary >= 0:
+            s = s[: boundary + 1]
 
     # Check if the token "user" appears after a newline, as this would mark a new dialogue turn.
     # Remove everything after this marker.
