@@ -16,7 +16,7 @@
 import asyncio
 import logging
 import warnings
-from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
 from nemoguardrails.exceptions import StreamingNotSupportedError
 from nemoguardrails.types import ToolCallChunk, ToolCallDeltaChunk
@@ -37,6 +37,36 @@ def _pattern_alternatives(pattern: Optional[Union[str, Tuple[str, ...]]]) -> Tup
     if pattern is None:
         return ()
     return (pattern,) if isinstance(pattern, str) else pattern
+
+
+class _StopMatch(NamedTuple):
+    position: int
+    strip_suffix: bool
+
+
+def _find_stop_match(text: str, provider_stops: Sequence[str], pattern_stops: Sequence[str]) -> Optional[_StopMatch]:
+    # Preserve provider-list order on ties. A token also configured as a pattern
+    # stop already includes the suffix, even when matched via the provider list.
+    matches = (
+        _StopMatch(position, strip_suffix=stop not in pattern_stops)
+        for stop in (*provider_stops, *pattern_stops)
+        if (position := text.find(stop)) >= 0
+    )
+    return min(matches, key=lambda match: match.position, default=None)
+
+
+def _ends_with_pending_pattern(text: str, patterns: Sequence[str]) -> bool:
+    """Hold any nonempty prefix of a pattern, including a complete match."""
+    return any(text.endswith(pattern[:length]) for pattern in patterns for length in range(1, len(pattern) + 1))
+
+
+def _find_trailing_suffix_start(text: str, suffixes: Sequence[str]) -> Optional[int]:
+    """Locate a suffix, allowing trailing whitespace only after that suffix."""
+    for candidate in (text, text.rstrip()):
+        for suffix in suffixes:
+            if suffix and candidate.endswith(suffix):
+                return len(candidate) - len(suffix)
+    return None
 
 
 class StreamingHandler(AsyncIterator):
@@ -125,6 +155,7 @@ class StreamingHandler(AsyncIterator):
 
         If a prefix or a suffix are specified, they will be removed from the output.
         A tuple specifies alternative prefixes or suffixes to match.
+        Trailing whitespace after a suffix is removed with it at stream end.
         Pattern stop sequences are local text boundaries, independent of the
         provider stop sequences assigned by the LLM call.
         """
@@ -276,67 +307,61 @@ class StreamingHandler(AsyncIterator):
                 self._buffered_end_of_stream = True
 
         else:
-            prev_completion = self.completion
-
             if isinstance(chunk, str):
-                self.completion += chunk
-                # Check if the completion contains one of the stop chunks
-                matches = [
-                    (position, stop_chunk)
-                    for stop_chunk in self.stop + self._pattern_stop
-                    if (position := self.completion.find(stop_chunk)) >= 0
-                ]
-                if matches:
-                    position, stop_chunk = min(matches, key=lambda match: match[0])
-                    self.current_chunk = self.completion[len(prev_completion) : position]
-                    # Pattern boundaries already include the closing quote.
-                    # Provider stops may still leave a suffix to remove.
-                    if stop_chunk not in self._pattern_stop:
+                completion = self.completion + chunk
+                match = _find_stop_match(completion, self.stop, self._pattern_stop)
+                if match is not None:
+                    self.current_chunk = completion[len(self.completion) : match.position]
+                    if match.strip_suffix:
                         self._strip_current_suffix()
                     remaining = self.current_chunk
                     self.current_chunk = ""
-                    self.completion = prev_completion
                     if remaining:
-                        await self._process(remaining)
+                        self.completion += remaining
+                        await self._emit_chunk(remaining)
                     # Always deliver termination, including when the entire
                     # message was emitted before the stop sequence arrived.
-                    await self._process(END_OF_STREAM)
+                    await self._emit_chunk(END_OF_STREAM)
                     return
+                self.completion = completion
 
-            if self.pipe_to:
-                self._validate_chunk(chunk)
-                # only add explicit empty strings, not ones created during processing
-                if chunk is END_OF_STREAM or chunk is not None:
-                    await self.pipe_to.push_chunk(chunk)
+            await self._emit_chunk(chunk)
+
+    async def _emit_chunk(self, chunk: Union[str, ToolCallChunk, ToolCallDeltaChunk, _EndOfStream]) -> None:
+        if self.pipe_to:
+            self._validate_chunk(chunk)
+            # only add explicit empty strings, not ones created during processing
+            if chunk is END_OF_STREAM or chunk is not None:
+                await self.pipe_to.push_chunk(chunk)
+            if chunk is END_OF_STREAM:
+                self.streaming_finished_event.set()
+                self.top_k_nonempty_lines_event.set()
+        else:
+            if self.enable_print and isinstance(chunk, str):
+                print(f"\033[92m{chunk}\033[0m", end="", flush=True)
+
+            # we only want to filter out empty strings that are created during suffix processing,
+            # not ones directly pushed by the user
+            if chunk is not None:
+                if self.include_metadata and not isinstance(chunk, (ToolCallChunk, ToolCallDeltaChunk)):
+                    chunk_dict: Dict[str, Any] = {"text": chunk if chunk is not END_OF_STREAM else END_OF_STREAM}
+                    if chunk is END_OF_STREAM:
+                        metadata = self.current_metadata.copy() if self.current_metadata else {}
+                        metadata.setdefault("response_metadata", None)
+                        metadata.setdefault("usage_metadata", None)
+                        chunk_dict["metadata"] = metadata
+                    elif self.current_metadata:
+                        chunk_dict["metadata"] = self.current_metadata.copy()
+                    await self.queue.put(chunk_dict)
+                    if chunk is not END_OF_STREAM and "usage" in chunk_dict.get("metadata", {}):
+                        self.current_metadata.pop("usage", None)
+                else:
+                    await self.queue.put(chunk)
+
+                # If the chunk is the special end of stream marker, mark the stream as finished.
                 if chunk is END_OF_STREAM:
                     self.streaming_finished_event.set()
                     self.top_k_nonempty_lines_event.set()
-            else:
-                if self.enable_print and isinstance(chunk, str):
-                    print(f"\033[92m{chunk}\033[0m", end="", flush=True)
-
-                # we only want to filter out empty strings that are created during suffix processing,
-                # not ones directly pushed by the user
-                if chunk is not None:
-                    if self.include_metadata and not isinstance(chunk, (ToolCallChunk, ToolCallDeltaChunk)):
-                        chunk_dict: Dict[str, Any] = {"text": chunk if chunk is not END_OF_STREAM else END_OF_STREAM}
-                        if chunk is END_OF_STREAM:
-                            metadata = self.current_metadata.copy() if self.current_metadata else {}
-                            metadata.setdefault("response_metadata", None)
-                            metadata.setdefault("usage_metadata", None)
-                            chunk_dict["metadata"] = metadata
-                        elif self.current_metadata:
-                            chunk_dict["metadata"] = self.current_metadata.copy()
-                        await self.queue.put(chunk_dict)
-                        if chunk is not END_OF_STREAM and "usage" in chunk_dict.get("metadata", {}):
-                            self.current_metadata.pop("usage", None)
-                    else:
-                        await self.queue.put(chunk)
-
-                    # If the chunk is the special end of stream marker, mark the stream as finished.
-                    if chunk is END_OF_STREAM:
-                        self.streaming_finished_event.set()
-                        self.top_k_nonempty_lines_event.set()
 
     async def push_chunk(
         self,
@@ -385,22 +410,12 @@ class StreamingHandler(AsyncIterator):
         elif self.suffix or self.stop or self._pattern_stop:
             if isinstance(chunk, str):
                 self.current_chunk += chunk
-            _chunks = []
-            if self.suffix:
-                _chunks.extend(_pattern_alternatives(self.suffix))
-            if self.stop:
-                _chunks.extend(self.stop)
-            _chunks.extend(self._pattern_stop)
-            skip_processing = False
-            for _chunk in _chunks:
-                if skip_processing:
-                    break
-                for _len in range(len(_chunk)):
-                    if self.current_chunk.endswith(_chunk[0 : _len + 1]):
-                        skip_processing = True
-                        break
-
-            if skip_processing and isinstance(chunk, str):
+            suffixes = _pattern_alternatives(self.suffix)
+            patterns = (*suffixes, *self.stop, *self._pattern_stop)
+            if isinstance(chunk, str) and (
+                _ends_with_pending_pattern(self.current_chunk, patterns)
+                or _find_trailing_suffix_start(self.current_chunk, suffixes) is not None
+            ):
                 return
             else:
                 if chunk is END_OF_STREAM:
@@ -439,11 +454,9 @@ class StreamingHandler(AsyncIterator):
                 await self.push_chunk(END_OF_STREAM, metadata)
 
     def _strip_current_suffix(self):
-        if self.suffix:
-            for suffix in _pattern_alternatives(self.suffix):
-                if suffix and self.current_chunk.endswith(suffix):
-                    self.current_chunk = self.current_chunk[: -len(suffix)]
-                    break
+        suffix_start = _find_trailing_suffix_start(self.current_chunk, _pattern_alternatives(self.suffix))
+        if suffix_start is not None:
+            self.current_chunk = self.current_chunk[:suffix_start]
 
     async def _flush_current_chunk(self):
         if self.current_chunk:

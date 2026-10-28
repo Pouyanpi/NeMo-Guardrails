@@ -124,6 +124,13 @@ def _streaming_pattern_for(output_parser, *, include_bot_message_parser: bool):
     return ('  "', "  “"), ('"', "”")
 
 
+def _configure_bot_message_stream(
+    handler: StreamingHandler, output_parser: Optional[str], *, include_bot_message_parser: bool
+) -> None:
+    prefix, suffix = _streaming_pattern_for(output_parser, include_bot_message_parser=include_bot_message_parser)
+    handler.set_pattern(prefix=prefix, suffix=suffix, stop=list(BOT_MESSAGE_STOP_SEQUENCES))
+
+
 @dataclass
 class SingleCallPayload:
     """The bot intent/message events computed by the single-call generation.
@@ -1110,11 +1117,9 @@ class LLMGenerationActions:
                 t0 = time()
 
                 if streaming_handler:
-                    # TODO: Figure out a more generic way to deal with this
-                    prefix, suffix = _streaming_pattern_for(
-                        prompt_config.output_parser, include_bot_message_parser=True
+                    _configure_bot_message_stream(
+                        streaming_handler, prompt_config.output_parser, include_bot_message_parser=True
                     )
-                    streaming_handler.set_pattern(prefix=prefix, suffix=suffix, stop=list(BOT_MESSAGE_STOP_SEQUENCES))
 
                 # Initialize the LLMCallInfo object
                 llm_call_info_var.set(LLMCallInfo(task=Task.GENERATE_BOT_MESSAGE.value))
@@ -1433,11 +1438,9 @@ class LLMGenerationActions:
                 _streaming_handler.set_producer_task(producer_task)
                 result = await _streaming_handler.wait_top_k_nonempty_lines(k=2)
 
-                # Moving forward we need to set the expected pattern to correctly
-                # parse the message.
-                # TODO: Figure out a more generic way to deal with this.
-                prefix, suffix = _streaming_pattern_for(prompt_config.output_parser, include_bot_message_parser=False)
-                _streaming_handler.set_pattern(prefix=prefix, suffix=suffix, stop=list(BOT_MESSAGE_STOP_SEQUENCES))
+                _configure_bot_message_stream(
+                    _streaming_handler, prompt_config.output_parser, include_bot_message_parser=False
+                )
             else:
                 # Initialize the LLMCallInfo object
                 llm_call_info_var.set(LLMCallInfo(task=Task.GENERATE_INTENT_STEPS_MESSAGE.value))

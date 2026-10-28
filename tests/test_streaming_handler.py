@@ -134,6 +134,48 @@ async def test_dialogue_boundaries_across_chunks(body, chunk_size, piped, buffer
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("closing", ['"', "”"])
+@pytest.mark.parametrize("trailing", ["\n", " \t\r\n"])
+@pytest.mark.parametrize("split", [False, True])
+@pytest.mark.parametrize("buffered", [False, True])
+@pytest.mark.parametrize("finish", [False, True])
+async def test_closing_quote_before_trailing_whitespace(closing, trailing, split, buffered, finish):
+    handler = StreamingHandler(enable_buffer=buffered)
+    handler.set_pattern(prefix=('  "', "  “"), suffix=('"', "”"), stop=list(BOT_MESSAGE_STOP_SEQUENCES))
+    text = f"  “Hello!{closing}{trailing}"
+    for chunk in list(text) if split else [text]:
+        await handler.push_chunk(chunk)
+    if finish:
+        await handler.finish()
+    else:
+        await handler.push_chunk(END_OF_STREAM)
+    if buffered:
+        await handler.disable_buffering()
+
+    assert "".join(await asyncio.wait_for(_collect_handler(handler), timeout=1)) == "Hello!"
+    assert handler.completion == "Hello!"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body,expected",
+    [
+        ("Hello!  ”\n", "Hello!  "),
+        ("Hello! \t\n", "Hello! \t\n"),
+        ("She said “hello” \t\nand then waved.”\n", "She said “hello” \t\nand then waved."),
+    ],
+)
+async def test_suffix_whitespace_preserves_message_content(body, expected):
+    handler = StreamingHandler()
+    handler.set_pattern(suffix=('"', "”"))
+    for chunk in body:
+        await handler.push_chunk(chunk)
+    await handler.finish()
+
+    assert "".join(await asyncio.wait_for(_collect_handler(handler), timeout=1)) == expected
+
+
+@pytest.mark.asyncio
 async def test_pattern_stop_delivers_usage_once_and_finishes_after_emitted_text():
     handler = StreamingHandler(include_metadata=True)
     handler.set_pattern(suffix='"', stop=['"\nbot '])
@@ -143,6 +185,41 @@ async def test_pattern_stop_delivers_usage_once_and_finishes_after_emitted_text(
     chunks = await asyncio.wait_for(_collect_handler(handler), timeout=1)
     assert [chunk["text"] for chunk in chunks] == ["Hello", ""]
     assert chunks[-1]["metadata"]["usage"] == {"total_tokens": 5}
+    assert handler.completion == "Hello"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider_stops,pattern_stops,expected",
+    [
+        (["END"], [], "Hello"),
+        ([], ["END"], 'Hello"'),
+        (["END"], ["END"], 'Hello"'),
+        (["E"], ["END"], "Hello"),
+        (["END"], ["E"], "Hello"),
+    ],
+)
+async def test_stop_ties_preserve_suffix_policy(provider_stops, pattern_stops, expected):
+    handler = StreamingHandler()
+    handler.set_pattern(suffix='"', stop=pattern_stops)
+    handler.stop = provider_stops
+    await handler.push_chunk('Hello"ENDtail')
+
+    assert await asyncio.wait_for(_collect_handler(handler), timeout=1) == [expected]
+    assert handler.completion == expected
+    assert handler.queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_partial_pattern_stop_is_held_until_disambiguated():
+    handler = StreamingHandler()
+    handler.set_pattern(stop=["END"])
+    for chunk in ["HelloE", "N", "D"]:
+        await handler.push_chunk(chunk)
+        assert handler.queue.empty()
+    await handler.push_chunk("tail")
+
+    assert await asyncio.wait_for(_collect_handler(handler), timeout=1) == ["Hello"]
     assert handler.completion == "Hello"
 
 
