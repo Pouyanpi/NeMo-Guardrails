@@ -1436,7 +1436,10 @@ async def test_streaming_rail_execution_failure_is_terminal(as_dict):
 @pytest.mark.parametrize("use_iorails", [False, True], ids=["legacy", "iorails-fallback"])
 @pytest.mark.parametrize("parallel", [False, True], ids=["sequential", "parallel"])
 @pytest.mark.parametrize("invalid_outcome", [False, True], ids=["action-failure", "invalid-outcome"])
-def test_streaming_output_rail_failure_returns_error_frame(monkeypatch, use_iorails, parallel, invalid_outcome):
+@pytest.mark.parametrize("stream_first", [False, True], ids=["rails-first", "stream-first"])
+def test_streaming_output_rail_failure_returns_error_frame(
+    monkeypatch, use_iorails, parallel, invalid_outcome, stream_first
+):
     @action(is_system_action=True)
     def failing_rail_action(**params):
         if invalid_outcome:
@@ -1451,7 +1454,7 @@ def test_streaming_output_rail_failure_returns_error_frame(monkeypatch, use_iora
                 "output": {
                     "parallel": parallel,
                     "flows": ["failing safety check"],
-                    "streaming": {"enabled": True, "stream_first": False, "chunk_size": 4},
+                    "streaming": {"enabled": True, "stream_first": stream_first, "chunk_size": 4},
                 }
             },
         },
@@ -1478,14 +1481,20 @@ def test_streaming_output_rail_failure_returns_error_frame(monkeypatch, use_iora
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     frames = [line[6:] for line in response.text.splitlines() if line.startswith("data: ")]
-    assert len(frames) == 2
-    assert frames[1] == "[DONE]"
+    assert frames[-1] == "[DONE]"
+    events = [json.loads(frame) for frame in frames[:-1]]
+    content_events = events[:-1]
+    if stream_first:
+        assert content_events
+        assert "".join(event["choices"][0]["delta"]["content"] for event in content_events) == "Unchecked model content"
+    else:
+        assert content_events == []
     error_message = (
         "Rail action must return RailOutcome, got bool"
         if invalid_outcome
         else "Action failing_rail_action failed with status: failed"
     )
-    assert json.loads(frames[0]) == {
+    assert events[-1] == {
         "error": {
             "message": f"Internal error in failing safety check rail: {error_message}",
             "type": "internal_error",

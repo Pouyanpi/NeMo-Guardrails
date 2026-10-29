@@ -990,6 +990,12 @@ class TestIsStreamErrorChunk:
     def test_metadata_frame_with_error(self):
         assert _is_stream_error_chunk({"text": '{"error": {"type": "generation_error"}}'}) is True
 
+    @pytest.mark.parametrize("include_metadata", [False, True])
+    def test_internal_rail_error_is_terminal(self, include_metadata):
+        error = '{"error": {"type": "internal_error", "code": "rail_execution_failure"}}'
+        chunk = {"text": error} if include_metadata else error
+        assert _is_stream_error_chunk(chunk) is True
+
     def test_non_error_json_string(self):
         assert _is_stream_error_chunk('{"tool_calls": []}') is False
 
